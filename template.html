@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Who lives in the flood path — Maribyrnong & Moonee Valley</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+:root{
+  --ground:#EDF0EA; --panel:#F8F9F6; --ink:#1E2B2A; --muted:#5E6B69; --rule:#D3D9D2;
+  --water:#2E6E8E; --water2:#8DBBD0; --a:#2F6B4F; --a-soft:#9CC3AE; --b:#B97F12; --b-soft:#E6C987;
+  --lga:#1E2B2A; --sa1:#FFFFFF; --focus:#2E6E8E;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --ground:#18201F; --panel:#1F2827; --ink:#E4EAE6; --muted:#9AA8A5; --rule:#33403E;
+  --water:#5AA3C6; --water2:#3D6F86; --a:#6FB592; --a-soft:#2F5A46; --b:#E2A93C; --b-soft:#6E5220;
+  --lga:#E4EAE6; --sa1:#18201F; --focus:#8DBBD0;}}
+:root[data-theme="dark"]{
+  --ground:#18201F; --panel:#1F2827; --ink:#E4EAE6; --muted:#9AA8A5; --rule:#33403E;
+  --water:#5AA3C6; --water2:#3D6F86; --a:#6FB592; --a-soft:#2F5A46; --b:#E2A93C; --b-soft:#6E5220;
+  --lga:#E4EAE6; --sa1:#18201F; --focus:#8DBBD0;}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{background:var(--ground);color:var(--ink);font-family:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.45;font-variant-numeric:tabular-nums}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 440px;height:100%}
+.mapcol{position:relative;display:flex;flex-direction:column;min-height:0}
+.layers{display:flex;gap:6px;flex-wrap:wrap;padding:12px 14px 8px;border-bottom:1px solid var(--rule)}
+.layers button{font:inherit;font-size:12.5px;border:1px solid var(--rule);background:transparent;color:var(--ink);padding:5px 10px;border-radius:999px;cursor:pointer}
+.layers button[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+#map{flex:1;min-height:0;position:relative;overflow:hidden}
+#map svg{width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
+.sa1{stroke:var(--sa1);stroke-width:.35;vector-effect:non-scaling-stroke}
+.sa1:hover{stroke:var(--ink);stroke-width:1.2}
+.lga{fill:none;stroke:var(--lga);stroke-width:1.4;vector-effect:non-scaling-stroke}
+.riv{fill:var(--water);fill-opacity:.55;stroke:var(--water);stroke-width:.8;vector-effect:non-scaling-stroke;pointer-events:none}
+.sbo{fill:url(#hatch);stroke:var(--water);stroke-width:.5;stroke-dasharray:2 2;vector-effect:non-scaling-stroke;pointer-events:none}
+.ring{fill-opacity:.12;stroke-width:2;vector-effect:non-scaling-stroke;pointer-events:none}
+.ring.a{fill:var(--a);stroke:var(--a)} .ring.b{fill:var(--b);stroke:var(--b)}
+.pin{cursor:grab} .pin circle{stroke:var(--panel);stroke-width:2;vector-effect:non-scaling-stroke}
+.pin text{font-weight:700;font-size:11px;fill:#fff;pointer-events:none}
+.mapfoot{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--rule);font-size:12.5px;color:var(--muted)}
+.mapfoot label{display:flex;align-items:center;gap:8px}
+.mapfoot input[type=range]{width:140px;accent-color:var(--ink)}
+.legend{display:flex;align-items:center;gap:6px}
+.legend .ramp{width:120px;height:9px;border-radius:2px}
+.hint{position:absolute;left:14px;top:12px;background:var(--panel);border:1px solid var(--rule);padding:7px 11px;border-radius:6px;font-size:12.5px;pointer-events:none;max-width:300px}
+.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--rule);padding:6px 9px;border-radius:5px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.12);display:none;max-width:240px}
+aside{background:var(--panel);border-left:1px solid var(--rule);overflow-y:auto;padding:20px 22px 28px}
+h1{font-size:21px;line-height:1.2;margin:0 0 6px;font-weight:700;letter-spacing:-.01em}
+.lede{color:var(--muted);margin:0 0 18px;max-width:60ch}
+.who{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:18px}
+.who div{border-top:3px solid;padding-top:6px}
+.who .a{border-color:var(--a)} .who .b{border-color:var(--b)}
+.who strong{display:block;font-size:22px;font-weight:700;line-height:1.1}
+.who span{color:var(--muted);font-size:12px}
+h2{font-size:14px;font-weight:600;margin:22px 0 8px}
+.note{font-size:12px;color:var(--muted);margin:6px 0 0}
+#pyr{width:100%;display:block}
+.pyr-key{display:flex;gap:14px;font-size:12px;color:var(--muted);flex-wrap:wrap}
+.pyr-key i{display:inline-block;width:14px;height:9px;margin-right:5px;vertical-align:-1px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:right;font-weight:600;font-size:12px;color:var(--muted);padding:4px 0 6px}
+th:first-child,td:first-child{text-align:left}
+td{padding:6px 0 6px 8px;border-top:1px solid var(--rule);text-align:right;vertical-align:top}
+td.a{color:var(--a);font-weight:600} td.b{color:var(--b);font-weight:600}
+td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
+.hi{background:color-mix(in srgb,var(--ink) 7%,transparent)}
+.warn{border-left:3px solid var(--water);padding:8px 12px;background:color-mix(in srgb,var(--water) 8%,transparent);font-size:12.5px;margin-top:10px}
+.foot{font-size:11.5px;color:var(--muted);margin-top:22px;border-top:1px solid var(--rule);padding-top:12px}
+.foot p{margin:0 0 6px}
+@media (max-width:900px){
+  .app{display:block;height:auto}
+  .mapcol{height:78vh;width:100%}
+  aside{width:100%}
+  .layers{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .layers button{flex:none}
+  .hint{display:none}
+  aside{border-left:0;border-top:1px solid var(--rule)}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="mapcol">
+    <div class="layers" role="group" aria-label="Map shading" id="layers"></div>
+    <div id="map">
+      <div class="hint" id="hint">Click the map to place area A, then area B. Drag either pin to move it.</div>
+      <div class="tip" id="tip"></div>
+    </div>
+    <div class="mapfoot">
+      <label>Radius <input type="range" id="rad" min="300" max="2000" step="50" value="800"> <span id="radv">800 m</span></label>
+      <label><input type="checkbox" id="fl" checked> Flood overlays</label>
+      <div class="legend"><span id="lmin"></span><div class="ramp" id="ramp"></div><span id="lmax"></span></div>
+      <button id="reset" style="font:inherit;font-size:12.5px;background:none;border:1px solid var(--rule);color:var(--ink);border-radius:999px;padding:4px 10px;cursor:pointer">Clear areas</button>
+    </div>
+  </div>
+  <aside>
+    <h1>Who lives in the flood path</h1>
+    <p class="lede">Maribyrnong and Moonee Valley, 474 SA1s. Compare the age structure and flood-relevant needs of any two places, instead of one average for both councils.</p>
+    <div class="who">
+      <div class="a"><span>Area A</span><strong id="popA">–</strong><span id="subA">Click the map</span></div>
+      <div class="b"><span>Area B</span><strong id="popB">–</strong><span id="subB">then click again</span></div>
+    </div>
+    <h2>Age–sex structure, share of residents</h2>
+    <div class="pyr-key"><span><i style="background:var(--a)"></i>Area A</span><span><i style="border:2px solid var(--b);height:9px"></i>Area B</span><span><i style="background:var(--rule)"></i>Both councils</span></div>
+    <svg id="pyr" viewBox="0 0 400 330" role="img" aria-label="Age–sex pyramid comparing area A and area B"></svg>
+    <p class="note">Males left, females right. Percentages, so a denser area does not look bigger.</p>
+    <h2>Flood-relevant profile</h2>
+    <table id="tbl"><colgroup><col><col style='width:62px'><col style='width:62px'><col style='width:78px'></colgroup><thead><tr><th>Indicator</th><th>A</th><th>B</th><th style='padding-left:8px'>Both councils</th></tr></thead><tbody></tbody></table>
+    <div class="warn" id="depnote">Lama & Sun group everyone under 20 and over 59 as one "dependent population". The pyramid above shows why that hides the difference between a young family suburb and an ageing one: they need different evacuation plans.</div>
+    <div class="foot">
+      <p>Census 2021 General Community Profile (ABS) by SA1; SA1 and LGA boundaries, ASGS 2021. Flood extents are Victorian planning scheme overlays: Land Subject to Inundation and Floodway (riverine) and Special Building Overlay (overland flow), Vicmap Planning, DataVic.</p>
+      <p>Circle figures are estimates. Each SA1's counts are spread evenly over its area on a 50 m grid and summed within the circle. This assumes residents are spread uniformly across each SA1, including parks and industrial land, so figures for small circles and non-residential areas are least reliable. ABS perturbation means totals can differ slightly between tables.</p>
+      <p>Overlays are planning controls, not modelled depths from the October 2022 event used in the papers.</p>
+    </div>
+  </aside>
+</div>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(function(){
+const D=JSON.parse(document.getElementById('data').textContent);
+const S=D.sa1, C=D.cells, NB=18;
+// d3-geo expects clockwise exteriors; GeoJSON from shapely is counter-clockwise
+function rewind(g){if(!g)return g;const polys=g.type==='Polygon'?[g.coordinates]:g.coordinates;
+  polys.forEach(p=>p.forEach((ring,i)=>{const a=d3.geoArea({type:'Polygon',coordinates:[ring]});if(a>2*Math.PI)ring.reverse();}));return g;}
+D.shapes.forEach(rewind);rewind(D.riv);rewind(D.sbo);D.lga.forEach(l=>rewind(l.g));
+const BANDS=['0–4','5–9','10–14','15–19','20–24','25–29','30–34','35–39','40–44','45–49','50–54','55–59','60–64','65–69','70–74','75–79','80–84','85+'];
+// cells per SA1
+const nC=new Array(S.length).fill(0); C.forEach(c=>nC[c[2]]++);
+// derived per SA1
+S.forEach(s=>{const t=s.M.reduce((a,b)=>a+b,0)+s.F.reduce((a,b)=>a+b,0);s.ages=t;
+  s.o75=s.M.slice(15).reduce((a,b)=>a+b,0)+s.F.slice(15).reduce((a,b)=>a+b,0);
+  s.u5=s.M[0]+s.F[0];
+  s.dwell=s.d_house+s.d_semi+s.d_flatlow+s.d_flathigh+s.d_other;});
+const pct=(n,d)=>d>0?n/d:NaN;
+const METRICS=[
+  {k:'dens',l:'Residents per ha',f:s=>s.pop/(s.km2*100),fmt:v=>v.toFixed(0)},
+  {k:'o75',l:'Aged 75+',f:s=>pct(s.o75,s.ages),fmt:v=>(v*100).toFixed(1)+'%'},
+  {k:'u5',l:'Aged 0–4',f:s=>pct(s.u5,s.ages),fmt:v=>(v*100).toFixed(1)+'%'},
+  {k:'nfa',l:'Need help with daily activities',f:s=>pct(s.nfa,s.nfa_d),fmt:v=>(v*100).toFixed(1)+'%'},
+  {k:'ltc',l:'Long-term health condition',f:s=>pct(s.ltc,s.ltc_d),fmt:v=>(v*100).toFixed(1)+'%'},
+  {k:'car0',l:'Households with no car',f:s=>pct(s.car0,s.car_d),fmt:v=>(v*100).toFixed(1)+'%'},
+  {k:'eng',l:'Limited spoken English',f:s=>pct(s.eng,s.eng_d),fmt:v=>(v*100).toFixed(1)+'%'},
+  {k:'unemp',l:'Unemployment rate',f:s=>pct(s.unemp,s.lf),fmt:v=>(v*100).toFixed(1)+'%'},
+  {k:'high',l:'Dwellings in 4+ storey blocks',f:s=>pct(s.d_flathigh,s.dwell),fmt:v=>(v*100).toFixed(1)+'%'},
+  {k:'inc',l:'Median household income',f:s=>s.inc>0?s.inc:NaN,fmt:v=>'$'+Math.round(v).toLocaleString()+'/wk',rev:true},
+  {k:'flood',l:'Area in flood overlay',f:s=>Math.min(1,s.riv+s.sbo),fmt:v=>(v*100).toFixed(0)+'%'},
+];
+let metric=METRICS[1];
+// ---- map
+const mapEl=document.getElementById('map');
+const svg=d3.select('#map').append('svg');
+const defs=svg.append('defs');
+defs.append('pattern').attr('id','hatch').attr('width',5).attr('height',5).attr('patternUnits','userSpaceOnUse').attr('patternTransform','rotate(45)')
+  .append('line').attr('x1',0).attr('y1',0).attr('x2',0).attr('y2',5).attr('stroke','var(--water)').attr('stroke-width',1.3);
+const root=svg.append('g');
+const gSA=root.append('g'), gFl=root.append('g'), gL=root.append('g'), gR=root.append('g'), gP=root.append('g');
+const fc={type:'FeatureCollection',features:S.map((s,i)=>({type:'Feature',geometry:D.shapes[i],properties:{i}}))};
+const proj=d3.geoMercator(); const path=d3.geoPath(proj);
+let W=0,H=0,k=1;
+function fit(){const r=mapEl.getBoundingClientRect();W=r.width;H=r.height;svg.attr('viewBox',`0 0 ${W} ${H}`);proj.fitExtent([[16,16],[W-16,H-16]],fc);}
+fit();
+const sa1Paths=gSA.selectAll('path').data(fc.features).join('path').attr('class','sa1');
+const rivP=gFl.append('path').attr('class','riv').datum(D.riv);
+const sboP=gFl.append('path').attr('class','sbo').datum(D.sbo);
+const lgaP=gL.selectAll('path').data(D.lga).join('path').attr('class','lga');
+function drawGeo(){sa1Paths.attr('d',path);rivP.attr('d',path);sboP.attr('d',path);lgaP.attr('d',d=>path(d.g));drawAreas();}
+const zoom=d3.zoom().scaleExtent([1,12]).on('zoom',e=>{root.attr('transform',e.transform);k=e.transform.k;gP.selectAll('.pin').attr('transform',d=>pinT(d));});
+svg.call(zoom).on('dblclick.zoom',null);
+// colour
+function recolour(){
+  const vals=S.map(metric.f).filter(v=>isFinite(v)).sort(d3.ascending);
+  const lo=d3.quantile(vals,.02), hi=d3.quantile(vals,.98);
+  const cs=getComputedStyle(document.documentElement);
+  const dark=cs.getPropertyValue('--ground').trim().toLowerCase()==='#18201f';
+  const interp=dark?d3.interpolateRgb('#243130','#C9B6F0'):d3.interpolateRgb('#F2F3EC','#3B2F5C');
+  const sc=d3.scaleSequential(interp).domain(metric.rev?[hi,lo]:[lo,hi]).clamp(true);
+  sa1Paths.attr('fill',d=>{const v=metric.f(S[d.properties.i]);return isFinite(v)&&S[d.properties.i].pop>=10?sc(v):'var(--ground)';});
+  document.getElementById('ramp').style.background=`linear-gradient(90deg,${sc(metric.rev?hi:lo)},${sc(metric.rev?lo:hi)})`;
+  document.getElementById('lmin').textContent=metric.fmt(lo);document.getElementById('lmax').textContent=metric.fmt(hi);
+}
+const lay=d3.select('#layers');
+lay.selectAll('button').data(METRICS).join('button').text(d=>d.l).attr('aria-pressed',d=>d===metric)
+  .on('click',(e,d)=>{metric=d;lay.selectAll('button').attr('aria-pressed',x=>x===metric);recolour();update();});
+// tooltip
+const tip=document.getElementById('tip');
+sa1Paths.on('mousemove',(e,d)=>{const s=S[d.properties.i];const r=mapEl.getBoundingClientRect();
+  tip.style.display='block';tip.style.left=Math.min(e.clientX-r.left+14,W-250)+'px';tip.style.top=(e.clientY-r.top+14)+'px';
+  const v=metric.f(s);tip.innerHTML=`<strong>${s.sa2}</strong><br>SA1 ${s.id} · ${s.pop.toLocaleString()} residents<br>${metric.l}: ${isFinite(v)?metric.fmt(v):'n/a'}${(s.riv+s.sbo)>0?`<br>${Math.round(Math.min(1,s.riv+s.sbo)*100)}% in flood overlay`:''}`;})
+  .on('mouseleave',()=>tip.style.display='none');
+document.getElementById('fl').addEventListener('change',e=>gFl.style('display',e.target.checked?null:'none'));
+// ---- areas
+let R=800; const areas=[]; // {id:'a'|'b', lon,lat}
+function pinT(d){const p=proj([d.lon,d.lat]);return `translate(${p[0]},${p[1]}) scale(${1/k})`;}
+function drawAreas(){
+  gR.selectAll('path').data(areas,d=>d.id).join('path').attr('class',d=>'ring '+d.id)
+    .attr('d',d=>path(d3.geoCircle().center([d.lon,d.lat]).radius(R/111195).precision(2)()));
+  const pins=gP.selectAll('.pin').data(areas,d=>d.id).join(enter=>{const g=enter.append('g').attr('class','pin').attr('tabindex',0).attr('role','button').attr('aria-label',d=>'Area '+d.id.toUpperCase()+', drag to move, arrow keys to nudge');
+      g.append('circle').attr('r',11).attr('fill',d=>`var(--${d.id})`);g.append('text').attr('text-anchor','middle').attr('dy','.36em').text(d=>d.id.toUpperCase());return g;})
+    .attr('transform',d=>pinT(d));
+  pins.call(d3.drag().container(root.node()).on('start',function(e){e.sourceEvent.stopPropagation();d3.select(this).style('cursor','grabbing');})
+    .on('drag',(e,d)=>{const ll=proj.invert([e.x,e.y]);d.lon=ll[0];d.lat=ll[1];drawAreas();schedule();})
+    .on('end',function(){d3.select(this).style('cursor',null);}));
+  pins.on('click',e=>e.stopPropagation());
+  pins.on('keydown',(e,d)=>{const step=R/111195/3;const m={ArrowUp:[0,step],ArrowDown:[0,-step],ArrowLeft:[-step*1.26,0],ArrowRight:[step*1.26,0]}[e.key];
+    if(m){e.preventDefault();d.lon+=m[0];d.lat+=m[1];drawAreas();schedule();}});
+}
+svg.on('click',e=>{if(e.defaultPrevented)return;const [x,y]=d3.pointer(e,root.node());const ll=proj.invert([x,y]);
+  const id=areas.length===0?'a':areas.length===1?'b':null;
+  if(id){areas.push({id,lon:ll[0],lat:ll[1]});}else{ // move nearer existing
+    const near=areas.map(a=>({a,d:Math.hypot(a.lon-ll[0],a.lat-ll[1])})).sort((p,q)=>p.d-q.d)[0].a;near.lon=ll[0];near.lat=ll[1];}
+  document.getElementById('hint').style.display=areas.length===2?'none':null;
+  if(areas.length===1)document.getElementById('hint').textContent='Now click to place area B.';
+  drawAreas();update();});
+document.getElementById('rad').addEventListener('input',e=>{R=+e.target.value;document.getElementById('radv').textContent=R+' m';drawAreas();schedule();});
+document.getElementById('reset').addEventListener('click',()=>{areas.length=0;const h=document.getElementById('hint');h.style.display=null;h.textContent='Click the map to place area A, then area B. Drag either pin to move it.';drawAreas();update();});
+let raf=0;function schedule(){if(!raf)raf=requestAnimationFrame(()=>{raf=0;update();});}
+// ---- aggregation
+const COS=Math.cos(-37.77*Math.PI/180);
+function agg(a){
+  const w=new Float64Array(S.length), wr=new Float64Array(S.length), ws=new Float64Array(S.length);
+  const r2=R*R;
+  for(const c of C){const dx=(c[0]-a.lon)*111195*COS, dy=(c[1]-a.lat)*111195;
+    if(dx*dx+dy*dy<=r2){const f=1/nC[c[2]];w[c[2]]+=f;if(c[3]&1)wr[c[2]]+=f;if(c[3]&2)ws[c[2]]+=f;}}
+  return sumW(w,wr,ws);
+}
+function sumW(w,wr,ws){
+  const o={M:new Float64Array(NB),F:new Float64Array(NB)};const keys=['pop','ages','o75','u5','nfa','nfa_d','ltc','ltc_d','emp','unemp','lf','eng','eng_d','car0','car_d','d_house','d_semi','d_flatlow','d_flathigh','d_other','dwell'];
+  keys.forEach(k=>o[k]=0);o.popRiv=0;o.popSbo=0;o.o75Fl=0;o.nfaFl=0;o.km2=0;let incN=0,incW=0;
+  S.forEach((s,i)=>{const f=w[i];if(!f)return;keys.forEach(k=>o[k]+=s[k]*f);for(let b=0;b<NB;b++){o.M[b]+=s.M[b]*f;o.F[b]+=s.F[b]*f;}
+    o.km2+=s.km2*f;
+    const fl=Math.min(f,(wr?wr[i]:0)+(ws?ws[i]:0));o.popRiv+=s.pop*(wr?wr[i]:0);o.popSbo+=s.pop*(ws?ws[i]:0);
+    o.o75Fl+=s.o75*fl;o.nfaFl+=s.nfa*fl;
+    if(s.inc>0){incN+=s.inc*s.pop*f;incW+=s.pop*f;}});
+  o.inc=incW?incN/incW:NaN;return o;
+}
+const ALL=(()=>{const w=new Float64Array(S.length).fill(1),wr=new Float64Array(S.length),ws=new Float64Array(S.length);
+  C.forEach(c=>{if(c[3]&1)wr[c[2]]+=1/nC[c[2]];if(c[3]&2)ws[c[2]]+=1/nC[c[2]];});return sumW(w,wr,ws);})();
+// ---- panel
+const ROWS=[
+  ['Aged 75+',o=>pct(o.o75,o.ages),'p'],['Aged 0–4',o=>pct(o.u5,o.ages),'p'],
+  ['"Dependent" (under 20 and 60+)',o=>{let d=0;for(let b=0;b<NB;b++){if(b<4||b>=12)d+=o.M[b]+o.F[b];}return pct(d,o.ages);},'p','The single measure used in Lama & Sun'],
+  ['Need help with daily activities',o=>pct(o.nfa,o.nfa_d),'p'],['Long-term health condition',o=>pct(o.ltc,o.ltc_d),'p'],
+  ['Households with no car',o=>pct(o.car0,o.car_d),'p','Cannot self-evacuate by car'],['Limited spoken English',o=>pct(o.eng,o.eng_d),'p','Harder to act on warnings'],
+  ['Unemployment rate',o=>pct(o.unemp,o.lf),'p'],['Dwellings in 4+ storey blocks',o=>pct(o.d_flathigh,o.dwell),'p','Most residents above ground floor'],
+  ['Median household income',o=>o.inc,'$','Population-weighted SA1 medians'],
+  ['Residents in riverine overlay',o=>o.popRiv,'n','LSIO and Floodway'],['Residents in overland-flow overlay',o=>o.popSbo,'n','Special Building Overlay'],
+  ['Residents 75+ in any overlay',o=>o.o75Fl,'n'],
+];
+const fmt=(v,t)=>!isFinite(v)?'–':t==='p'?(v*100).toFixed(1)+'%':t==='$'?'$'+Math.round(v).toLocaleString():Math.round(v).toLocaleString();
+const tb=d3.select('#tbl tbody');
+function update(){
+  const A=areas.find(a=>a.id==='a'),B=areas.find(a=>a.id==='b');
+  const oa=A?agg(A):null, ob=B?agg(B):null;
+  document.getElementById('popA').textContent=oa?Math.round(oa.pop).toLocaleString():'–';
+  document.getElementById('popB').textContent=ob?Math.round(ob.pop).toLocaleString():'–';
+  document.getElementById('subA').textContent=oa?'residents, '+near(A):'Click the map';
+  document.getElementById('subB').textContent=ob?'residents, '+near(B):(oa?'Click to place':'then click again');
+  tb.selectAll('tr').data(ROWS).join('tr').html(r=>{const va=oa?r[1](oa):NaN,vb=ob?r[1](ob):NaN,vall=r[1](ALL);
+    return `<td>${r[0]}${r[3]?`<small>${r[3]}</small>`:''}</td><td class="a">${oa?fmt(va,r[2]):'–'}</td><td class="b">${ob?fmt(vb,r[2]):'–'}</td><td>${fmt(vall,r[2])}</td>`;})
+    .attr('class',r=>r[0].startsWith('"')?'hi':null);
+  drawPyr(oa,ob);
+}
+function near(a){ // name of SA2 with most weight nearest to centre
+  let best=null,bd=1e18;for(const c of C){const dx=(c[0]-a.lon)*COS,dy=c[1]-a.lat,d=dx*dx+dy*dy;if(d<bd){bd=d;best=c[2];}}
+  return bd<1e-4?S[best].sa2:'outside study area';
+}
+// ---- pyramid
+const py=d3.select('#pyr'),PW=400,PH=330,mid=PW/2,lab=34,top=6,bh=(PH-top-24)/NB;
+function shares(o){const t=o.ages||1;return {M:Array.from(o.M,v=>v/t),F:Array.from(o.F,v=>v/t)};}
+function drawPyr(oa,ob){
+  py.selectAll('*').remove();
+  const sets=[shares(ALL)];if(oa)sets.push(shares(oa));if(ob)sets.push(shares(ob));
+  const mx=Math.max(0.06,d3.max(sets,s=>d3.max([...s.M,...s.F])));
+  const x=d3.scaleLinear().domain([0,mx]).range([0,mid-lab-6]);
+  const y=b=>top+(NB-1-b)*bh;
+  const all=shares(ALL);
+  for(let b=0;b<NB;b++){
+    py.append('text').attr('x',mid).attr('y',y(b)+bh/2).attr('dy','.35em').attr('text-anchor','middle').attr('font-size',9.5).attr('fill','var(--muted)').text(BANDS[b]);
+    py.append('rect').attr('x',mid-lab/2-x(all.M[b])).attr('y',y(b)+1).attr('width',x(all.M[b])).attr('height',bh-2).attr('fill','var(--rule)');
+    py.append('rect').attr('x',mid+lab/2).attr('y',y(b)+1).attr('width',x(all.F[b])).attr('height',bh-2).attr('fill','var(--rule)');
+    if(oa){const s=shares(oa);
+      py.append('rect').attr('x',mid-lab/2-x(s.M[b])).attr('y',y(b)+3).attr('width',x(s.M[b])).attr('height',bh-6).attr('fill','var(--a)');
+      py.append('rect').attr('x',mid+lab/2).attr('y',y(b)+3).attr('width',x(s.F[b])).attr('height',bh-6).attr('fill','var(--a)').attr('fill-opacity',.72);}
+  }
+  if(ob){const s=shares(ob);const L=[],Rr=[];
+    for(let b=0;b<NB;b++){L.push([mid-lab/2-x(s.M[b]),y(b)+bh],[mid-lab/2-x(s.M[b]),y(b)]);Rr.push([mid+lab/2+x(s.F[b]),y(b)+bh],[mid+lab/2+x(s.F[b]),y(b)]);}
+    const ln=d3.line();py.append('path').attr('d',ln(L)).attr('fill','none').attr('stroke','var(--b)').attr('stroke-width',2.2);
+    py.append('path').attr('d',ln(Rr)).attr('fill','none').attr('stroke','var(--b)').attr('stroke-width',2.2);}
+  const ticks=x.ticks(3).filter(t=>t>0);
+  ticks.forEach(t=>{[-1,1].forEach(sg=>{const xx=sg<0?mid-lab/2-x(t):mid+lab/2+x(t);
+    py.append('text').attr('x',xx).attr('y',PH-8).attr('text-anchor','middle').attr('font-size',9).attr('fill','var(--muted)').text((t*100).toFixed(0)+'%');});});
+  py.append('text').attr('x',4).attr('y',12).attr('font-size',10.5).attr('fill','var(--muted)').text('Male');
+  py.append('text').attr('x',PW-4).attr('y',12).attr('text-anchor','end').attr('font-size',10.5).attr('fill','var(--muted)').text('Female');
+}
+// init
+function resize(){fit();drawGeo();}
+window.addEventListener('resize',()=>{resize();});
+drawGeo();recolour();
+// seed a telling comparison: Maribyrnong riverside vs Braybrook
+areas.push({id:'a',lon:144.8635,lat:-37.7535},{id:'b',lon:144.8935,lat:-37.7960});
+document.getElementById('hint').textContent='Two example areas are placed. Drag the pins, or click to move the nearer one.';
+drawAreas();update();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+geopandas>=0.14
+shapely>=2.0
+pandas>=2.0
+numpy
