@@ -104,31 +104,39 @@ def lga_bbox(lgas_path, wanted):
     return [min(xs), min(ys), max(xs), max(ys)]
 
 
-def wfs_overlays(bbox, out):
+def wfs_overlays(bbox, lgas, out):
+    """LSIO/FO/SBO polygons. Filter by council name (what the v0.1 script used);
+    fall back to a bounding box in both axis orders if that returns nothing."""
     if os.path.exists(out):
         print("  overlays: cached"); return
+    names = sorted({("MERRI-BEK" if n.lower() in ("moreland", "merri-bek") else n.upper()) for n in lgas}
+                   | ({"MORELAND"} if any(n.lower() == "moreland" for n in lgas) else set()))
+    scheme = "scheme_code IN ('LSIO','FO','SBO')"
+    filters = [f"{scheme} AND lga IN ({','.join(repr(n) for n in names)})"]
     desc = get(WFS, {"service": "WFS", "version": "2.0.0", "request": "DescribeFeatureType", "typeNames": WFS_LAYER})
-    geom = "geom"
-    for tag in desc.split("<"):
-        if 'type="gml:' in tag and "name=" in tag:
-            geom = tag.split('name="')[1].split('"')[0]
-            break
-    cql = (f"scheme_code IN ('LSIO','FO','SBO') AND "
-           f"BBOX({geom},{bbox[1]},{bbox[0]},{bbox[3]},{bbox[2]},'EPSG:4326')")
-    feats, start, n = [], 0, 5000
-    while True:
-        js = get_json(WFS, {"service": "WFS", "version": "2.0.0", "request": "GetFeature",
-                            "typeNames": WFS_LAYER, "outputFormat": "application/json",
-                            "srsName": "EPSG:4326", "CQL_FILTER": cql, "count": n, "startIndex": start})
-        got = js.get("features", [])
-        feats += got
-        start += len(got)
-        if len(got) < n:
-            break
-    if not feats:
-        raise RuntimeError("Flood overlay query returned no features (check geometry column / axis order)")
-    json.dump({"type": "FeatureCollection", "features": feats}, open(out, "w"))
-    print(f"  overlays: {len(feats)} LSIO/FO/SBO features (geometry column '{geom}') -> {out}")
+    geom = next((t.split('name="')[1].split('"')[0] for t in desc.split("<")
+                 if 'type="gml:' in t and 'name="' in t), "geom")
+    filters += [f"{scheme} AND BBOX({geom},{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]},'EPSG:4326')",
+                f"{scheme} AND BBOX({geom},{bbox[1]},{bbox[0]},{bbox[3]},{bbox[2]},'EPSG:4326')"]
+    for cql in filters:
+        feats, start, n = [], 0, 5000
+        while True:
+            js = get_json(WFS, {"service": "WFS", "version": "2.0.0", "request": "GetFeature",
+                                "typeNames": WFS_LAYER, "outputFormat": "application/json",
+                                "srsName": "EPSG:4326", "CQL_FILTER": cql, "count": n, "startIndex": start})
+            got = js.get("features", [])
+            feats += got; start += len(got)
+            if len(got) < n:
+                break
+        print(f"  overlays: {len(feats)} features for filter {cql[:90]}...")
+        if feats:
+            by = {}
+            for f in feats:
+                k = f["properties"].get("lga", "?"); by[k] = by.get(k, 0) + 1
+            print(f"  overlays per council: {dict(sorted(by.items()))}")
+            json.dump({"type": "FeatureCollection", "features": feats}, open(out, "w"))
+            return
+    raise RuntimeError("Flood overlay queries returned no features")
 
 
 def optional(label, fn):
@@ -163,7 +171,7 @@ def main():
     print("SA1s");        arcgis("SA1", where, bbox, fine, f"{raw}/sa1.geojson")
     print("Mesh blocks"); arcgis("MB", where, bbox, fine, f"{raw}/mb.geojson")
     print("Suburbs");     arcgis("SAL", where, bbox, fine * 2, f"{raw}/sal.geojson")
-    print("Flood overlays"); wfs_overlays(bbox, f"{raw}/flood.geojson")
+    print("Flood overlays"); wfs_overlays(bbox, st["lgas"], f"{raw}/flood.geojson")
 
     if not all(os.path.exists(f"data/raw/gcp/2021Census_{t}_VIC_SA1.csv") for t in GCP_TABLES):
         print("Census DataPack (~100 MB)")
