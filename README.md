@@ -4,7 +4,7 @@ An interactive web map for Maribyrnong and Moonee Valley (Melbourne). You drag t
 
 The project applies two flood-resilience papers to the same 474 SA1 "urban units" they studied. The interaction comes from a Mashhad "Demographic Explorer" web map. The goal is not to redo the papers' single index. It is to show what that index hides.
 
-> **Status:** working prototype (Census 2021, area-weighted apportionment, no basemap). See [Roadmap](#roadmap) for what is being built next and why.
+> **Status:** working prototype (Census 2021, area-weighted apportionment, no basemap). To see it, open [`snapshots/2026-09-25-prototype.html`](snapshots/2026-09-25-prototype.html) in a browser. History and decisions are in [`docs/PROJECT_LOG.md`](docs/PROJECT_LOG.md). See [Roadmap](#roadmap) for what comes next and why.
 
 ---
 
@@ -71,6 +71,9 @@ Neither paper publishes its HEC-RAS flood output. Lama & Sun's data is "availabl
 ├── web/
 │   └── template.html    # the explorer (D3 v7, inline SVG map, no build step)
 ├── papers/              # the two source papers (CC BY 4.0)
+├── snapshots/           # frozen builds, e.g. the first published prototype (open in a browser)
+├── docs/
+│   └── PROJECT_LOG.md   # history, decisions and open questions
 ├── requirements.txt
 └── README.md
 ```
