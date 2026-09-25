@@ -4,61 +4,58 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Who lives in the flood path</title>
+<script>try{const t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 <style>
 :root{
-  --ground:#EDF0EA; --panel:#F8F9F6; --ink:#1E2B2A; --muted:#5E6B69; --rule:#D3D9D2;
-  --water:#2E6E8E; --water2:#8DBBD0; --a:#2F6B4F; --a-soft:#9CC3AE; --b:#B97F12; --b-soft:#E6C987;
-  --lga:#1E2B2A; --sa1:#FFFFFF; --focus:#2E6E8E;
+  --ground:#F4F5F1; --panel:#FCFCFB; --ink:#16201F; --muted:#5B6664; --rule:#DCE0DA;
+  --a:#4A3AA7; --b:#EB6834; --focus:#2A78D6; --shadow:0 1px 2px rgba(20,30,30,.08),0 4px 14px rgba(20,30,30,.10);
   box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --ground:#18201F; --panel:#1F2827; --ink:#E4EAE6; --muted:#9AA8A5; --rule:#33403E;
-  --water:#5AA3C6; --water2:#3D6F86; --a:#6FB592; --a-soft:#2F5A46; --b:#E2A93C; --b-soft:#6E5220;
-  --lga:#E4EAE6; --sa1:#18201F; --focus:#8DBBD0;}}
+  --ground:#141817; --panel:#1B1F1E; --ink:#ECEFEC; --muted:#A3ADAA; --rule:#2F3634;
+  --a:#9085E9; --b:#D95926; --focus:#86B6EF; --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.45);}}
 :root[data-theme="dark"]{
-  --ground:#18201F; --panel:#1F2827; --ink:#E4EAE6; --muted:#9AA8A5; --rule:#33403E;
-  --water:#5AA3C6; --water2:#3D6F86; --a:#6FB592; --a-soft:#2F5A46; --b:#E2A93C; --b-soft:#6E5220;
-  --lga:#E4EAE6; --sa1:#18201F; --focus:#8DBBD0;}
+  --ground:#141817; --panel:#1B1F1E; --ink:#ECEFEC; --muted:#A3ADAA; --rule:#2F3634;
+  --a:#9085E9; --b:#D95926; --focus:#86B6EF; --shadow:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.45);}
 *{box-sizing:border-box}
 html,body{height:100%;margin:0}
-html{scroll-padding-top:env(safe-area-inset-top,0px)}
 body{background:var(--ground);color:var(--ink);font-family:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.45;font-variant-numeric:tabular-nums}
-.app{display:grid;grid-template-columns:minmax(0,1fr) 440px;height:100%}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 430px;height:100%}
 .mapcol{position:relative;display:flex;flex-direction:column;min-height:0}
-.layers{display:flex;gap:6px;flex-wrap:wrap;padding:12px 14px 8px;border-bottom:1px solid var(--rule)}
-.layers button{font:inherit;font-size:12.5px;border:1px solid var(--rule);background:transparent;color:var(--ink);padding:5px 10px;border-radius:999px;cursor:pointer}
-.layers .grp{font-size:11px;color:var(--muted);align-self:center;margin-right:2px}
-.layers.ls{border-bottom:1px solid var(--rule);padding-top:6px}
-.layers button[aria-pressed="true"]{background:var(--ink);color:var(--ground);border-color:var(--ink)}
-button:focus-visible,input:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-#map{flex:1;min-height:0;position:relative;overflow:hidden}
-#map svg{width:100%;height:100%;display:block;touch-action:none;cursor:crosshair}
-.sa1{stroke:var(--sa1);stroke-width:.35;vector-effect:non-scaling-stroke}
-.sa1:hover{stroke:var(--ink);stroke-width:1.2}
-.lga{fill:none;stroke:var(--lga);stroke-width:1.4;vector-effect:non-scaling-stroke}
-.riv{fill:var(--water);fill-opacity:.55;stroke:var(--water);stroke-width:.8;vector-effect:non-scaling-stroke;pointer-events:none}
-.sbo{fill:url(#hatch);stroke:var(--water);stroke-width:.5;stroke-dasharray:2 2;vector-effect:non-scaling-stroke;pointer-events:none}
-.ring{fill:none!important;stroke-width:1.6;vector-effect:non-scaling-stroke;pointer-events:none}
-.tint{stroke:none;pointer-events:none}
-.tint.a{fill:var(--a)} .tint.b{fill:var(--b)}
-.ring.a{fill:var(--a);stroke:var(--a)} .ring.b{fill:var(--b);stroke:var(--b)}
-.pin{cursor:grab} .pin circle{stroke:var(--panel);stroke-width:2;vector-effect:non-scaling-stroke}
-.pin text{font-weight:700;font-size:11px;fill:#fff;pointer-events:none}
-.mapfoot{display:flex;align-items:center;gap:18px;flex-wrap:wrap;padding:10px 14px;border-top:1px solid var(--rule);font-size:12.5px;color:var(--muted)}
-.mapfoot label{display:flex;align-items:center;gap:8px}
-.mapfoot input[type=range]{width:140px;accent-color:var(--ink)}
-.legend{display:flex;align-items:center;gap:6px}
-.legend .ramp{width:120px;height:9px;border-radius:2px}
-.sal{fill:none;stroke:var(--muted);stroke-width:.5;stroke-dasharray:3 2;vector-effect:non-scaling-stroke;pointer-events:none}
-.salname{fill:var(--muted);pointer-events:none;paint-order:stroke;stroke:var(--ground);stroke-width:3px;text-anchor:middle}
-.find{font:inherit;font-size:12.5px;border:1px solid var(--rule);background:var(--panel);color:var(--ink);border-radius:999px;padding:4px 10px;width:170px}
-.other{font-size:12.5px;color:var(--ink)}
-.hint{position:absolute;left:14px;top:12px;background:var(--panel);border:1px solid var(--rule);padding:7px 11px;border-radius:6px;font-size:12.5px;pointer-events:none;max-width:300px}
-.tip{position:absolute;pointer-events:none;background:var(--panel);border:1px solid var(--rule);padding:6px 9px;border-radius:5px;font-size:12px;box-shadow:0 2px 8px rgba(0,0,0,.12);display:none;max-width:240px}
+.bar{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;padding:10px 14px;border-bottom:1px solid var(--rule);background:var(--panel)}
+.bar label{font-size:11px;color:var(--muted);display:flex;flex-direction:column;gap:3px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+.bar select,.bar input{font:inherit;font-size:13.5px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink);background:var(--ground);border:1px solid var(--rule);border-radius:8px;padding:6px 10px;min-width:180px}
+.bar select#metric{min-width:270px}
+.bar .sp{flex:1}
+.bar a.btn,.bar button.btn{font:inherit;font-size:13px;color:var(--ink);background:var(--ground);border:1px solid var(--rule);border-radius:999px;padding:6px 12px;text-decoration:none;cursor:pointer;white-space:nowrap}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+#map{flex:1;min-height:0;position:relative}
+.card{position:absolute;z-index:2;background:var(--panel);border:1px solid var(--rule);border-radius:10px;box-shadow:var(--shadow);font-size:12.5px}
+.legend{left:12px;bottom:28px;padding:10px 12px;min-width:200px;max-width:270px}
+.legend h3{font-size:12.5px;font-weight:600;margin:0 0 2px}
+.legend .sub{color:var(--muted);font-size:11.5px;margin:0 0 8px}
+.legend .row{display:flex;align-items:center;gap:8px;margin:3px 0;color:var(--ink)}
+.legend .sw{width:22px;height:12px;border-radius:3px;flex:none;border:1px solid rgba(0,0,0,.06)}
+.legend .sep{border-top:1px solid var(--rule);margin:7px 0 5px}
+.legend .sw.hol{background:transparent;border:1px dashed var(--muted)}
+.legend .sw.riv{background:rgba(42,120,214,.45);border-color:#1c5cab}
+.legend .sw.sbo{background:rgba(42,120,214,.18);border:1px dashed #2a78d6}
+.ctrl{right:12px;top:12px;padding:10px 12px;display:flex;flex-direction:column;gap:7px;min-width:190px}
+.ctrl label{display:flex;align-items:center;gap:8px;color:var(--ink)}
+.ctrl input[type=range]{width:110px;accent-color:var(--ink)}
+.ctrl button{font:inherit;font-size:12px;border:1px solid var(--rule);background:transparent;color:var(--ink);border-radius:999px;padding:4px 10px;cursor:pointer;align-self:flex-start}
+.hint{left:12px;top:12px;padding:8px 12px;max-width:300px;pointer-events:none}
+.tip{position:absolute;z-index:3;pointer-events:none;background:var(--panel);border:1px solid var(--rule);padding:7px 10px;border-radius:8px;font-size:12px;box-shadow:var(--shadow);display:none;max-width:260px}
+.tip strong{font-weight:600}
+.pin{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700;font-size:12px;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);cursor:grab}
+.pin.a{background:var(--a)} .pin.b{background:var(--b)}
+.maplibregl-ctrl-attrib{font-size:10.5px}
 aside{background:var(--panel);border-left:1px solid var(--rule);overflow-y:auto;padding:20px 22px 28px}
 h1{font-size:21px;line-height:1.2;margin:0 0 6px;font-weight:700;letter-spacing:-.01em}
 .lede{color:var(--muted);margin:0 0 18px;max-width:60ch}
@@ -76,39 +73,47 @@ table{width:100%;border-collapse:collapse;font-size:13px}
 th{text-align:right;font-weight:600;font-size:12px;color:var(--muted);padding:4px 0 6px}
 th:first-child,td:first-child{text-align:left}
 td{padding:6px 0 6px 8px;border-top:1px solid var(--rule);text-align:right;vertical-align:top}
-td.a{color:var(--a);font-weight:600} td.b{color:var(--b);font-weight:600}
+td.a,td.b{font-weight:600}
+th.a::after,th.b::after{content:"";display:block;height:3px;border-radius:2px;margin-top:3px}
+th.a::after{background:var(--a)} th.b::after{background:var(--b)}
 td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
-.hi{background:color-mix(in srgb,var(--ink) 7%,transparent)}
-.warn{border-left:3px solid var(--water);padding:8px 12px;background:color-mix(in srgb,var(--water) 8%,transparent);font-size:12.5px;margin-top:10px}
+.hi{background:color-mix(in srgb,var(--ink) 6%,transparent)}
+.warn{border-left:3px solid var(--focus);padding:8px 12px;background:color-mix(in srgb,var(--focus) 8%,transparent);font-size:12.5px;margin-top:10px}
 .foot{font-size:11.5px;color:var(--muted);margin-top:22px;border-top:1px solid var(--rule);padding-top:12px}
 .foot p{margin:0 0 6px}
+.foot a{color:var(--ink)}
 @media (max-width:900px){
   .app{display:block;height:auto}
-  .mapcol{height:78vh;width:100%}
-  aside{width:100%}
-  .layers{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
-  .layers button{flex:none}
-  .hint{display:none}
+  .mapcol{height:82vh;width:100%}
   aside{border-left:0;border-top:1px solid var(--rule)}
+  .hint{display:none}
+  .bar select#metric{min-width:0;width:100%}
+  .legend{bottom:32px;max-width:200px}
 }
 </style>
 </head>
 <body>
 <div class="app">
   <div class="mapcol">
-    <div class="layers" role="group" aria-label="Map shading" id="layers"></div>
-    <div class="layers ls" role="group" aria-label="Lama and Sun indices" id="lslayers"><span class="grp">Lama &amp; Sun (2026):</span></div>
-    <div id="map">
-      <div class="hint" id="hint">Click the map to place area A, then area B. Drag either pin to move it.</div>
-      <div class="tip" id="tip"></div>
+    <div class="bar">
+      <label>Show on map<select id="metric" aria-label="Variable shown on the map"></select></label>
+      <label>Council<select id="lgasel" aria-label="Filter by council"></select></label>
+      <label>Suburb<input id="find" list="sublist" placeholder="Find a suburb…" aria-label="Find a suburb"><datalist id="sublist"></datalist></label>
+      <span class="sp"></span>
+      <a class="btn" href="analysis/">Correlation &amp; MGWR analysis →</a>
+      <button class="btn" id="theme" type="button"></button>
     </div>
-    <div class="mapfoot">
-      <label>Radius <input type="range" id="rad" min="300" max="2000" step="50" value="800"> <span id="radv">800 m</span></label>
-      <label><input type="checkbox" id="fl" checked> Flood overlays</label>
-      <label><input type="checkbox" id="sb" checked> Suburbs</label>
-      <input class="find" id="find" list="sublist" placeholder="Find a suburb…" aria-label="Find a suburb"><datalist id="sublist"></datalist>
-      <div class="legend"><span id="lmin"></span><div class="ramp" id="ramp"></div><span id="lmax"></span></div>
-      <button id="reset" style="font:inherit;font-size:12.5px;background:none;border:1px solid var(--rule);color:var(--ink);border-radius:999px;padding:4px 10px;cursor:pointer">Clear areas</button>
+    <div id="map">
+      <div class="card hint" id="hint">Click the map to place area A, then area B. Drag either pin to move it.</div>
+      <div class="card legend" id="legend" aria-live="polite"></div>
+      <div class="card ctrl">
+        <label>Radius <input type="range" id="rad" min="300" max="2000" step="50" value="800"> <span id="radv">800 m</span></label>
+        <label><input type="checkbox" id="fl" checked> Flood overlays</label>
+        <label><input type="checkbox" id="sb" checked> Suburb boundaries</label>
+        <label><input type="checkbox" id="bm" checked> Basemap</label>
+        <button id="reset">Clear areas</button>
+      </div>
+      <div class="tip" id="tip"></div>
     </div>
   </div>
   <aside>
@@ -122,17 +127,17 @@ td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
     <div class="pyr-key"><span><i style="background:var(--a)"></i>Area A</span><span><i style="border:2px solid var(--b);height:9px"></i>Area B</span><span><i style="background:var(--rule)"></i><span class="alllab"></span></span></div>
     <svg id="pyr" viewBox="0 0 400 330" role="img" aria-label="Age–sex pyramid comparing area A and area B"></svg>
     <p class="note">Males left, females right. Percentages, so a denser area does not look bigger.</p>
-    <p class="note">On the map, each SA1 a circle touches is shaded in that circle's colour. The darker the shade, the larger the share of its residents counted. Faint shading means the figures lean on the even-spread estimate.</p>
+    <p class="note">On the map, each SA1 a circle touches is shaded in that circle's colour. The darker the shade, the larger the share of its residents counted.</p>
     <h2>Flood-relevant profile</h2>
-    <table id="tbl"><colgroup><col><col style='width:62px'><col style='width:62px'><col style='width:78px'></colgroup><thead><tr><th>Indicator</th><th>A</th><th>B</th><th style='padding-left:8px' class="alllab"></th></tr></thead><tbody></tbody></table>
-    <div class="warn" id="depnote">Lama & Sun group everyone under 20 and over 59 as one "dependent population". The pyramid above shows why that hides the difference between a young family suburb and an ageing one: they need different evacuation plans.</div>
+    <table id="tbl"><colgroup><col><col style='width:62px'><col style='width:62px'><col style='width:90px'></colgroup><thead><tr><th>Indicator</th><th class="a">A</th><th class="b">B</th><th style='padding-left:8px' class="alllab"></th></tr></thead><tbody></tbody></table>
+    <div class="warn" id="depnote">Lama &amp; Sun group everyone under 20 and over 59 as one "dependent population". The pyramid above shows why that hides the difference between a young family suburb and an ageing one: they need different evacuation plans.</div>
     <div class="foot">
-      <p>Census 2021 General Community Profile (ABS) by SA1; SA1 and LGA boundaries, ASGS 2021. Flood extents are Victorian planning scheme overlays: Land Subject to Inundation and Floodway (riverine) and Special Building Overlay (overland flow), Vicmap Planning, DataVic.</p>
-      <p>Circle figures are estimates. Each SA1's counts are split across its mesh blocks in proportion to where people live, and a circle counts the mesh blocks whose centre falls inside it. Age–sex shares within an SA1 are assumed the same across its mesh blocks. ABS perturbation means totals can differ slightly between tables.</p>
-      <p>Lama &amp; Sun (2026) indices use their Table 2 weights and formulas: FRI = Adaptive capacity − (Sensitivity + Exposure); IFRI = 0.5·FRI − 0.5·Damage index. Classes are quintiles within this map. Substitutions for data the paper used but did not publish:</p>
+      <p>Census 2021 General Community Profile (ABS) by SA1; SA1, mesh block, suburb and council boundaries, ASGS 2021. Flood extents are Victorian planning scheme overlays: Land Subject to Inundation and Floodway (riverine) and Special Building Overlay (overland flow), Vicmap Planning, DataVic. Basemap © OpenStreetMap contributors © CARTO.</p>
+      <p>Circle figures are estimates. Each SA1's counts are split across its mesh blocks in proportion to where people live, and a circle counts the mesh blocks whose centre falls inside it. With a council selected, circles count residents of that council only. Age–sex shares within an SA1 are assumed the same across its mesh blocks. ABS perturbation means totals can differ slightly between tables.</p>
+      <p>Lama &amp; Sun (2026) indices use their Table 2 weights and formulas: FRI = Adaptive capacity − (Sensitivity + Exposure); IFRI = 0.5·FRI − 0.5·Damage index. Maps use five quantile classes; FRI and IFRI use three classes each side of zero. Substitutions for data the paper used but did not publish:</p>
       <ul id="notes" style="margin:0 0 6px 18px;padding:0"></ul>
       <p>Overlays are planning controls, not modelled depths from the October 2022 event used in the papers.</p>
-      <p><a class="other" id="other"></a></p>
+      <p><a id="other"></a></p>
     </div>
   </aside>
 </div>
@@ -141,131 +146,207 @@ td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
 (function(){
 const D=JSON.parse(document.getElementById('data').textContent);
 const S=D.sa1, C=D.mb, NB=18, META=D.meta;
-// d3-geo expects clockwise exteriors; GeoJSON from shapely is counter-clockwise
-function rewind(g){if(!g)return g;const polys=g.type==='Polygon'?[g.coordinates]:g.coordinates;
-  polys.forEach(p=>p.forEach((ring,i)=>{const a=d3.geoArea({type:'Polygon',coordinates:[ring]});if(a>2*Math.PI)ring.reverse();}));return g;}
-D.shapes.forEach(rewind);rewind(D.riv);rewind(D.sbo);D.lga.forEach(l=>rewind(l.g));D.sal.forEach(l=>rewind(l.g));
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const DARK=css('--ground').toLowerCase()==='#141817';
+{const b=document.getElementById('theme');b.textContent=DARK?'☀ Light mode':'☾ Dark mode';
+ b.onclick=()=>{try{localStorage.setItem('theme',DARK?'light':'dark');
+   sessionStorage.setItem('mapstate',JSON.stringify({m:metric.k,l:activeLga,R,a:areas.map(({id,lon,lat})=>({id,lon,lat})),v:map?{c:map.getCenter(),z:map.getZoom()}:null}));}catch(e){}
+   location.reload();};}
+let SAVED=null;try{SAVED=JSON.parse(sessionStorage.getItem('mapstate'));sessionStorage.removeItem('mapstate');}catch(e){}
 document.getElementById('lede').textContent=`${META.title}, ${META.n.toLocaleString()} SA1s. Compare the age structure and flood-relevant needs of any two places, instead of one average for the whole area.`;
-document.querySelectorAll('.alllab').forEach(e=>e.textContent=META.label);
 d3.select('#notes').selectAll('li').data(META.notes).join('li').text(d=>d);
 {const o=document.getElementById('other');o.textContent='Open the '+META.other[0]+' version →';o.href=META.other[1];}
 const BANDS=['0–4','5–9','10–14','15–19','20–24','25–29','30–34','35–39','40–44','45–49','50–54','55–59','60–64','65–69','70–74','75–79','80–84','85+'];
-// derived per SA1
-S.forEach(s=>{const t=s.M.reduce((a,b)=>a+b,0)+s.F.reduce((a,b)=>a+b,0);s.ages=t;
+S.forEach(s=>{s.ages=s.M.reduce((a,b)=>a+b,0)+s.F.reduce((a,b)=>a+b,0);
   s.o75=s.M.slice(15).reduce((a,b)=>a+b,0)+s.F.slice(15).reduce((a,b)=>a+b,0);
-  s.u5=s.M[0]+s.F[0];
-  s.dwell=s.d_house+s.d_semi+s.d_flatlow+s.d_flathigh+s.d_other;});
+  s.u5=s.M[0]+s.F[0];s.dwell=s.d_house+s.d_semi+s.d_flatlow+s.d_flathigh+s.d_other;});
 const pct=(n,d)=>d>0?n/d:NaN;
+
+// ---- symbology: one hue per variable family, light -> dark; resilience indices are diverging.
+// Violet and orange are reserved for circles A and B, so no map ramp uses them.
+const RAMP={
+  // lightest step kept clearly off-white, so a low class never reads as "no data"
+  teal:['#b3e4d0','#79cdae','#3fb68d','#16805d','#0b4d38'],
+  red:['#f5bdbc','#ee8a89','#e34948','#a92a2a','#6b1414'],
+  green:['#c2e3b8','#8cc87d','#4fa845','#1f7a1f','#0b4a0b'],
+  blue:['#b7d3f6','#6da7ec','#3987e5','#1c5cab','#0d366b'],
+  div:['#a92a2a','#e34948','#f29a99','#86b6ef','#3987e5','#1c5cab'],
+};
+const P=v=>(v*100).toFixed(1)+'%';
 const METRICS=[
-  {k:'dens',l:'Residents per ha',f:s=>s.pop/(s.km2*100),fmt:v=>v.toFixed(0)},
-  {k:'o75',l:'Aged 75+',f:s=>pct(s.o75,s.ages),fmt:v=>(v*100).toFixed(1)+'%'},
-  {k:'u5',l:'Aged 0–4',f:s=>pct(s.u5,s.ages),fmt:v=>(v*100).toFixed(1)+'%'},
-  {k:'nfa',l:'Need help with daily activities',f:s=>pct(s.nfa,s.nfa_d),fmt:v=>(v*100).toFixed(1)+'%'},
-  {k:'ltc',l:'Long-term health condition',f:s=>pct(s.ltc,s.ltc_d),fmt:v=>(v*100).toFixed(1)+'%'},
-  {k:'car0',l:'Households with no car',f:s=>pct(s.car0,s.car_d),fmt:v=>(v*100).toFixed(1)+'%'},
-  {k:'eng',l:'Limited spoken English',f:s=>pct(s.eng,s.eng_d),fmt:v=>(v*100).toFixed(1)+'%'},
-  {k:'unemp',l:'Unemployment rate',f:s=>pct(s.unemp,s.lf),fmt:v=>(v*100).toFixed(1)+'%'},
-  {k:'high',l:'Dwellings in 4+ storey blocks',f:s=>pct(s.d_flathigh,s.dwell),fmt:v=>(v*100).toFixed(1)+'%'},
-  {k:'inc',l:'Median household income',f:s=>s.inc>0?s.inc:NaN,fmt:v=>'$'+Math.round(v).toLocaleString()+'/wk',rev:true},
-  {k:'flood',l:'Area in flood overlay',f:s=>Math.min(1,s.riv+s.sbo),fmt:v=>(v*100).toFixed(0)+'%'},
+  {g:'People',k:'dens',l:'Residents per hectare',f:s=>s.pop/(s.km2*100),fmt:v=>v.toFixed(0),r:'teal'},
+  {g:'People',k:'o75',l:'Aged 75+',f:s=>pct(s.o75,s.ages),fmt:P,r:'teal'},
+  {g:'People',k:'u5',l:'Aged 0–4',f:s=>pct(s.u5,s.ages),fmt:P,r:'teal'},
+  {g:'Need and access',k:'nfa',l:'Need help with daily activities',f:s=>pct(s.nfa,s.nfa_d),fmt:P,r:'red'},
+  {g:'Need and access',k:'ltc',l:'Long-term health condition',f:s=>pct(s.ltc,s.ltc_d),fmt:P,r:'red'},
+  {g:'Need and access',k:'car0',l:'Households with no car',f:s=>pct(s.car0,s.car_d),fmt:P,r:'red'},
+  {g:'Need and access',k:'eng',l:'Limited spoken English',f:s=>pct(s.eng,s.eng_d),fmt:P,r:'red'},
+  {g:'Housing and income',k:'high',l:'Dwellings in 4+ storey blocks',f:s=>pct(s.d_flathigh,s.dwell),fmt:P,r:'teal',zero:true,none:'No 4+ storey dwellings'},
+  {g:'Housing and income',k:'unemp',l:'Unemployment rate',f:s=>pct(s.unemp,s.lf),fmt:P,r:'red'},
+  {g:'Housing and income',k:'inc',l:'Median household income',f:s=>s.inc>0?s.inc:NaN,fmt:v=>'$'+Math.round(v).toLocaleString(),r:'green',unit:'Per week'},
+  {g:'Flood',k:'flood',l:'Area in flood overlay',f:s=>Math.min(1,s.riv+s.sbo),fmt:v=>(v*100).toFixed(0)+'%',r:'blue',zero:true,none:'Not in an overlay'},
+  ...['Exposure','Sensitivity','Adaptive capacity','Flood Resilience Index (FRI)','Damage index','Integrated FRI (IFRI)'].map((l,j)=>({
+    g:'Lama & Sun (2026) indices',k:'ls'+j,l,ls:true,f:s=>s.ls&&s.ls[j]!=null?s.ls[j]:NaN,fmt:v=>v.toFixed(3),
+    r:['red','red','green','div','red','div'][j],
+    sub:['Higher = more exposed','Higher = more sensitive','Higher = more capacity to recover','Below 0 = low resilience','Higher = more potential damage','Below 0 = damage exceeds resilience'][j]}))
 ];
-const LSK=['Exposure','Sensitivity','Adaptive capacity','Flood Resilience Index (FRI)','Damage index','Integrated FRI (IFRI)'];
-const LSM=LSK.map((l,j)=>({k:'ls'+j,l,f:s=>s.ls&&s.ls[j]!=null?s.ls[j]:NaN,fmt:v=>v.toFixed(3),ls:true,rev:j===2||j===3||j===5}));
-let metric=METRICS[1];
+let metric=(SAVED&&METRICS.find(m=>m.k===SAVED.m))||METRICS[1];
+const msel=d3.select('#metric');
+d3.groups(METRICS,m=>m.g).forEach(([g,ms])=>{const og=msel.append('optgroup').attr('label',g);ms.forEach(m=>og.append('option').attr('value',m.k).text(m.l));});
+msel.property('value',metric.k).on('change',function(){metric=METRICS.find(m=>m.k===this.value);recolour();});
+
+// ---- council filter
+let activeLga=null;
+const lsel=d3.select('#lgasel');
+lsel.append('option').attr('value','').text(META.label);
+D.lga.map(l=>l.name).sort().forEach(n=>lsel.append('option').attr('value',n).text(n));
+const visible=i=>!activeLga||S[i].lga===activeLga;
+document.querySelectorAll('.alllab').forEach(e=>e.textContent=META.label);
+
 // ---- map
-const mapEl=document.getElementById('map');
-const svg=d3.select('#map').append('svg');
-const defs=svg.append('defs');
-defs.append('pattern').attr('id','hatch').attr('width',5).attr('height',5).attr('patternUnits','userSpaceOnUse').attr('patternTransform','rotate(45)')
-  .append('line').attr('x1',0).attr('y1',0).attr('x2',0).attr('y2',5).attr('stroke','var(--water)').attr('stroke-width',1.3);
-const root=svg.append('g');
-const gSA=root.append('g'), gFl=root.append('g'), gT=root.append('g'), gS=root.append('g'), gL=root.append('g'), gR=root.append('g'), gP=root.append('g');
-const fc={type:'FeatureCollection',features:S.map((s,i)=>({type:'Feature',geometry:D.shapes[i],properties:{i}}))};
-const proj=d3.geoMercator(); const path=d3.geoPath(proj);
-let W=0,H=0,k=1;
-function fit(){const r=mapEl.getBoundingClientRect();W=r.width;H=r.height;svg.attr('viewBox',`0 0 ${W} ${H}`);proj.fitExtent([[16,16],[W-16,H-16]],fc);}
-fit();
-const sa1Paths=gSA.selectAll('path').data(fc.features).join('path').attr('class','sa1');
-const rivP=gFl.append('path').attr('class','riv').datum(D.riv);
-const sboP=gFl.append('path').attr('class','sbo').datum(D.sbo);
-const lgaP=gL.selectAll('path').data(D.lga).join('path').attr('class','lga');
-const salP=gS.selectAll('path').data(D.sal).join('path').attr('class','sal');
-const salT=gS.selectAll('text').data(D.sal).join('text').attr('class','salname').text(d=>d.name);
-function drawGeo(){sa1Paths.attr('d',path);rivP.attr('d',path);sboP.attr('d',path);lgaP.attr('d',d=>path(d.g));salP.attr('d',d=>path(d.g));
-  salT.each(function(d){const c=path.centroid(d.g);d.cx=c[0];d.cy=c[1];d.a=path.area(d.g);});drawLabels();drawAreas();drawTint();}
-function drawLabels(){salT.attr('x',d=>d.cx).attr('y',d=>d.cy).style('font-size',(10/k)+'px').style('stroke-width',(3/k)+'px')
-  .style('display',d=>isFinite(d.cx)&&d.a*k*k>9000?null:'none');}
-const zoom=d3.zoom().scaleExtent([1,40]).on('zoom',e=>{root.attr('transform',e.transform);k=e.transform.k;gP.selectAll('.pin').attr('transform',d=>pinT(d));drawLabels();});
-svg.call(zoom).on('dblclick.zoom',null);
-// colour
-function recolour(){
-  const vals=S.map(metric.f).filter(v=>isFinite(v)).sort(d3.ascending);
-  const lo=d3.quantile(vals,.02), hi=d3.quantile(vals,.98);
-  const cs=getComputedStyle(document.documentElement);
-  const dark=cs.getPropertyValue('--ground').trim().toLowerCase()==='#18201f';
-  const interp=dark?d3.interpolateRgb('#243130','#C9B6F0'):d3.interpolateRgb('#F2F3EC','#3B2F5C');
-  let sc;
-  if(metric.ls){ // five quintile classes, as the paper maps five classes (very low to very high)
-    const q=[.2,.4,.6,.8].map(p=>d3.quantile(vals,p)),cols=[0,.25,.5,.75,1].map(t=>interp(metric.rev?1-t:t));
-    sc=d3.scaleThreshold().domain(q).range(cols);
-    document.getElementById('ramp').style.background=`linear-gradient(90deg,${cols.map((c,i)=>`${c} ${i*20}%,${c} ${i*20+20}%`).join(',')})`;
-    document.getElementById('lmin').textContent=metric.rev?'Low resilience':'Very low';document.getElementById('lmax').textContent=metric.rev?'High':'Very high';
-  }else{
-    sc=d3.scaleSequential(interp).domain(metric.rev?[hi,lo]:[lo,hi]).clamp(true);
-    document.getElementById('ramp').style.background=`linear-gradient(90deg,${sc(metric.rev?hi:lo)},${sc(metric.rev?lo:hi)})`;
-    document.getElementById('lmin').textContent=metric.fmt(lo);document.getElementById('lmax').textContent=metric.fmt(hi);}
-  sa1Paths.attr('fill',d=>{const s=S[d.properties.i],v=metric.f(s);return isFinite(v)&&(metric.ls||s.pop>=10)?sc(v):'var(--ground)';});
+const bounds=[[d3.min(C,c=>c[0]),d3.min(C,c=>c[1])],[d3.max(C,c=>c[0]),d3.max(C,c=>c[1])]];
+const fcSA={type:'FeatureCollection',features:S.map((s,i)=>({type:'Feature',id:i,geometry:D.shapes[i],properties:{i,lga:s.lga}}))};
+const fcLGA={type:'FeatureCollection',features:D.lga.map(l=>({type:'Feature',geometry:l.g,properties:{name:l.name}}))};
+const fcSAL={type:'FeatureCollection',features:D.sal.map(l=>({type:'Feature',geometry:l.g,properties:{name:l.name}}))};
+const fcSALpt={type:'FeatureCollection',features:D.sal.map(l=>({type:'Feature',geometry:{type:'Point',coordinates:d3.geoCentroid(l.g)},properties:{name:l.name}}))};
+const BLANK={version:8,sources:{},layers:[{id:'bg',type:'background',paint:{'background-color':css('--ground')}}]};
+const STYLE=DARK?'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json':'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+async function loadStyle(){ // fall back to a plain background if the basemap can't be reached
+  try{const c=new AbortController();const t=setTimeout(()=>c.abort(),6000);
+    const r=await fetch(STYLE,{signal:c.signal});clearTimeout(t);if(!r.ok)throw 0;return await r.json();}catch(e){return BLANK;}
 }
-const lay=d3.select('#layers');
-const lsl=d3.select('#lslayers');
-function press(){lay.selectAll('button').attr('aria-pressed',x=>x===metric);lsl.selectAll('button').attr('aria-pressed',x=>x===metric);}
-lay.selectAll('button').data(METRICS).join('button').text(d=>d.l).on('click',(e,d)=>{metric=d;press();recolour();update();});
-lsl.selectAll('button').data(LSM).join('button').text(d=>d.l).on('click',(e,d)=>{metric=d;press();recolour();update();});
-press();
-// tooltip
 const tip=document.getElementById('tip');
-sa1Paths.on('mousemove',(e,d)=>{const s=S[d.properties.i];const r=mapEl.getBoundingClientRect();
-  tip.style.display='block';tip.style.left=Math.min(e.clientX-r.left+14,W-250)+'px';tip.style.top=(e.clientY-r.top+14)+'px';
-  const v=metric.f(s);tip.innerHTML=`<strong>${s.sub}</strong> · ${s.lga}<br>SA1 ${s.id} · ${s.pop.toLocaleString()} residents<br>${metric.l}: ${isFinite(v)?metric.fmt(v):'n/a'}${(s.riv+s.sbo)>0?`<br>${Math.round(Math.min(1,s.riv+s.sbo)*100)}% in flood overlay`:''}${[['A',tintA],['B',tintB]].map(([n,w])=>share(w,d.properties.i)?`<br>Counted in ${n}: ${share(w,d.properties.i)} of residents`:'').join('')}`;})
-  .on('mouseleave',()=>tip.style.display='none');
-document.getElementById('fl').addEventListener('change',e=>gFl.style('display',e.target.checked?null:'none'));
-document.getElementById('sb').addEventListener('change',e=>gS.style('display',e.target.checked?null:'none'));
-d3.select('#sublist').selectAll('option').data(D.sal.map(d=>d.name).sort()).join('option').attr('value',d=>d);
-document.getElementById('find').addEventListener('change',e=>{const d=D.sal.find(x=>x.name.toLowerCase()===e.target.value.trim().toLowerCase());if(!d)return;
-  const [[x0,y0],[x1,y1]]=path.bounds(d.g),sc=Math.min(40,0.8/Math.max((x1-x0)/W,(y1-y0)/H));
-  svg.transition().duration(600).call(zoom.transform,d3.zoomIdentity.translate(W/2,H/2).scale(sc).translate(-(x0+x1)/2,-(y0+y1)/2));});
-// ---- areas
-let R=800; const areas=[]; // {id:'a'|'b', lon,lat}
-function pinT(d){const p=proj([d.lon,d.lat]);return `translate(${p[0]},${p[1]}) scale(${1/k})`;}
-function drawAreas(){
-  gR.selectAll('path').data(areas,d=>d.id).join('path').attr('class',d=>'ring '+d.id)
-    .attr('d',d=>path(d3.geoCircle().center([d.lon,d.lat]).radius(R/111195).precision(2)()));
-  const pins=gP.selectAll('.pin').data(areas,d=>d.id).join(enter=>{const g=enter.append('g').attr('class','pin').attr('tabindex',0).attr('role','button').attr('aria-label',d=>'Area '+d.id.toUpperCase()+', drag to move, arrow keys to nudge');
-      g.append('circle').attr('r',11).attr('fill',d=>`var(--${d.id})`);g.append('text').attr('text-anchor','middle').attr('dy','.36em').text(d=>d.id.toUpperCase());return g;})
-    .attr('transform',d=>pinT(d));
-  pins.call(d3.drag().container(root.node()).on('start',function(e){e.sourceEvent.stopPropagation();d3.select(this).style('cursor','grabbing');})
-    .on('drag',(e,d)=>{const ll=proj.invert([e.x,e.y]);d.lon=ll[0];d.lat=ll[1];drawAreas();schedule();})
-    .on('end',function(){d3.select(this).style('cursor',null);}));
-  pins.on('click',e=>e.stopPropagation());
-  pins.on('keydown',(e,d)=>{const step=R/111195/3;const m={ArrowUp:[0,step],ArrowDown:[0,-step],ArrowLeft:[-step*1.26,0],ArrowRight:[step*1.26,0]}[e.key];
-    if(m){e.preventDefault();d.lon+=m[0];d.lat+=m[1];drawAreas();schedule();}});
+let map,R=800,baseLayers=[],hoverId=null,lastDrag=0;
+const areas=[]; // {id:'a'|'b', lon, lat, marker}
+loadStyle().then(style=>{
+  map=new maplibregl.Map({container:'map',style,bounds,fitBoundsOptions:{padding:30},attributionControl:{compact:true,customAttribution:'ABS, DataVic'},dragRotate:false,pitchWithRotate:false});
+  map.touchZoomRotate.disableRotation();
+  map.addControl(new maplibregl.NavigationControl({showCompass:false}),'bottom-right');
+  map.on('load',()=>{
+    baseLayers=map.getStyle().layers.filter(l=>l.type!=='background').map(l=>l.id);
+    const sym=map.getStyle().layers.find(l=>l.type==='symbol');
+    const before=sym?sym.id:undefined, add=l=>map.addLayer(l,before);
+    map.addSource('sa1',{type:'geojson',data:fcSA});
+    map.addSource('riv',{type:'geojson',data:{type:'Feature',geometry:D.riv,properties:{}}});
+    map.addSource('sbo',{type:'geojson',data:{type:'Feature',geometry:D.sbo,properties:{}}});
+    map.addSource('lga',{type:'geojson',data:fcLGA});
+    map.addSource('sal',{type:'geojson',data:fcSAL});
+    map.addSource('salpt',{type:'geojson',data:fcSALpt});
+    map.addSource('rings',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+    const fs=(k,d)=>['coalesce',['feature-state',k],d];
+    add({id:'sa1-fill',type:'fill',source:'sa1',paint:{'fill-color':fs('c','#000000'),'fill-opacity':['case',['==',fs('c','none'),'none'],0,DARK?.8:.74]}});
+    add({id:'sa1-line',type:'line',source:'sa1',paint:{'line-color':DARK?'#000000':'#ffffff','line-width':['interpolate',['linear'],['zoom'],9,.1,14,.9],'line-opacity':.8}});
+    add({id:'sbo-fill',type:'fill',source:'sbo',paint:{'fill-color':'#2a78d6','fill-opacity':.18}});
+    add({id:'sbo-line',type:'line',source:'sbo',paint:{'line-color':'#2a78d6','line-width':1,'line-dasharray':[2,1.5]}});
+    add({id:'riv-fill',type:'fill',source:'riv',paint:{'fill-color':'#2a78d6','fill-opacity':.42}});
+    add({id:'riv-line',type:'line',source:'riv',paint:{'line-color':'#1c5cab','line-width':.8}});
+    add({id:'tint-a',type:'fill',source:'sa1',paint:{'fill-color':css('--a'),'fill-opacity':fs('ta',0)}});
+    add({id:'tint-b',type:'fill',source:'sa1',paint:{'fill-color':css('--b'),'fill-opacity':fs('tb',0)}});
+    add({id:'sal-line',type:'line',source:'sal',minzoom:10.5,paint:{'line-color':css('--muted'),'line-width':.7,'line-dasharray':[3,2],'line-opacity':.8}});
+    add({id:'lga-line',type:'line',source:'lga',paint:{'line-color':css('--ink'),'line-width':['interpolate',['linear'],['zoom'],9,1,13,2.2],'line-opacity':.85}});
+    add({id:'sa1-hover',type:'line',source:'sa1',paint:{'line-color':css('--ink'),'line-width':['case',['boolean',['feature-state','hover'],false],2,0]}});
+    map.addLayer({id:'rings',type:'line',source:'rings',paint:{'line-color':['get','col'],'line-width':2.4}});
+    const tf=sym&&sym.layout&&sym.layout['text-font'];
+    if(style.glyphs&&tf){ // suburb names, only when the basemap supplies fonts
+      map.addLayer({id:'sal-label',type:'symbol',source:'salpt',minzoom:11.5,layout:{'text-field':['get','name'],'text-font':tf,'text-size':11,'text-transform':'uppercase','text-letter-spacing':.06,'text-max-width':8},
+        paint:{'text-color':css('--muted'),'text-halo-color':css('--panel'),'text-halo-width':1.6}});
+    }
+    if(style===BLANK)document.getElementById('bm').parentElement.style.display='none';
+    wire();recolour();
+    if(SAVED&&SAVED.a){areas.push(...SAVED.a);R=SAVED.R||R;document.getElementById('rad').value=R;document.getElementById('radv').textContent=R+' m';}
+    else areas.push({id:'a',lon:144.8635,lat:-37.7535},{id:'b',lon:144.8935,lat:-37.7960});
+    if(SAVED&&SAVED.l){lsel.property('value',SAVED.l);lsel.dispatch('change');}
+    if(SAVED&&SAVED.v)map.jumpTo({center:SAVED.v.c,zoom:SAVED.v.z});
+    areas.forEach(addMarker);
+    document.getElementById('hint').textContent='Two example areas are placed. Drag the pins, or click to move the nearer one.';
+    drawRings();update();
+    window.__ready=true;
+  });
+});
+
+function wire(){
+  map.on('mousemove','sa1-fill',e=>{
+    const f=e.features[0];if(!f)return;const i=f.id,s=S[i];
+    if(hoverId!==null)map.setFeatureState({source:'sa1',id:hoverId},{hover:false});
+    hoverId=i;map.setFeatureState({source:'sa1',id:i},{hover:true});
+    const v=metric.f(s),r=map.getContainer().getBoundingClientRect();
+    tip.style.display='block';tip.style.left=Math.min(e.point.x+14,r.width-270)+'px';tip.style.top=(e.point.y+14)+'px';
+    tip.innerHTML=`<strong>${s.sub}</strong> · ${s.lga}<br>SA1 ${s.id} · ${s.pop.toLocaleString()} residents<br>${metric.l}: ${isFinite(v)?metric.fmt(v):'n/a'}${(s.riv+s.sbo)>0?`<br>${Math.round(Math.min(1,s.riv+s.sbo)*100)}% in flood overlay`:''}${[['A',tintA],['B',tintB]].map(([n,w])=>share(w,i)?`<br>Counted in ${n}: ${share(w,i)} of residents`:'').join('')}`;
+  });
+  map.on('mouseleave','sa1-fill',()=>{tip.style.display='none';if(hoverId!==null)map.setFeatureState({source:'sa1',id:hoverId},{hover:false});hoverId=null;});
+  map.on('click',e=>{
+    if(Date.now()-lastDrag<300)return;
+    const ll=e.lngLat;let a;
+    if(areas.length<2){a={id:areas.some(x=>x.id==='a')?'b':'a',lon:ll.lng,lat:ll.lat};areas.push(a);addMarker(a);}
+    else{a=areas.map(x=>({x,d:Math.hypot(x.lon-ll.lng,x.lat-ll.lat)})).sort((p,q)=>p.d-q.d)[0].x;a.lon=ll.lng;a.lat=ll.lat;a.marker.setLngLat([a.lon,a.lat]);}
+    const h=document.getElementById('hint');h.style.display=areas.length===2?'none':null;if(areas.length===1)h.textContent='Now click to place area B.';
+    drawRings();update();
+  });
+  const vis=(ids,on)=>ids.forEach(id=>map.getLayer(id)&&map.setLayoutProperty(id,'visibility',on?'visible':'none'));
+  document.getElementById('fl').addEventListener('change',e=>{vis(['riv-fill','riv-line','sbo-fill','sbo-line'],e.target.checked);drawLegend();});
+  document.getElementById('sb').addEventListener('change',e=>vis(['sal-line','sal-label'],e.target.checked));
+  document.getElementById('bm').addEventListener('change',e=>vis(baseLayers,e.target.checked));
+  document.getElementById('rad').addEventListener('input',e=>{R=+e.target.value;document.getElementById('radv').textContent=R+' m';drawRings();schedule();});
+  document.getElementById('reset').addEventListener('click',()=>{areas.forEach(a=>a.marker.remove());areas.length=0;const h=document.getElementById('hint');h.style.display=null;h.textContent='Click the map to place area A, then area B. Drag either pin to move it.';drawRings();update();});
+  d3.select('#sublist').selectAll('option').data(D.sal.map(d=>d.name).sort()).join('option').attr('value',d=>d);
+  document.getElementById('find').addEventListener('change',e=>{const d=D.sal.find(x=>x.name.toLowerCase()===e.target.value.trim().toLowerCase());if(d)map.fitBounds(d3.geoBounds(d.g),{padding:60,maxZoom:15});});
+  lsel.on('change',function(){activeLga=this.value||null;
+    const f=activeLga?['==',['get','lga'],activeLga]:null;
+    ['sa1-fill','sa1-line','tint-a','tint-b','sa1-hover'].forEach(id=>map.setFilter(id,f));
+    map.setFilter('lga-line',activeLga?['==',['get','name'],activeLga]:null);
+    const g=activeLga?D.lga.find(l=>l.name===activeLga).g:null;
+    map.fitBounds(g?d3.geoBounds(g):bounds,{padding:40});
+    ALL=allAgg();document.querySelectorAll('.alllab').forEach(e=>e.textContent=activeLga||META.label);
+    recolour();update();});
 }
-svg.on('click',e=>{if(e.defaultPrevented)return;const [x,y]=d3.pointer(e,root.node());const ll=proj.invert([x,y]);
-  const id=areas.length===0?'a':areas.length===1?'b':null;
-  if(id){areas.push({id,lon:ll[0],lat:ll[1]});}else{ // move nearer existing
-    const near=areas.map(a=>({a,d:Math.hypot(a.lon-ll[0],a.lat-ll[1])})).sort((p,q)=>p.d-q.d)[0].a;near.lon=ll[0];near.lat=ll[1];}
-  document.getElementById('hint').style.display=areas.length===2?'none':null;
-  if(areas.length===1)document.getElementById('hint').textContent='Now click to place area B.';
-  drawAreas();update();});
-document.getElementById('rad').addEventListener('input',e=>{R=+e.target.value;document.getElementById('radv').textContent=R+' m';drawAreas();schedule();});
-document.getElementById('reset').addEventListener('click',()=>{areas.length=0;const h=document.getElementById('hint');h.style.display=null;h.textContent='Click the map to place area A, then area B. Drag either pin to move it.';drawAreas();update();});
-let raf=0;function schedule(){if(!raf)raf=requestAnimationFrame(()=>{raf=0;update();});}
+function addMarker(a){
+  const el=document.createElement('div');el.className='pin '+a.id;el.textContent=a.id.toUpperCase();el.setAttribute('role','button');el.setAttribute('aria-label','Area '+a.id.toUpperCase()+', drag to move');
+  el.addEventListener('click',e=>e.stopPropagation());
+  a.marker=new maplibregl.Marker({element:el,draggable:true}).setLngLat([a.lon,a.lat]).addTo(map);
+  a.marker.on('drag',()=>{const p=a.marker.getLngLat();a.lon=p.lng;a.lat=p.lat;drawRings();schedule();});
+  a.marker.on('dragend',()=>{lastDrag=Date.now();});
+}
+function drawRings(){
+  if(!map||!map.getSource('rings'))return;
+  map.getSource('rings').setData({type:'FeatureCollection',features:areas.map(a=>({type:'Feature',properties:{col:css('--'+a.id)},geometry:d3.geoCircle().center([a.lon,a.lat]).radius(R/111195).precision(1)()}))});
+}
+
+// ---- colour classes
+let breaks=[],cols=[];
+function recolour(){
+  if(!map)return;
+  const vals=[];S.forEach((s,i)=>{if(!visible(i))return;const v=metric.f(s);if(isFinite(v)&&(metric.ls||s.pop>=10)&&!(metric.zero&&v<=0))vals.push(v);});
+  vals.sort(d3.ascending);
+  if(metric.r==='div'){ // three quantile classes on each side of zero
+    const neg=vals.filter(v=>v<0),pos=vals.filter(v=>v>=0);
+    breaks=[d3.quantile(neg,1/3),d3.quantile(neg,2/3),0,d3.quantile(pos,1/3),d3.quantile(pos,2/3)];
+    cols=RAMP.div;
+  }else{breaks=[.2,.4,.6,.8].map(p=>d3.quantile(vals,p));cols=RAMP[metric.r];}
+  const cls=v=>{let k=0;while(k<breaks.length&&v>=breaks[k])k++;return cols[k];};
+  S.forEach((s,i)=>{const v=metric.f(s);const ok=visible(i)&&isFinite(v)&&(metric.ls||s.pop>=10)&&!(metric.zero&&v<=0);
+    map.setFeatureState({source:'sa1',id:i},{c:ok?cls(v):'none'});});
+  drawLegend();
+}
+function drawLegend(){
+  const L=d3.select('#legend').html('');
+  L.append('h3').text(metric.l);
+  L.append('p').attr('class','sub').text([metric.sub,metric.unit,metric.r==='div'?'Three classes each side of 0':'Quintile classes',activeLga?'within '+activeLga:null].filter(Boolean).join(' · '));
+  const f=metric.fmt,b=breaks,rows=[];
+  if(metric.r==='div')rows.push([cols[0],'below '+f(b[0])],[cols[1],f(b[0])+' to '+f(b[1])],[cols[2],f(b[1])+' to 0'],[cols[3],'0 to '+f(b[3])],[cols[4],f(b[3])+' to '+f(b[4])],[cols[5],f(b[4])+' and over']);
+  else for(let k=0;k<cols.length;k++)rows.push([cols[k],k===0?(metric.zero?'over 0 – ':'under ')+f(b[0]):k===cols.length-1?f(b[k-1])+' and over':f(b[k-1])+' – '+f(b[k])]);
+  rows.forEach(([c,t])=>{const r=L.append('div').attr('class','row');r.append('span').attr('class','sw').style('background',c);r.append('span').text(t);});
+  L.append('div').attr('class','row').call(r=>{r.append('span').attr('class','sw hol');r.append('span').text(metric.none||(metric.ls?'No data':'Fewer than 10 residents'));});
+  if(document.getElementById('fl').checked){L.append('div').attr('class','sep');
+    L.append('div').attr('class','row').call(r=>{r.append('span').attr('class','sw riv');r.append('span').text('Riverine overlay (LSIO, FO)');});
+    L.append('div').attr('class','row').call(r=>{r.append('span').attr('class','sw sbo');r.append('span').text('Overland flow (SBO)');});}
+}
+
 // ---- aggregation
 const COS=Math.cos(META.lat0*Math.PI/180);
 function agg(a){
   const w=new Float64Array(S.length), wr=new Float64Array(S.length), ws=new Float64Array(S.length);
   const r2=R*R;
-  for(const c of C){const dx=(c[0]-a.lon)*111195*COS, dy=(c[1]-a.lat)*111195;
+  for(const c of C){if(activeLga&&S[c[2]].lga!==activeLga)continue;const dx=(c[0]-a.lon)*111195*COS, dy=(c[1]-a.lat)*111195;
     if(dx*dx+dy*dy<=r2){const f=c[3];w[c[2]]+=f;wr[c[2]]+=f*c[4];ws[c[2]]+=f*c[5];}}
   const o=sumW(w,wr,ws);o.w=w;return o;
 }
@@ -281,17 +362,19 @@ function sumW(w,wr,ws){
   for(let j=0;j<6;j++)o.ls[j]=o.lsW?o.ls[j]/o.lsW:NaN;
   o.inc=incW?incN/incW:NaN;return o;
 }
-const ALL=(()=>{const w=new Float64Array(S.length).fill(1),wr=new Float64Array(S.length),ws=new Float64Array(S.length);
-  C.forEach(c=>{wr[c[2]]+=c[3]*c[4];ws[c[2]]+=c[3]*c[5];});return sumW(w,wr,ws);})();
+function allAgg(){const w=new Float64Array(S.length),wr=new Float64Array(S.length),ws=new Float64Array(S.length);
+  S.forEach((s,i)=>{if(visible(i))w[i]=1;});C.forEach(c=>{if(visible(c[2])){wr[c[2]]+=c[3]*c[4];ws[c[2]]+=c[3]*c[5];}});return sumW(w,wr,ws);}
+let ALL=allAgg();
+
 // ---- tint: every SA1 a circle touches, opacity = share of its residents counted
 let tintA=null,tintB=null;
-function drawTint(){
-  const rows=[];
-  [['a',tintA],['b',tintB]].forEach(([id,w])=>{if(!w)return;for(let i=0;i<w.length;i++)if(w[i]>0)rows.push({id,i,f:Math.min(1,w[i])});});
-  gT.selectAll('path').data(rows,d=>d.id+d.i).join('path').attr('class',d=>'tint '+d.id)
-    .attr('d',d=>path(fc.features[d.i])).attr('fill-opacity',d=>0.08+0.62*d.f);
+function paintTint(w,prev,key){
+  if(prev)for(let i=0;i<prev.length;i++)if(prev[i]>0&&!(w&&w[i]>0))map.setFeatureState({source:'sa1',id:i},{[key]:0});
+  if(w)for(let i=0;i<w.length;i++)if(w[i]>0)map.setFeatureState({source:'sa1',id:i},{[key]:0.08+0.55*Math.min(1,w[i])});
 }
 function share(w,i){return w&&w[i]>0?Math.round(Math.min(1,w[i])*100)+'%':null;}
+let raf=0;function schedule(){if(!raf)raf=requestAnimationFrame(()=>{raf=0;update();});}
+
 // ---- panel
 const ROWS=[
   ['Aged 75+',o=>pct(o.o75,o.ages),'p'],['Aged 0–4',o=>pct(o.u5,o.ages),'p'],
@@ -308,18 +391,21 @@ const fmt=(v,t)=>!isFinite(v)?'–':t==='i'?v.toFixed(3):t==='p'?(v*100).toFixed
 const tb=d3.select('#tbl tbody');
 function update(){
   const A=areas.find(a=>a.id==='a'),B=areas.find(a=>a.id==='b');
-  const oa=A?agg(A):null, ob=B?agg(B):null;
+  let oa=A?agg(A):null, ob=B?agg(B):null;
+  const out=(o,a)=>o&&o.pop<0.5?'outside '+(activeLga||'the study area'):null;
+  const outA=out(oa,A),outB=out(ob,B);
   document.getElementById('popA').textContent=oa?Math.round(oa.pop).toLocaleString():'–';
   document.getElementById('popB').textContent=ob?Math.round(ob.pop).toLocaleString():'–';
-  document.getElementById('subA').textContent=oa?'residents, '+near(A):'Click the map';
-  document.getElementById('subB').textContent=ob?'residents, '+near(B):(oa?'Click to place':'then click again');
+  document.getElementById('subA').textContent=outA||(oa?'residents, '+near(A):'Click the map');
+  document.getElementById('subB').textContent=outB||(ob?'residents, '+near(B):(oa?'Click to place':'then click again'));
   tb.selectAll('tr').data(ROWS).join('tr').html(r=>{const va=oa?r[1](oa):NaN,vb=ob?r[1](ob):NaN,vall=r[1](ALL);
     return `<td>${r[0]}${r[3]?`<small>${r[3]}</small>`:''}</td><td class="a">${oa?fmt(va,r[2]):'–'}</td><td class="b">${ob?fmt(vb,r[2]):'–'}</td><td>${fmt(vall,r[2])}</td>`;})
     .attr('class',r=>r[0].startsWith('"')?'hi':null);
-  tintA=oa?oa.w:null;tintB=ob?ob.w:null;drawTint();
-  drawPyr(oa,ob);
+  if(map){paintTint(oa?oa.w:null,tintA,'ta');paintTint(ob?ob.w:null,tintB,'tb');}
+  tintA=oa?oa.w:null;tintB=ob?ob.w:null;
+  drawPyr(outA?null:oa,outB?null:ob);
 }
-function near(a){ // name of SA2 with most weight nearest to centre
+function near(a){
   let best=null,bd=1e18;for(const c of C){const dx=(c[0]-a.lon)*COS,dy=c[1]-a.lat,d=dx*dx+dy*dy;if(d<bd){bd=d;best=c[2];}}
   return bd<1e-4?S[best].sub:'outside study area';
 }
@@ -335,30 +421,21 @@ function drawPyr(oa,ob){
   const all=shares(ALL);
   for(let b=0;b<NB;b++){
     py.append('text').attr('x',mid).attr('y',y(b)+bh/2).attr('dy','.35em').attr('text-anchor','middle').attr('font-size',9.5).attr('fill','var(--muted)').text(BANDS[b]);
-    py.append('rect').attr('x',mid-lab/2-x(all.M[b])).attr('y',y(b)+1).attr('width',x(all.M[b])).attr('height',bh-2).attr('fill','var(--rule)');
-    py.append('rect').attr('x',mid+lab/2).attr('y',y(b)+1).attr('width',x(all.F[b])).attr('height',bh-2).attr('fill','var(--rule)');
+    py.append('rect').attr('x',mid-lab/2-x(all.M[b])).attr('y',y(b)+1).attr('width',x(all.M[b])).attr('height',bh-2).attr('rx',2).attr('fill','var(--rule)');
+    py.append('rect').attr('x',mid+lab/2).attr('y',y(b)+1).attr('width',x(all.F[b])).attr('height',bh-2).attr('rx',2).attr('fill','var(--rule)');
     if(oa){const s=shares(oa);
-      py.append('rect').attr('x',mid-lab/2-x(s.M[b])).attr('y',y(b)+3).attr('width',x(s.M[b])).attr('height',bh-6).attr('fill','var(--a)');
-      py.append('rect').attr('x',mid+lab/2).attr('y',y(b)+3).attr('width',x(s.F[b])).attr('height',bh-6).attr('fill','var(--a)').attr('fill-opacity',.72);}
+      py.append('rect').attr('x',mid-lab/2-x(s.M[b])).attr('y',y(b)+3).attr('width',x(s.M[b])).attr('height',bh-6).attr('rx',2).attr('fill','var(--a)');
+      py.append('rect').attr('x',mid+lab/2).attr('y',y(b)+3).attr('width',x(s.F[b])).attr('height',bh-6).attr('rx',2).attr('fill','var(--a)').attr('fill-opacity',.72);}
   }
   if(ob){const s=shares(ob);const L=[],Rr=[];
     for(let b=0;b<NB;b++){L.push([mid-lab/2-x(s.M[b]),y(b)+bh],[mid-lab/2-x(s.M[b]),y(b)]);Rr.push([mid+lab/2+x(s.F[b]),y(b)+bh],[mid+lab/2+x(s.F[b]),y(b)]);}
     const ln=d3.line();py.append('path').attr('d',ln(L)).attr('fill','none').attr('stroke','var(--b)').attr('stroke-width',2.2);
     py.append('path').attr('d',ln(Rr)).attr('fill','none').attr('stroke','var(--b)').attr('stroke-width',2.2);}
-  const ticks=x.ticks(3).filter(t=>t>0);
-  ticks.forEach(t=>{[-1,1].forEach(sg=>{const xx=sg<0?mid-lab/2-x(t):mid+lab/2+x(t);
+  x.ticks(3).filter(t=>t>0).forEach(t=>{[-1,1].forEach(sg=>{const xx=sg<0?mid-lab/2-x(t):mid+lab/2+x(t);
     py.append('text').attr('x',xx).attr('y',PH-8).attr('text-anchor','middle').attr('font-size',9).attr('fill','var(--muted)').text((t*100).toFixed(0)+'%');});});
   py.append('text').attr('x',4).attr('y',12).attr('font-size',10.5).attr('fill','var(--muted)').text('Male');
   py.append('text').attr('x',PW-4).attr('y',12).attr('text-anchor','end').attr('font-size',10.5).attr('fill','var(--muted)').text('Female');
 }
-// init
-function resize(){fit();drawGeo();}
-window.addEventListener('resize',()=>{resize();});
-drawGeo();recolour();
-// seed a telling comparison: Maribyrnong riverside vs Braybrook
-areas.push({id:'a',lon:144.8635,lat:-37.7535},{id:'b',lon:144.8935,lat:-37.7960});
-document.getElementById('hint').textContent='Two example areas are placed. Drag the pins, or click to move the nearer one.';
-drawAreas();update();
 })();
 </script>
 </body>

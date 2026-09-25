@@ -252,6 +252,13 @@ DMG = mm(sum(mm(flood * ind[k].values) for k in DAMAGE_INDICATORS)).values
 IFRI = 0.5 * FRI - 0.5 * DMG
 print(f"Exposure max {dim['exposure'].max():.3f} | FRI {FRI.min():.3f} to {FRI.max():.3f} | IFRI {IFRI.min():.3f} to {IFRI.max():.3f}")
 
+# ---------------- Lama & Sun GWR / MGWR (Table 5, Fig. 4), two-council study area only
+stats = None
+if ST.get("mgwr"):
+    from lamasun_stats import run as run_mgwr
+    rp = sa.representative_point()
+    stats = run_mgwr(ind, np.column_stack([rp.x.values, rp.y.values]))
+
 r4 = lambda v: None if not np.isfinite(v) else round(float(v), 4)
 recs = []
 for i, c in enumerate(codes):
@@ -283,7 +290,7 @@ mbo = mbo[(mbo["w"] > 0) | (mbo["riv"] + mbo["sbo"] > 0)]
 out = dict(
     meta=dict(study=STUDY, title=ST["title"], label=ST["label"], n=len(sa), lat0=round(float(p4.y.mean()), 3),
               notes=NOTES, other={"west": ["All of Melbourne", "metro/"], "metro": ["Maribyrnong & Moonee Valley", "../"]}[STUDY]),
-    sa1=recs, shapes=[gj(g) for g in sa.geometry],
+    sa1=recs, shapes=[gj(g) for g in sa.geometry], stats=stats,
     mb=[[r.x, r.y, int(r.i), round(float(r.w), 4), round(float(r.riv), 2), round(float(r.sbo), 2)] for r in mbo.itertuples()],
     riv=gj(riv, tol * 1.5), sbo=gj(sbo, tol * 1.5),
     lga=[{"name": r.name, "g": gj(r.geometry, tol * 3)} for r in lga.itertuples()],

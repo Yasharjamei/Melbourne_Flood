@@ -2,15 +2,37 @@
 
 Notable changes to the explorer and its pipeline. Dates are when a change landed on `main`.
 
-## [0.3.1] - 2026-09-25
-
-### Fixed
-- **Greater Melbourne page did not cover all of Greater Melbourne.** In 0.3.0, council boundaries were downloaded pre-simplified, which made some boundary rings cross themselves. The repair step (`buffer(0)`) then kept only one piece of each such polygon and threw the rest away, so every SA1 in the discarded pieces was left out. Council boundaries are now downloaded at full detail, and geometry is repaired with `make_valid`, which keeps all of the area.
+## [0.4.0] - 2026-09-25
 
 ### Added
-- **Coverage check in `02_build.py`.** It reports, for each council, how many SA1s it has and what share of its area they cover. It warns outside 97–103% and stops the build outside 90–110%, so a gap like this can't be published silently again.
-- **CI previews.** Pull-request builds screenshot both pages and push the screenshots and built pages to the `ci-preview` branch.
-- **Sturdier ABS downloads.** ArcGIS layers are paged by object ID (`objectid > last`) instead of by record offset. The ABS server timed out at offset 62,000 on Greater Melbourne mesh blocks. Failed pages are retried at half size.
+- **Basemap.** The map is now drawn with MapLibre GL JS (WebGL) over CARTO Positron, or Dark Matter in dark mode. Data layers sit under the basemap's labels, and there's a toggle to hide the basemap. If the basemap host can't be reached, the page falls back to a plain background.
+- **Council filter.** Zooms to one council and hides the others. Colour classes, the comparison column and circle counts all switch to that council.
+- **Per-variable symbology.** Each variable family has its own single-hue palette: teal for people and housing, red for need and vulnerability, green for income and capacity, blue for flood. FRI and IFRI use a diverging red–blue scale split at zero. A legend card shows each class's value range and what the empty class means.
+- **Grouped "Show on map" menu**, replacing two rows of buttons.
+- **Light and dark mode toggle.** It's remembered between visits, swaps the basemap too, and keeps the chosen variable, council, circles and view across the switch.
+- **Analysis page** (`analysis/`, one per study area), reproducing the rest of Lama & Sun's statistical results:
+  - **Table 5:** GWR vs MGWR fit (R², adjusted R², AICc, bandwidth), next to the paper's values.
+  - **MGWR by variable:** bandwidth, share of SA1s significant (multiple-testing corrected), coefficient range, and **VIF**, since the paper's count indicators are strongly collinear.
+  - **Figure 4:** local R² and ten coefficient maps as small multiples. SA1s that aren't significant are grey.
+  - **Figure 7:** a 6×6 scatter matrix of the indices, with Pearson's r and adjusted R².
+- **`pipeline/lamasun_stats.py`:** GWR and MGWR (PySAL `mgwr`, adaptive bisquare kernel, standardised variables). It runs on the two-council study area only, because MGWR's cost grows with the square of the number of SA1s.
+
+### Changed
+- **Circle colours** are now violet (A) and orange (B). The pair passed colour-blindness checks in light and dark mode, and no map palette uses those two hues.
+- **Suburb labels** use the basemap's own fonts, and names appear from zoom 11.5.
+- **CI screenshots** now wait for the map to finish loading, and include a Casey IFRI view of the metro page.
+
+## [0.3.1] - 2026-09-25
+
+### Investigated
+- **Report: "the Greater Melbourne page doesn't cover all of Greater Melbourne."** The first suspect was geometry repair. `buffer(0)` can drop part of a self-crossing polygon, and the council boundaries were downloaded pre-simplified. The new coverage check disproved it: all 31 councils are 99.6–103.8% covered by their SA1s, and the build has 11,293 SA1s both before and after the change. **No SA1s were missing in 0.3.0.** The likely visual cause is under review: SA1s in the lightest class and SA1s with fewer than 10 residents looked like empty background.
+
+### Changed (hardening kept from the investigation)
+- Geometry is repaired with `make_valid`, which can't lose area, instead of `buffer(0)`.
+- Council boundaries are downloaded at near-full detail (1 m), 10 at a time.
+- **Coverage check in `02_build.py`:** reports SA1 count and area coverage per council; warns outside 97–103% and fails the build outside 90–110%.
+- **Sturdier ABS downloads:** layers are paged by object ID (`objectid > last`) instead of by record offset, after a 504 at offset 62,000. Truncated or failed pages are retried at half size.
+- **CI previews:** pull-request builds push screenshots and the built pages to the `ci-preview` branch.
 
 ## [0.3.0] - 2026-09-25
 

@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flood resilience analysis</title>
+<script>try{const t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+:root{--ground:#F4F5F1;--panel:#FCFCFB;--ink:#16201F;--muted:#5B6664;--rule:#DCE0DA;--grid:#E9ECE7;--focus:#2A78D6;--ns:#D9DCD6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ground:#141817;--panel:#1B1F1E;--ink:#ECEFEC;--muted:#A3ADAA;--rule:#2F3634;--grid:#252B29;--focus:#86B6EF;--ns:#3A403E}}
+:root[data-theme="dark"]{--ground:#141817;--panel:#1B1F1E;--ink:#ECEFEC;--muted:#A3ADAA;--rule:#2F3634;--grid:#252B29;--focus:#86B6EF;--ns:#3A403E}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums}
+main{max-width:1180px;margin:0 auto;padding:28px 20px 60px}
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+h1{font-size:24px;margin:0 0 4px;letter-spacing:-.01em}
+.lede{color:var(--muted);margin:0 0 6px;max-width:75ch}
+nav a,button.theme{font:inherit;font-size:13px;color:var(--ink);border:1px solid var(--rule);background:var(--panel);border-radius:999px;padding:6px 12px;text-decoration:none;cursor:pointer}
+section{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:20px 22px;margin-top:22px}
+h2{font-size:16px;margin:0 0 4px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 14px;max-width:85ch}
+table{border-collapse:collapse;font-size:13px;min-width:520px}
+th,td{padding:7px 12px;border-top:1px solid var(--rule);text-align:right}
+th:first-child,td:first-child{text-align:left}
+thead th{border-top:0;color:var(--muted);font-weight:600;font-size:12px}
+td.us{font-weight:600}
+.grid4{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px}
+.mapcard h3{font-size:13px;margin:0 0 2px;font-weight:600}
+.mapcard p{margin:0 0 6px;color:var(--muted);font-size:11.5px}
+.mapcard svg{width:100%;height:auto;display:block}
+.leg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-top:4px}
+.leg .ramp{height:8px;flex:1;border-radius:2px}
+.leg .ns{width:14px;height:8px;background:var(--ns);border-radius:2px}
+.scroll{overflow-x:auto}
+.note{background:color-mix(in srgb,var(--focus) 8%,transparent);border-left:3px solid var(--focus);padding:10px 14px;font-size:13px;margin-top:14px;max-width:95ch}
+.tip{position:fixed;pointer-events:none;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:6px 9px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.15);display:none;z-index:5}
+#splom{display:block}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Flood resilience analysis</h1>
+      <p class="lede" id="lede"></p>
+    </div>
+    <nav style="display:flex;gap:8px"><a href="../">← Back to the map</a><button class="theme" id="theme"></button></nav>
+  </header>
+
+  <section id="t5">
+    <h2>Model fit: GWR vs MGWR (Lama &amp; Sun Table 5)</h2>
+    <p class="sub" id="t5sub"></p>
+    <div class="scroll"><table id="t5tbl"></table></div>
+    <h2 style="margin-top:20px">MGWR bandwidth and significance by variable</h2>
+    <p class="sub">Bandwidth is the number of nearest SA1s each local regression uses: small means the relationship varies locally, large means it's close to global. "Significant" uses MGWR's multiple-testing-corrected t-values. VIF (variance inflation factor) above 10, in red, means the variable is almost a linear combination of the others. Its coefficient is then unstable and shouldn't be read on its own. The paper uses counts (population, employed, educated, income earners), which all grow with SA1 size.</p>
+    <div class="scroll"><table id="bwtbl"></table></div>
+    <div class="note" id="t5note"></div>
+  </section>
+
+  <section id="f4">
+    <h2>Local R² and MGWR coefficients (Lama &amp; Sun Fig. 4)</h2>
+    <p class="sub">One map per variable. Coefficients are on standardised variables, so they are comparable across maps. Blue raises the (proxy) flood depth, red lowers it; grey means not significant at that SA1.</p>
+    <div class="grid4" id="maps"></div>
+  </section>
+
+  <section>
+    <h2>Correlation between the indices (Lama &amp; Sun Fig. 7)</h2>
+    <p class="sub" id="f7sub"></p>
+    <div class="scroll"><div id="splomwrap" style="position:relative"></div></div>
+  </section>
+</main>
+<div class="tip" id="tip"></div>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(function(){
+const D=JSON.parse(document.getElementById('data').textContent),S=D.sa1,META=D.meta,ST=D.stats;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const DARK=css('--ground').toLowerCase()==='#141817';
+const tb=document.getElementById('theme');tb.textContent=DARK?'☀ Light mode':'☾ Dark mode';
+tb.onclick=()=>{try{localStorage.setItem('theme',DARK?'light':'dark');}catch(e){}location.reload();};
+document.getElementById('lede').textContent=`${META.title} · ${META.n.toLocaleString()} SA1s · reproducing the statistical analysis of Lama & Sun (2026), Urban Informatics 5:25, with public data substitutes.`;
+const DIV=['#a92a2a','#e34948','#f29a99',DARK?'#3a3f3d':'#eceae6','#86b6ef','#3987e5','#1c5cab'];
+const divScale=m=>d3.scaleQuantize().domain([-m,m]).range(DIV);
+const tip=document.getElementById('tip');
+const showTip=(e,h)=>{tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY+14)+'px';tip.innerHTML=h;};
+const hideTip=()=>tip.style.display='none';
+
+// ---------- Table 5 and bandwidths
+if(!ST){
+  ['t5','f4'].forEach(id=>{const s=document.getElementById(id);s.innerHTML='<h2>GWR and MGWR (Lama &amp; Sun Table 5, Fig. 4)</h2><p class="sub">Run on the paper\'s own study area only (Maribyrnong and Moonee Valley, 474 SA1s). MGWR fits a separate bandwidth per variable by backfitting, and its cost grows with the square of the number of units, so it isn\'t repeated for all '+META.n.toLocaleString()+' metro SA1s.</p><p><a href="../../analysis/" style="color:var(--ink)">Open the two-council analysis →</a></p>';if(id==='f4')s.remove();});
+}else{
+  document.getElementById('t5sub').textContent=`Response: ${ST.y}. Explanatory: ${ST.vars.slice(1).join(', ')}. All standardised; adaptive bisquare kernel; bandwidths chosen by AICc (golden section).`;
+  const p=ST.paper,rows=[['R²','R2'],['Adjusted R²','adjR2'],['AICc','AICc'],['Bandwidth (nearest SA1s)','bw']];
+  d3.select('#t5tbl').html(`<thead><tr><th>Statistic</th><th>GWR, this build</th><th>MGWR, this build</th><th>GWR, paper</th><th>MGWR, paper</th></tr></thead><tbody>${rows.map(([l,k])=>`<tr><td>${l}</td><td class="us">${ST.gwr[k]??'–'}</td><td class="us">${k==='bw'?'per variable ↓':ST.mgwr[k]}</td><td>${p.gwr[k]??'–'}</td><td>${k==='bw'?'not reported':p.mgwr[k]??'–'}</td></tr>`).join('')}</tbody>`);
+  const nS=ST.coef.length;
+  d3.select('#bwtbl').html(`<thead><tr><th>Variable</th><th>Bandwidth</th><th>Share of SA1s significant</th><th>Mean coefficient</th><th>Range</th><th>VIF</th></tr></thead><tbody>${ST.vars.map((v,j)=>{const c=ST.coef.map(r=>r[j]),sig=ST.sig.filter(r=>r[j]).length;
+    return `<tr><td>${v}</td><td>${ST.mgwr.bws[j]}</td><td>${(sig/nS*100).toFixed(0)}%</td><td>${d3.mean(c).toFixed(3)}</td><td>${d3.min(c).toFixed(2)} to ${d3.max(c).toFixed(2)}</td><td style="${ST.vif&&ST.vif[j]>10?'color:#e34948;font-weight:600':''}">${ST.vif&&ST.vif[j]!=null?ST.vif[j]:'–'}</td></tr>`;}).join('')}</tbody>`);
+  document.getElementById('t5note').innerHTML=`<strong>Read with care.</strong> The paper regresses HEC-RAS flood <em>depth</em>; this build uses the share of each SA1 inside planning overlays, which is zero for most SA1s, so the fit statistics are not comparable with the paper's. The paper is also inconsistent about the response (section 2.2.3 says flood depth; section 3.2 says IFRI): this follows 2.2.3, which matches Fig. 4's ten coefficient maps.${ST.dropped.length?' Dropped for lack of data: '+ST.dropped.join(', ')+'.':''} Local R² comes from the ${ST.localR2_model} model.`;
+
+  // ---------- Fig. 4 small multiples
+  const fc={type:'FeatureCollection',features:S.map((s,i)=>({type:'Feature',geometry:D.shapes[i],properties:{i}}))};
+  const W=260,H=300,proj=d3.geoMercator().fitSize([W,H],fc),path=d3.geoPath(proj);
+  const panels=[{t:'Local R²',p:`Model fit at each SA1 (${ST.localR2_model})`,v:i=>ST.localR2[i],seq:true}]
+    .concat(ST.vars.map((v,j)=>({t:v,p:`MGWR bandwidth ${ST.mgwr.bws[j]}`,v:i=>ST.coef[i][j],sig:i=>ST.sig[i][j],j})));
+  panels.forEach(pn=>{
+    const card=d3.select('#maps').append('div').attr('class','mapcard');
+    card.append('h3').text(pn.t);card.append('p').text(pn.p);
+    const svg=card.append('svg').attr('viewBox',`0 0 ${W} ${H}`).attr('role','img').attr('aria-label',pn.t+' map');
+    let col,leg;
+    if(pn.seq){const sc=d3.scaleSequential(d3.interpolateRgbBasis(['#d2f1e6','#3fb68d','#0b4d38'])).domain(d3.extent(S,(s,i)=>pn.v(i)));col=i=>sc(pn.v(i));
+      leg=`<span>${d3.min(S,(s,i)=>pn.v(i)).toFixed(2)}</span><div class="ramp" style="background:linear-gradient(90deg,#d2f1e6,#3fb68d,#0b4d38)"></div><span>${d3.max(S,(s,i)=>pn.v(i)).toFixed(2)}</span>`;}
+    else{const m=d3.max(S,(s,i)=>Math.abs(pn.v(i)))||1,sc=divScale(m);col=i=>pn.sig(i)?sc(pn.v(i)):css('--ns');
+      leg=`<span>−${m.toFixed(2)}</span><div class="ramp" style="background:linear-gradient(90deg,${DIV.join(',')})"></div><span>+${m.toFixed(2)}</span><span class="ns"></span><span>n.s.</span>`;}
+    svg.selectAll('path').data(fc.features).join('path').attr('d',path).attr('fill',d=>col(d.properties.i)).attr('stroke',css('--panel')).attr('stroke-width',.25)
+      .on('mousemove',(e,d)=>{const i=d.properties.i;showTip(e,`<strong>${S[i].sub}</strong><br>SA1 ${S[i].id}<br>${pn.t}: ${pn.v(i).toFixed(3)}${pn.sig&&!pn.sig(i)?' (not significant)':''}`);}).on('mouseleave',hideTip);
+    card.append('div').attr('class','leg').html(leg);
+  });
+}
+
+// ---------- Fig. 7 scatter matrix
+const NAMES=['Exposure','Sensitivity','Adaptive capacity','FRI','Damage index','IFRI'];
+const rows=S.filter(s=>s.ls&&s.ls.every(v=>v!=null));const n=rows.length,k=6;
+const col=j=>rows.map(s=>s.ls[j]);
+const pearson=(a,b)=>{const ma=d3.mean(a),mb=d3.mean(b);let sab=0,saa=0,sbb=0;for(let i=0;i<a.length;i++){const x=a[i]-ma,y=b[i]-mb;sab+=x*y;saa+=x*x;sbb+=y*y;}return sab/Math.sqrt(saa*sbb);};
+document.getElementById('f7sub').textContent=`${n.toLocaleString()} SA1s. Below the diagonal: each SA1 as a point. Diagonal: distribution. Above the diagonal: Pearson's r and the adjusted R² of a simple linear fit, 1 − (1 − r²)(n − 1)/(n − 2), shaded by r.`;
+const C=112,pad=34,Wm=pad+k*C,Hm=pad+k*C,dpr=window.devicePixelRatio||1;
+const wrap=d3.select('#splomwrap').style('width',Wm+'px').style('height',Hm+'px');
+const cv=wrap.append('canvas').attr('width',Wm*dpr).attr('height',Hm*dpr).style('width',Wm+'px').style('height',Hm+'px').style('position','absolute').node();
+const ctx=cv.getContext('2d');ctx.scale(dpr,dpr);
+const svg=wrap.append('svg').attr('id','splom').attr('width',Wm).attr('height',Hm).style('position','absolute');
+const data=d3.range(k).map(col),sx=data.map(a=>d3.scaleLinear().domain(d3.extent(a)).nice().range([4,C-4]));
+const sy=data.map(a=>d3.scaleLinear().domain(d3.extent(a)).nice().range([C-4,4]));
+const rdiv=d3.scaleQuantize().domain([-1,1]).range(DIV);
+for(let r=0;r<k;r++)for(let c=0;c<k;c++){
+  const x0=pad+c*C,y0=pad+r*C;
+  svg.append('rect').attr('x',x0+1).attr('y',y0+1).attr('width',C-2).attr('height',C-2).attr('fill','none').attr('stroke',css('--rule'));
+  if(r>c){ctx.fillStyle=DARK?'rgba(134,182,239,.45)':'rgba(28,92,171,.35)';const a=data[c],b=data[r],rad=n>3000?1:1.8;
+    for(let i=0;i<n;i++){ctx.beginPath();ctx.arc(x0+sx[c](a[i]),y0+sy[r](b[i]),rad,0,6.283);ctx.fill();}}
+  else if(r===c){const h=d3.bin().domain(sx[c].domain()).thresholds(18)(data[c]),my=d3.max(h,b=>b.length);
+    h.forEach(b=>svg.append('rect').attr('x',x0+sx[c](b.x0)).attr('width',Math.max(0,sx[c](b.x1)-sx[c](b.x0)-1)).attr('y',y0+C-4-(C-12)*b.length/my).attr('height',(C-12)*b.length/my).attr('fill',css('--muted')).attr('opacity',.55));}
+  else{const rv=pearson(data[r],data[c]),adj=1-(1-rv*rv)*(n-1)/(n-2);
+    svg.append('rect').attr('x',x0+1).attr('y',y0+1).attr('width',C-2).attr('height',C-2).attr('fill',rdiv(rv)).attr('opacity',.85);
+    const dark=Math.abs(rv)>.55;const tc=dark?'#fff':css('--ink');
+    svg.append('text').attr('x',x0+C/2).attr('y',y0+C/2-4).attr('text-anchor','middle').attr('font-size',18).attr('font-weight',700).attr('fill',tc).text('r = '+rv.toFixed(2));
+    svg.append('text').attr('x',x0+C/2).attr('y',y0+C/2+16).attr('text-anchor','middle').attr('font-size',11.5).attr('fill',tc).text('adj. R² '+adj.toFixed(2));}
+}
+NAMES.forEach((nm,j)=>{
+  svg.append('text').attr('x',pad+j*C+C/2).attr('y',pad-10).attr('text-anchor','middle').attr('font-size',11.5).attr('font-weight',600).attr('fill',css('--ink')).text(nm);
+  svg.append('text').attr('transform',`translate(${pad-10},${pad+j*C+C/2}) rotate(-90)`).attr('text-anchor','middle').attr('font-size',11.5).attr('font-weight',600).attr('fill',css('--ink')).text(nm);
+});
+window.__ready=true;
+})();
+</script>
+</body>
+</html>

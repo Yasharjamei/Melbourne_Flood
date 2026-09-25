@@ -9,7 +9,7 @@ On either page you drag two circles, **A** and **B**, anywhere on the map. A sid
 
 The project applies two flood-resilience papers to the same 474 SA1 "urban units" they studied. The interaction comes from a Mashhad "Demographic Explorer" web map. The goal is not to redo the papers' single index. It is to show what that index hides.
 
-> **Status (v0.3.1):**
+> **Status (v0.4):**
 > - Mesh-block weighting and Lama & Sun's six index maps are built for both pages, with suburbs on both.
 > - It goes live at **https://yasharjamei.github.io/Melbourne_Flood/** once GitHub Pages is enabled (see [Live site](#live-site-github-pages)).
 > - The first prototype, which used even spreading, is kept at [`snapshots/2026-09-25-prototype.html`](snapshots/2026-09-25-prototype.html).
@@ -79,13 +79,28 @@ Neither paper publishes its HEC-RAS flood output. Lama & Sun's data is "availabl
 - **Every SA1 a circle touches is shaded** in that circle's colour, darker where more of its residents are counted. The estimate's make-up is visible on the map, and the tooltip gives the exact share.
 - **Overlaid age–sex pyramid** in **percentages**, not counts, so a denser circle doesn't just look bigger. A is filled, B is outlined, and the two-council average sits in grey behind.
 - **Indicator table** comparing A and B: aged 75+, aged 0–4, need for assistance, long-term health condition, no car, limited English, unemployment, dwellings in 4+ storey blocks, median household income, and estimated residents inside riverine (LSIO + Floodway) and overland-flow (SBO) overlays.
-- **Choropleth** of every SA1, shaded by any of those indicators.
+- **Basemap and map engine:** MapLibre GL JS (WebGL) over a CARTO basemap (Positron in light mode, Dark Matter in dark mode, © OpenStreetMap contributors). Data layers draw beneath the basemap's street and place labels. If the basemap can't load, the page falls back to a plain background, and a toggle hides the basemap.
+- **Choropleth** of every SA1, chosen from one grouped "Show on map" menu. Each variable family has its own symbology:
+
+  | Family | Palette | Classes |
+  |---|---|---|
+  | People (density, age), housing type | teal, light → dark | quintiles |
+  | Need and access (assistance, health, no car, English, unemployment) | red | quintiles |
+  | Income, Adaptive capacity | green | quintiles |
+  | Area in flood overlay | blue | quintiles of SA1s with any overlay; "not in an overlay" left clear |
+  | Exposure, Sensitivity, Damage (Lama & Sun) | red | quintiles |
+  | FRI and IFRI (Lama & Sun) | diverging red – blue, split at 0 | three quantile classes each side of 0 |
+
+  Violet and orange are reserved for circles A and B, and no map palette uses them. That pair passed the colour-blindness validator in light and dark mode. A legend card on the map shows each class's value range.
+- **Light / dark mode** toggle, remembered between visits.
+- **Analysis page** (`analysis/`): the paper's Table 5 (GWR vs MGWR), Figure 4 (local R² and MGWR coefficient maps) and Figure 7 (index correlation matrix). See [Lama & Sun's statistical analysis](#lama--suns-statistical-analysis-table-5-figures-4-and-7).
+- **Council filter:** pick any council to zoom to it and hide the rest. Colour classes are recomputed within that council, the panel's comparison column switches to it, and circles count only its residents.
 - **Lama & Sun (2026) maps:** Exposure, Sensitivity, Adaptive capacity, Flood Resilience Index (FRI), Damage index and Integrated FRI (IFRI). These are the six maps in the paper's Figures 5 and 6, shown in five classes (quintiles). The panel also gives each circle's resident-weighted FRI, Damage and IFRI.
 - **Suburbs** (ABS Suburbs and Localities 2021):
   - dashed outlines, with labels that appear as you zoom in
   - a "Find a suburb" box that zooms the map to a suburb
   - suburb names in tooltips and under each circle's resident count
-- **Self-contained output:** one HTML file per page with the data inlined. It opens offline and has no basemap yet (see roadmap).
+- **Self-contained output:** one HTML file per page with the data inlined. It works offline apart from the basemap tiles and the MapLibre/D3 libraries, which load from CDNs.
 
 ## Repository layout
 
@@ -99,7 +114,7 @@ Neither paper publishes its HEC-RAS flood output. Lama & Sun's data is "availabl
 │   ├── 02_build.py      # SA1 + mesh-block + suburb data and indices -> data/processed/<study>.json
 │   └── 03_bundle.py     # inlines each dataset into web/template.html -> dist/index.html, dist/metro/index.html
 ├── web/
-│   └── template.html    # the explorer (D3 v7, inline SVG map, no build step)
+│   └── template.html    # the explorer (MapLibre GL JS map + D3 panel, no build step)
 ├── papers/              # the two source papers (CC BY 4.0)
 ├── snapshots/           # frozen builds, e.g. the first published prototype (open in a browser)
 ├── docs/
@@ -132,7 +147,7 @@ Some inputs are **optional**: mesh-block resident counts, the elevation model an
 
 Run every command from the repository root.
 
-**Network hosts the pipeline needs:** `geo.abs.gov.au`, `www.abs.gov.au`, `opendata.maps.vic.gov.au`, `copernicus-dem-30m.s3.amazonaws.com` and `maps.isric.org`. Add these to the environment's allowed domains in Claude Code on the web, or on a restricted network. The page itself loads D3 from `cdnjs.cloudflare.com` and fonts from Google Fonts.
+**Network hosts the pipeline needs:** `geo.abs.gov.au`, `www.abs.gov.au`, `opendata.maps.vic.gov.au`, `copernicus-dem-30m.s3.amazonaws.com` and `maps.isric.org`. Add these to the environment's allowed domains in Claude Code on the web, or on a restricted network. The page itself loads MapLibre GL JS from `cdn.jsdelivr.net`, D3 from `cdnjs.cloudflare.com`, basemap tiles from `basemaps.cartocdn.com` and fonts from Google Fonts.
 
 ### Live site (GitHub Pages)
 
@@ -204,6 +219,31 @@ Lama & Sun (2026) build their index in five steps. **All five are implemented in
 | Adaptive capacity | Employed population | 0.168 | G46 | Available |
 | Adaptive capacity | Educated population | 0.168 | G43 non-school qualifications | Available |
 | Adaptive capacity | "Mean income generating population" ($91,000–$103,999 a year) | 0.259 | G17 persons earning $1,750–$1,999 a week, which is exactly that bracket | Available |
+
+### Lama & Sun's statistical analysis (Table 5, Figures 4 and 7)
+
+Implemented in `pipeline/lamasun_stats.py` and shown on the `analysis/` page.
+
+| Paper element | What it is | Reproduced here |
+|---|---|---|
+| Section 2.2.3, Table 5 | GWR and MGWR, flood depth ~ 10 indicators; R², adjusted R², AICc, bandwidth | Yes, with PySAL `mgwr` (adaptive bisquare kernel, AICc golden-section search, standardised variables), shown beside the paper's values |
+| Figure 4a | Local R² map | Yes. It comes from the MGWR model where the library provides it, and from GWR otherwise; the page says which |
+| Figures 4b–k | MGWR local coefficient maps | Yes: ten small-multiple maps, with SA1s that aren't significant (multiple-testing corrected) greyed out |
+| Figure 7 | Scatter matrix of Exposure, Sensitivity, Adaptive capacity, FRI, Damage and IFRI with Pearson's r and adjusted R² | Yes, on both pages |
+
+**Response variable.** The paper contradicts itself here:
+- Section 2.2.3 says flood depth is the dependent variable.
+- Section 3.2 says the model explains IFRI, with flood depth as one of the inputs.
+
+This build follows 2.2.3, for two reasons:
+- Figure 4 has ten coefficient maps (b–k), which matches ten explanatory variables.
+- IFRI is a deterministic function of those same inputs, so regressing it on them would give an R² near 1, not the reported 0.72.
+
+**The results aren't comparable with the paper's,** because the response is the overlay-share proxy, which is zero for most SA1s, instead of HEC-RAS depth. The page says so beside the table.
+
+**Collinearity.** The page reports a variance inflation factor for each variable. Population, dwellings, employed, educated and income earners are all counts that grow with SA1 size. Their coefficients can't be interpreted separately wherever VIF is above 10, and that applies to the paper's specification too.
+
+**Scope.** GWR and MGWR run on the two-council study area (474 SA1s, about 12 minutes on 4 cores). They aren't run on the 11,293 metro SA1s, because MGWR's cost grows with the square of the number of units. The correlation matrix is computed for both pages.
 
 **Assumptions the paper leaves open, and the choices made here:**
 - **Direction for elevation and sand.** The paper doesn't say whether low elevation or high sand is inverted before weighting. Its text implies both should be (low ground and clay soils flood). Their highest Exposure score, 0.043 out of a possible 0.047, is in low-lying Flemington. That only makes sense if low elevation scores high. Both are inverted here.
@@ -278,9 +318,8 @@ Both treat "dependent" as one number. Lama & Sun define it as under 20 plus over
 - **Apportionment is still an estimate.** Mesh blocks (v0.3) put people where they actually live, down to about 30–60 residents per block. But a circle includes a whole mesh block or none of it, and age–sex shares are assumed constant within each SA1. The v0.1 even-spreading error, which showed 0 riverine-overlay residents at Avondale Heights, should shrink. That needs re-checking on the first live build.
 - **Overlays are planning controls, not flood modelling.** They show extent only, with no depth, and they don't match the October 2022 event the papers simulated.
 - **Coarse age data.** Age–sex data stops at SA1 level, about 400 people. Below roughly 500 m radius, a circle's pyramid is mostly apportionment artefact.
-- **No basemap** in the self-contained build.
 - **No SEIFA yet.** Income is a population-weighted mean of SA1 medians, which isn't a true median.
-- **Metro page size.** 14.2 MB (about 3 MB compressed), with 11,293 SA1 outlines drawn as SVG. That's slower on phones. MapLibre with vector tiles is the fix (roadmap).
+- **Metro page size.** 14 MB (about 3 MB compressed), because every SA1 outline is inlined. MapLibre draws them quickly once loaded, but the first load is slow on phones. Vector tiles (PMTiles) are the next fix.
 - **ABS perturbation.** Small random adjustments mean totals differ slightly between tables.
 
 ## Roadmap
@@ -291,7 +330,7 @@ Ordered by how much each step changes the numbers, not the look.
 2. **Dasymetric weighting from mesh blocks.** *(done, v0.3; G-NAF refinement and the mesh-block view mode still open)* ABS 2021 mesh blocks (about 30–60 residents each) publish real **population and dwelling counts** and a **land-use category** (Residential, Parkland, Industrial…). That makes them the best public weight layer: parks and industrial blocks get their true, usually near-zero, population, not an even share. Within each mesh block, split further by G-NAF residential address points or building footprints. Mesh blocks carry **no age–sex data**, so a circle's pyramid is still built from SA1 age shares, now weighted by where people actually live. Check that SA1 totals are preserved within ABS perturbation, then report how the A/B figures and in-overlay counts change.
    - **Mesh-block view mode.** A third geography next to SA1 and circle, answering "who lives *here*". The panel shows mesh-block population, dwellings and category, plus the age pyramid of the parent SA1, labelled as *inherited*, never as the mesh block's own.
 3. **Reproduce the Lama & Sun indicators.** *(done, v0.3; the sensitivity checks below are still open)* Add elevation, sand %, land use, education and the income bracket. Compute FRI, Damage Index and IFRI with their AHP weights. Map them next to the pyramids, and run the sensitivity checks above.
-4. **MapLibre GL JS plus a real basemap.** Replace the inline SVG map. SA1s become a vector source. Circles become draggable GeoJSON using Turf.js `circle` and `booleanPointInPolygon`. Basemap: OpenFreeMap or CARTO Positron/Dark Matter (no key), or MapTiler/Mapbox with a key kept out of git. Add the video's **Circle / Compare / Density** modes. Parcels mode depends on step 2.
+4. **MapLibre GL JS plus a real basemap.** *(done, v0.4: CARTO basemap, council filter, per-variable symbology; the Circle/Compare/Density modes and PMTiles are still open)* Replace the inline SVG map. SA1s become a vector source. Circles become draggable GeoJSON using Turf.js `circle` and `booleanPointInPolygon`. Basemap: OpenFreeMap or CARTO Positron/Dark Matter (no key), or MapTiler/Mapbox with a key kept out of git. Add the video's **Circle / Compare / Density** modes. Parcels mode depends on step 2.
 5. **SEIFA 2021 (IRSD / IRSAD)** at SA1, added to the table and choropleth.
 5b. **All Greater Melbourne.** *(done, v0.3)* A second page for the 31 councils, sharing the pipeline.
 6. **Modelled depth.** If Chayn Sun shares the HEC-RAS October 2022 depth raster, replace the overlay proxy with depth bands (for example > 0.3 m, > 0.5 m, > 1.2 m, matching common vehicle and pedestrian stability thresholds). Otherwise use Melbourne Water's 1% AEP flood extent where licensing allows.
@@ -305,8 +344,9 @@ Ordered by how much each step changes the numbers, not the look.
 | Tool | Why | Install |
 |---|---|---|
 | Python 3.10+ with `geopandas`, `shapely`, `pandas`, `numpy` | Pipeline | `pip install -r requirements.txt` |
+| `mgwr` (PySAL) | GWR and MGWR (Table 5, Figure 4) | in `requirements.txt` |
 | `rasterio`, `openpyxl` | Elevation/sand sampling; reading the mesh-block counts workbook | in `requirements.txt` |
-| MapLibre GL JS, Turf.js | Basemap map and circle geometry (roadmap 4) | CDN (`cdn.jsdelivr.net/npm/maplibre-gl`, `@turf/turf`) or npm |
+| MapLibre GL JS 4.7 | Map engine and basemap (v0.4) | CDN: `cdn.jsdelivr.net/npm/maplibre-gl@4.7.1` |
 | Optional: `tippecanoe` / PMTiles | Only if the SA1 layer outgrows inline GeoJSON | not needed yet |
 
 ### Claude Code skills
