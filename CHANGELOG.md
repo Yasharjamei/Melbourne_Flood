@@ -21,7 +21,7 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 - **`pipeline/lamasun_stats.py`:** GWR and MGWR (PySAL `mgwr`, adaptive bisquare kernel, standardised variables). It runs on the two-council study area only, because MGWR's cost grows with the square of the number of SA1s.
 
 ### Fixed (found in the pre-merge screenshots)
-- **GWR coefficients blew up for Intercept and Sand** (means of about 10¹¹ and 10¹⁵). SoilGrids sand is a 250 m raster, so it barely varies inside a 159-SA1 neighbourhood. That makes it collinear with the local intercept. GWR now checks its own coefficients (on standardised data none should come near 1,000), drops the worst covariate and refits. The analysis page names any variable dropped this way.
+- **GWR coefficients blew up for Intercept and Sand** (means of about 10¹¹ and 10¹⁵). SoilGrids sand is a 250 m raster, so it barely varies inside a 159-SA1 neighbourhood. That makes it collinear with the local intercept. GWR now checks its own coefficients (on standardised data none should come near 1,000), drops the worst covariate and refits. The analysis page names any variable dropped this way. On the real data it dropped sand. **MGWR then converged:** R² 0.647, adjusted R² 0.588, AICc 1013.8, against GWR's 0.526, 0.458 and 1130.4 (bandwidth 175). Figure 4 now shows MGWR coefficients.
 - **Filtering to a council left both circles outside it**, so A and B showed 0 residents. Pins outside the filtered area now move to the most populous visible SA1, and the other pin goes at least three radii away, or as far as the area allows.
 
 ### Changed

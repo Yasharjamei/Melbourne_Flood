@@ -243,11 +243,12 @@ This build follows 2.2.3, for two reasons:
 **The results aren't comparable with the paper's,** because the response is the overlay-share proxy, which is zero for most SA1s, instead of HEC-RAS depth. The page says so beside the table.
 
 **Result on real data (two councils, 474 SA1s):**
-- **GWR:** R² 0.53, adjusted R² 0.46, bandwidth 173.
-- **MGWR:** didn't converge on the paper's specification. The count indicators are strongly collinear (VIF: employed 53.5, educated 44.9, population 39.4, dwellings 15.1), and the local regressions are numerically singular. MGWR bandwidths are now floored at 50 SA1s and the result is validated. If it still fails, the page says so and shows GWR coefficients.
-- This is a finding about the specification, not only about our proxy. Any response variable would face the same collinear design matrix.
+- **Sand % in soil was dropped.** SoilGrids is a 250 m raster, so sand barely varies inside a neighbourhood and is collinear with the local intercept. GWR's intercept and sand coefficients blew up (means of about 10¹¹ and 10¹⁵). The pipeline now detects this, drops the variable and refits, and the page names what was dropped.
+- **GWR:** R² 0.526, adjusted R² 0.458, AICc 1130.4, bandwidth 175 SA1s. The paper reports 0.755, 0.684, 916.1 and 62.
+- **MGWR:** R² 0.647, adjusted R² 0.588, AICc 1013.8. The paper reports 0.767, 0.724 and 831.6. Bandwidths are 51–98 SA1s for the intercept, elevation, land use and dependent population, which vary locally. The other six are global (473 SA1s).
+- **As in the paper, MGWR beats GWR** on every fit statistic. Earlier runs diverged. The singular sand column caused that, not (as I first thought) the collinear counts alone. Bandwidths stay floored at 50 SA1s, and a failed fit still falls back to GWR with a note on the page.
 
-**Collinearity.** The page reports a variance inflation factor for each variable. Population, dwellings, employed, educated and income earners are all counts that grow with SA1 size. Their coefficients can't be interpreted separately wherever VIF is above 10, and that applies to the paper's specification too.
+**Collinearity.** The page reports a variance inflation factor for each variable (population 39.0, dwellings 15.0, employed 53.4, educated 44.9). Population, dwellings, employed, educated and income earners are all counts that grow with SA1 size. Their coefficients can't be interpreted separately wherever VIF is above 10, and that applies to the paper's specification too. The fitted model shows the symptom: population (+0.63) and employed population (−0.63) are both significant everywhere, with near-equal and opposite coefficients. That is a suppression pair, not two real effects.
 
 **Scope.** GWR and MGWR run on the two-council study area (474 SA1s, about 12 minutes on 4 cores). They aren't run on the 11,293 metro SA1s, because MGWR's cost grows with the square of the number of units. The correlation matrix is computed for both pages.
 

@@ -195,5 +195,14 @@ Before merging to `main`, I read the final CI screenshots, which turned up two d
 - **Analysis page:** the GWR table showed Intercept and Sand coefficients around 10¹¹ and 10¹⁵. The MGWR validity check didn't cover GWR. The likely cause is sand from a 250 m raster that barely varies inside each neighbourhood, so it is collinear with the local intercept. Fix: GWR drops the covariate behind the blow-up and refits. A synthetic test with a piecewise-constant sand column reproduced the blow-up (about 10⁸) and the fix (maximum |coefficient| 0.91 after dropping sand).
 - **Casey view:** the example pins sit in the west, so after filtering to Casey both circles counted 0. Fix: pins move inside the filtered area when a council or suburb is chosen.
 
-An open question the next CI run answers: whether MGWR converges once sand is gone. Its divergence may have come from the same singular column, not only from the collinear count variables.
+**Result (CI, head 1c418d1):**
+- The guard dropped sand on the real data.
+- MGWR converged: R² 0.647, adjusted R² 0.588, AICc 1013.8, bandwidths [52, 51, 95, 473, 473, 473, 98, 473, 473, 473].
+- GWR: R² 0.526, adjusted R² 0.458, AICc 1130.4, bandwidth 175.
+
+My earlier explanation, that collinear counts made MGWR diverge, was wrong or at least incomplete. The singular sand column was enough to break it.
+
+Collinearity still shows in the fitted model: population (+0.63) and employed population (−0.63) are both 100% significant, with global bandwidths and mirror-image coefficients. That's a suppression pair and shouldn't be read as two effects.
+
+The Casey screenshot now shows A = 4,503 (Cranbourne East) and B = 3,958 (Narre Warren).
 
