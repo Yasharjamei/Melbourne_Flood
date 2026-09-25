@@ -30,6 +30,21 @@ def run(ind, coords):
     y = z(ind["flood"].to_numpy(float)).reshape(-1, 1)
     X = np.column_stack([z(ind[k].to_numpy(float)) for k, _ in use])
     coords = np.asarray(coords, float)
+    # Local singularity guard. A covariate that is almost constant inside each neighbourhood (SoilGrids
+    # sand is a 250 m raster) is collinear with the local intercept, and both coefficients blow up
+    # (the first GWR run gave a sand mean of 1.6e15). On standardised data no sane coefficient is
+    # near 1e3, so drop the worst non-intercept column and refit, and report it.
+    unstable = []
+    while True:
+        gsel = Sel_BW(coords, y, X, kernel="bisquare", fixed=False)
+        gbw = gsel.search()
+        g = GWR(coords, y, X, gbw, kernel="bisquare", fixed=False).fit()
+        big = np.abs(g.params[:, 1:]).max(axis=0)
+        if np.isfinite(g.params).all() and np.abs(g.params).max() < 1e3 or X.shape[1] <= 2:
+            break
+        j = int(np.nanargmax(np.where(np.isfinite(big), big, np.inf)))
+        print(f"WARNING GWR unstable (max |coef| {big[j]:.3g}); dropping {use[j][1]}")
+        unstable.append(use[j][1]); X = np.delete(X, j, axis=1); use.pop(j)
     # Variance inflation factors: the paper's indicators are counts, so population, dwellings,
     # employed, educated and income earners all scale with SA1 size and are strongly collinear.
     vif = []
@@ -38,10 +53,6 @@ def run(ind, coords):
         beta, *_ = np.linalg.lstsq(A, X[:, j], rcond=None); r2 = 1 - ((X[:, j] - A @ beta) ** 2).sum() / ((X[:, j] - X[:, j].mean()) ** 2).sum()
         vif.append(round(float(1 / max(1e-9, 1 - r2)), 1))
     print("VIF:", dict(zip([l for _, l in use], vif)))
-
-    gsel = Sel_BW(coords, y, X, kernel="bisquare", fixed=False)
-    gbw = gsel.search()
-    g = GWR(coords, y, X, gbw, kernel="bisquare", fixed=False).fit()
 
     # Bandwidth floor: with 11 collinear covariates, local fits on ~10 neighbours are singular
     # (the first real run chose 10-16 and diverged to R2 = -3.7e20). 50 is about 10% of the SA1s.
@@ -63,7 +74,7 @@ def run(ind, coords):
     print(f"MGWR bws={[int(b) for b in mbws]} R2={m.R2:.3f} adjR2={m.adj_R2:.3f} AICc={m.aicc:.1f}  ({time.time() - t0:.0f}s)")
     return dict(
         y="Flood depth (proxy: share of SA1 in LSIO/FO/SBO overlays)",
-        vars=["Intercept"] + [l for _, l in use], dropped=dropped,
+        vars=["Intercept"] + [l for _, l in use], dropped=dropped, unstable=unstable,
         gwr=dict(R2=r3(g.R2), adjR2=r3(g.adj_R2), AICc=r3(g.aicc), bw=int(gbw)),
         mgwr=dict(ok=ok, R2=r3(m.R2) if ok else None, adjR2=r3(m.adj_R2) if ok else None, AICc=r3(m.aicc) if ok else None,
                   bws=[int(b) for b in mbws], bw_min=BW_MIN),

@@ -306,8 +306,24 @@ function applyFilter(){
   if(activeSub||activeLga){const feats=S.map((s,i)=>i).filter(visible).map(i=>({type:'Feature',geometry:D.shapes[i]}));
     if(feats.length)b=d3.geoBounds({type:'FeatureCollection',features:feats});}
   map.fitBounds(b,{padding:activeSub?70:40,maxZoom:15});
+  if(activeSub||activeLga)movePinsInside();
   ALL=allAgg();document.querySelectorAll('.alllab').forEach(e=>e.textContent=areaLabel());
   recolour();update();
+}
+// After a council/suburb pick, a pin left outside the filter would count nobody, so move it
+// to the centre of the most populous visible SA1 (the other pin: the most populous at least 3R away, else the farthest).
+function movePinsInside(){
+  const idx=S.map((s,i)=>i).filter(visible);if(!idx.length)return;
+  const inside=a=>idx.some(i=>d3.geoContains(D.shapes[i],[a.lon,a.lat]));
+  const byPop=idx.slice().sort((p,q)=>S[q].pop-S[p].pop).map(i=>d3.geoCentroid(D.shapes[i]));
+  const metres=(p,q)=>d3.geoDistance(p,q)*6371000;
+  let moved=false;
+  areas.forEach(a=>{if(!a.marker||inside(a))return;
+    const other=areas.find(x=>x!==a&&x.marker&&inside(x));
+    const d=p=>other?metres(p,[other.lon,other.lat]):Infinity;
+    const c=byPop.find(p=>d(p)>3*R)||byPop.reduce((m,p)=>d(p)>d(m)?p:m);
+    a.lon=c[0];a.lat=c[1];a.marker.setLngLat(c);moved=true;});
+  if(moved)drawRings();
 }
 function addMarker(a){
   const el=document.createElement('div');el.className='pin '+a.id;el.textContent=a.id.toUpperCase();el.setAttribute('role','button');el.setAttribute('aria-label','Area '+a.id.toUpperCase()+', drag to move');

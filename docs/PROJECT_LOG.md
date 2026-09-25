@@ -188,3 +188,12 @@ What that implies:
 
 **Theme:** a toggle stores the choice in `localStorage` and reloads. The variable, council, circles and view are carried across in `sessionStorage`, since MapLibre would otherwise have to rebuild every custom layer on a style swap.
 
+## 12. Pre-merge check of the CI screenshots (2026-09-25)
+
+Before merging to `main`, I read the final CI screenshots, which turned up two defects:
+
+- **Analysis page:** the GWR table showed Intercept and Sand coefficients around 10¹¹ and 10¹⁵. The MGWR validity check didn't cover GWR. The likely cause is sand from a 250 m raster that barely varies inside each neighbourhood, so it is collinear with the local intercept. Fix: GWR drops the covariate behind the blow-up and refits. A synthetic test with a piecewise-constant sand column reproduced the blow-up (about 10⁸) and the fix (maximum |coefficient| 0.91 after dropping sand).
+- **Casey view:** the example pins sit in the west, so after filtering to Casey both circles counted 0. Fix: pins move inside the filtered area when a council or suburb is chosen.
+
+An open question the next CI run answers: whether MGWR converges once sand is gone. Its divergence may have come from the same singular column, not only from the collinear count variables.
+
