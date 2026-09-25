@@ -7,7 +7,7 @@ Exposure / Sensitivity / Adaptive capacity / FRI / Damage / IFRI indices.
 Per mesh block: a population weight used to apportion SA1 counts to circles.
 """
 import argparse, glob, json, os, re, sys
-import numpy as np, pandas as pd, geopandas as gpd
+import numpy as np, pandas as pd, geopandas as gpd, shapely
 from shapely.ops import unary_union
 sys.path.insert(0, os.path.dirname(__file__))
 from config import STUDIES, LAMA_SUN, DAMAGE_INDICATORS, norm_lga
@@ -30,10 +30,21 @@ def col(df, *pats, required=True):
 
 
 def read(path):
-    """Read a layer and repair geometry: server-side generalisation can leave self-intersections."""
+    """Read a layer and repair geometry without losing area.
+
+    Server-side generalisation can make rings cross themselves. buffer(0) "repairs" a
+    self-crossing ring by keeping only one lobe, which silently dropped whole parts of
+    councils (and every SA1 in them) in v0.3.0. make_valid keeps all of the area."""
+    from shapely.geometry import MultiPolygon, Polygon
     g = gpd.read_file(path).to_crs(CRS)
     g = g[g.geometry.notna() & ~g.geometry.is_empty].copy()
-    g["geometry"] = g.geometry.buffer(0)
+    def poly(x):
+        if x.is_valid:
+            return x
+        v = shapely.make_valid(x)
+        parts = [p for p in getattr(v, "geoms", [v]) if isinstance(p, (Polygon, MultiPolygon))]
+        return unary_union(parts) if parts else x.buffer(0)
+    g["geometry"] = [poly(x) for x in g.geometry]
     return g[~g.geometry.is_empty]
 
 
@@ -49,6 +60,18 @@ j = j[~j.index.duplicated()]
 sa = sa.loc[j.index].copy(); sa["lga"] = j["name"].values
 sa = sa.drop_duplicates("sa1_code_2021").reset_index(drop=True)
 sa["area"] = sa.area
+# Coverage check: every council should be (almost) fully tiled by its SA1s.
+cov = []
+for r in lga.itertuples():
+    got = sa.loc[sa["lga"] == r.name, "area"].sum()
+    cov.append((r.name, int((sa["lga"] == r.name).sum()), got / r.geometry.area))
+print("SA1 coverage by council:", ", ".join(f"{n} {k} SA1s {c:.1%}" for n, k, c in cov))
+warn = [f"{n} ({c:.1%})" for n, k, c in cov if not 0.97 <= c <= 1.03]
+if warn:
+    print("WARNING SA1 coverage outside 97-103% (boundary mismatch between SA1s and councils?):", warn)
+bad = [f"{n} ({c:.1%})" for n, k, c in cov if not 0.9 <= c <= 1.1]
+if bad:
+    raise SystemExit(f"SA1s cover too little or too much of: {bad}. Check the council and SA1 geometry.")
 codes = sa["sa1_code_2021"].astype(str).tolist(); idx = {c: i for i, c in enumerate(codes)}
 print(f"{STUDY}: {len(lga)} LGAs, {len(sa)} SA1s")
 
@@ -229,6 +252,13 @@ DMG = mm(sum(mm(flood * ind[k].values) for k in DAMAGE_INDICATORS)).values
 IFRI = 0.5 * FRI - 0.5 * DMG
 print(f"Exposure max {dim['exposure'].max():.3f} | FRI {FRI.min():.3f} to {FRI.max():.3f} | IFRI {IFRI.min():.3f} to {IFRI.max():.3f}")
 
+# ---------------- Lama & Sun GWR / MGWR (Table 5, Fig. 4), two-council study area only
+stats = None
+if ST.get("mgwr"):
+    from lamasun_stats import run as run_mgwr
+    rp = sa.representative_point()
+    stats = run_mgwr(ind, np.column_stack([rp.x.values, rp.y.values]))
+
 r4 = lambda v: None if not np.isfinite(v) else round(float(v), 4)
 recs = []
 for i, c in enumerate(codes):
@@ -250,7 +280,16 @@ for i, c in enumerate(codes):
 # ---------------- geometry for the browser
 tol = ST["simplify_m"]
 def gj(geom, t=tol):
+    """Simplify, reproject and orient exterior rings clockwise. D3's spherical geometry
+    (used for bounds, centroids and the analysis maps) reads an anticlockwise ring as
+    'the whole globe except this shape'."""
+    from shapely.geometry import MultiPolygon, Polygon
+    from shapely.geometry.polygon import orient
     g = gpd.GeoSeries([geom], crs=CRS).simplify(t).to_crs(4326).iloc[0]
+    if isinstance(g, Polygon):
+        g = orient(g, sign=-1.0)
+    elif isinstance(g, MultiPolygon):
+        g = MultiPolygon([orient(p, sign=-1.0) for p in g.geoms])
     rnd = lambda o: [rnd(x) for x in o] if isinstance(o, (list, tuple)) else round(o, 5)
     m = g.__geo_interface__
     return {"type": m["type"], "coordinates": rnd(m["coordinates"])}
@@ -260,7 +299,7 @@ mbo = mbo[(mbo["w"] > 0) | (mbo["riv"] + mbo["sbo"] > 0)]
 out = dict(
     meta=dict(study=STUDY, title=ST["title"], label=ST["label"], n=len(sa), lat0=round(float(p4.y.mean()), 3),
               notes=NOTES, other={"west": ["All of Melbourne", "metro/"], "metro": ["Maribyrnong & Moonee Valley", "../"]}[STUDY]),
-    sa1=recs, shapes=[gj(g) for g in sa.geometry],
+    sa1=recs, shapes=[gj(g) for g in sa.geometry], stats=stats,
     mb=[[r.x, r.y, int(r.i), round(float(r.w), 4), round(float(r.riv), 2), round(float(r.sbo), 2)] for r in mbo.itertuples()],
     riv=gj(riv, tol * 1.5), sbo=gj(sbo, tol * 1.5),
     lga=[{"name": r.name, "g": gj(r.geometry, tol * 3)} for r in lga.itertuples()],

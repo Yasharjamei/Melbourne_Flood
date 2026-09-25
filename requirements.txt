@@ -4,3 +4,4 @@ pandas>=2.0
 numpy
 rasterio>=1.3
 openpyxl
+mgwr>=2.2

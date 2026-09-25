@@ -138,3 +138,71 @@ What that implies:
 - **Two councils:** 474 SA1s. Mesh-block counts place 207,015 of 207,058 residents. FRI −0.169 to 0.272 (paper −0.148 to 0.228). Max Exposure 0.047 (paper 0.043).
 - **Greater Melbourne:** 31 councils, 11,293 SA1s, 58,563 mesh blocks, 543 suburbs, 2,302 overlay polygons. 4,833,357 of 4,833,389 residents placed. The page is 14.2 MB, about 3 MB compressed.
 
+## 9. v0.3.1: "the metro page doesn't cover all of Greater Melbourne" (2026-09-25)
+
+**Report:** the live Greater Melbourne page didn't cover the whole metro area.
+
+**First hypothesis, which turned out wrong:**
+- The fetch asked for pre-simplified council boundaries, and `buffer(0)` repairs a self-crossing ring by keeping only one piece. On a simple test shape it kept half the area.
+- SA1s are assigned by representative point, so a lost piece would drop every SA1 in it.
+- This was demonstrated on a test shape, not on the real data, and it was reported to the user as the cause before being confirmed. It shouldn't have been.
+
+**What the data showed:** the new per-council coverage check came back at 99.6–103.8% for all 31 councils. The SA1 count was 11,293 both before and after the change, so 0.3.0 wasn't missing SA1s.
+
+**Still open:** what the user saw. The leading candidates are visual: near-white lowest classes (the default "Aged 75+" map puts the young growth suburbs there) and blank SA1s with fewer than 10 residents. The user has been asked which areas looked missing.
+
+**Kept anyway:** `make_valid`, the coverage check, object-ID paging, retry on truncated JSON, and CI screenshots. Each guards against a real failure mode, and two of them (the 504 and the truncated JSON) fixed real CI failures.
+
+**Lesson:** the v0.3.0 "verified build" figures checked internal consistency (mesh blocks against selected SA1s), not coverage. A coverage check is now part of every build, and a claimed root cause should be checked against the data before it's reported.
+
+## 10. v0.4: basemap, council filter, symbology (2026-09-25)
+
+**Request:** filter by council, give different variables different symbology, make it look more professional, and add a basemap "using GeoLibre or any other Python library".
+
+**Interpretation and push-back:**
+- **"GeoLibre"** was read as **MapLibre**; I don't know of a library by that name.
+- **Python map libraries** (folium, leafmap, pydeck) only write out a JavaScript map. Switching to one would have meant rebuilding the draggable circles, the share-based tint and the live panel. MapLibre GL JS used directly in the page adds the basemap while keeping all of those.
+
+**Symbology decisions,** following the dataviz method:
+- One hue per variable family, light to dark.
+- A diverging scale with its midpoint at zero for the two resilience indices, where the sign means something ("damage exceeds resilience").
+- Circle colours were checked with the palette validator. The old green/amber pair failed the chroma floor. Violet/orange passed in both modes, so those two hues are reserved for the circles.
+
+**Filter semantics:** a filter is analytical, not just visual. With a council selected, colour classes, the comparison column and circle counts are all computed within that council, so the map and the panel never disagree.
+
+## 11. Following the paper's full methodology (2026-09-25)
+
+**Request:** make sure the Lama & Sun methodology is followed, including the correlation figure and the (M)GWR maps and results. Also add light and dark mode.
+
+**Gap found:** v0.3 reproduced the index pipeline (indicators, AHP weights, E/S/AC, FRI, Damage, IFRI) but not the statistical analysis: Table 5, Figure 4 and Figure 7.
+
+**Added:**
+- `pipeline/lamasun_stats.py`: GWR and MGWR on standardised variables with an adaptive bisquare kernel, bandwidths by AICc, and multiple-testing-corrected significance.
+- A per-study `analysis/` page with Table 5 next to the paper's values, Figure 4 as small-multiple maps, and Figure 7 as a scatter matrix.
+
+**Paper inconsistency:** section 2.2.3 makes flood depth the response, but section 3.2 says the model explains IFRI. I followed 2.2.3. Figure 4 has ten coefficient maps, and IFRI regressed on its own inputs would give an R² near 1.
+
+**New finding to verify on real data:** the first test run gave huge coefficients of opposite sign for the employed, educated and income-earner counts. That's the signature of multicollinearity from using counts rather than rates, so VIF is now reported. If the real data confirms it, it's a substantive critique of the paper's MGWR specification.
+
+**Scope decision:** MGWR runs on the 474-SA1 study area only, because its cost grows with n². The correlation matrix runs on both pages.
+
+**Theme:** a toggle stores the choice in `localStorage` and reloads. The variable, council, circles and view are carried across in `sessionStorage`, since MapLibre would otherwise have to rebuild every custom layer on a style swap.
+
+## 12. Pre-merge check of the CI screenshots (2026-09-25)
+
+Before merging to `main`, I read the final CI screenshots, which turned up two defects:
+
+- **Analysis page:** the GWR table showed Intercept and Sand coefficients around 10¹¹ and 10¹⁵. The MGWR validity check didn't cover GWR. The likely cause is sand from a 250 m raster that barely varies inside each neighbourhood, so it is collinear with the local intercept. Fix: GWR drops the covariate behind the blow-up and refits. A synthetic test with a piecewise-constant sand column reproduced the blow-up (about 10⁸) and the fix (maximum |coefficient| 0.91 after dropping sand).
+- **Casey view:** the example pins sit in the west, so after filtering to Casey both circles counted 0. Fix: pins move inside the filtered area when a council or suburb is chosen.
+
+**Result (CI, head 1c418d1):**
+- The guard dropped sand on the real data.
+- MGWR converged: R² 0.647, adjusted R² 0.588, AICc 1013.8, bandwidths [52, 51, 95, 473, 473, 473, 98, 473, 473, 473].
+- GWR: R² 0.526, adjusted R² 0.458, AICc 1130.4, bandwidth 175.
+
+My earlier explanation, that collinear counts made MGWR diverge, was wrong or at least incomplete. The singular sand column was enough to break it.
+
+Collinearity still shows in the fitted model: population (+0.63) and employed population (−0.63) are both 100% significant, with global bandwidths and mirror-image coefficients. That's a suppression pair and shouldn't be read as two effects.
+
+The Casey screenshot now shows A = 4,503 (Cranbourne East) and B = 3,958 (Narre Warren).
+

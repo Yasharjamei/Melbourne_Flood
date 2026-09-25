@@ -18,6 +18,7 @@ STUDIES = {
         "lgas": ["Maribyrnong", "Moonee Valley"],
         "out": "index.html",
         "simplify_m": 4,
+        "mgwr": True,   # the paper's GWR/MGWR (Table 5, Fig. 4) on its own 474 SA1s
     },
     # All 31 Greater Melbourne councils. Built to dist/metro/index.html.
     "metro": {
