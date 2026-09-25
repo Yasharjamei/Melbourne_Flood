@@ -280,7 +280,16 @@ for i, c in enumerate(codes):
 # ---------------- geometry for the browser
 tol = ST["simplify_m"]
 def gj(geom, t=tol):
+    """Simplify, reproject and orient exterior rings clockwise. D3's spherical geometry
+    (used for bounds, centroids and the analysis maps) reads an anticlockwise ring as
+    'the whole globe except this shape'."""
+    from shapely.geometry import MultiPolygon, Polygon
+    from shapely.geometry.polygon import orient
     g = gpd.GeoSeries([geom], crs=CRS).simplify(t).to_crs(4326).iloc[0]
+    if isinstance(g, Polygon):
+        g = orient(g, sign=-1.0)
+    elif isinstance(g, MultiPolygon):
+        g = MultiPolygon([orient(p, sign=-1.0) for p in g.geoms])
     rnd = lambda o: [rnd(x) for x in o] if isinstance(o, (list, tuple)) else round(o, 5)
     m = g.__geo_interface__
     return {"type": m["type"], "coordinates": rnd(m["coordinates"])}
