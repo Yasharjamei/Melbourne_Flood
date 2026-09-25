@@ -29,12 +29,20 @@ def col(df, *pats, required=True):
     return None
 
 
+def read(path):
+    """Read a layer and repair geometry: server-side generalisation can leave self-intersections."""
+    g = gpd.read_file(path).to_crs(CRS)
+    g = g[g.geometry.notna() & ~g.geometry.is_empty].copy()
+    g["geometry"] = g.geometry.buffer(0)
+    return g[~g.geometry.is_empty]
+
+
 # ---------------- geography
 wanted = {norm_lga(n) for n in ST["lgas"]}
-lga = gpd.read_file(f"{RAW}/lga.geojson")
-lga = lga[lga["lga_name_2021"].map(norm_lga).isin(wanted)].to_crs(CRS).reset_index(drop=True)
+lga = read(f"{RAW}/lga.geojson")
+lga = lga[lga["lga_name_2021"].map(norm_lga).isin(wanted)].reset_index(drop=True)
 lga["name"] = lga["lga_name_2021"].str.replace(" (Vic.)", "", regex=False)
-sa = gpd.read_file(f"{RAW}/sa1.geojson").to_crs(CRS)
+sa = read(f"{RAW}/sa1.geojson")
 pt = sa.copy(); pt["geometry"] = sa.representative_point()
 j = gpd.sjoin(pt, lga[["name", "geometry"]], predicate="within")
 j = j[~j.index.duplicated()]
@@ -45,7 +53,7 @@ codes = sa["sa1_code_2021"].astype(str).tolist(); idx = {c: i for i, c in enumer
 print(f"{STUDY}: {len(lga)} LGAs, {len(sa)} SA1s")
 
 # suburbs (ABS Suburbs and Localities): SA1 -> suburb by representative point
-sal = gpd.read_file(f"{RAW}/sal.geojson").to_crs(CRS)
+sal = read(f"{RAW}/sal.geojson")
 sal["name"] = sal[col(sal, r"sal_name_2021", r".*sal.*name.*")].str.replace(r" \(Vic\.\)", "", regex=True)
 pt = sa[["geometry"]].copy(); pt["geometry"] = sa.representative_point()
 js = gpd.sjoin(pt, sal[["name", "geometry"]], predicate="within")
@@ -85,8 +93,7 @@ dwell_cols = ["OPDs_Separate_house_Dwellings", "OPDs_SD_r_t_h_th_Tot_Dwgs", "OPD
               "OPDs_F_ap_I_9_m_sty_blk_Ds", "OPDs_Other_dwelling_Tot_Dwgs"]
 
 # ---------------- flood overlays
-fl = gpd.read_file(f"{RAW}/flood.geojson").to_crs(CRS)
-fl = fl[fl.geometry.notna()].copy(); fl["geometry"] = fl.buffer(0)
+fl = read(f"{RAW}/flood.geojson")
 def polys(g):
     """Keep only polygonal parts (intersections can leave stray lines/points)."""
     from shapely.geometry import MultiPolygon, Polygon
@@ -107,7 +114,7 @@ def share_in(g, zone):
     return np.clip(a / src.area.values, 0, 1)
 
 # ---------------- mesh blocks: population weights, land use, flood shares
-mb = gpd.read_file(f"{RAW}/mb.geojson").to_crs(CRS)
+mb = read(f"{RAW}/mb.geojson")
 mb["code"] = mb[col(mb, r"mb_code_2021", r"mb_code.*")].astype(str)
 mb["cat"] = mb[col(mb, r"mb_category_name_2021", r"mb_cat.*name.*", r"mb_category_2021", r"mb_cat.*")].astype(str)
 msa1 = col(mb, r"sa1_code_2021", r"sa1_code.*", required=False)
@@ -123,13 +130,26 @@ mb["i"] = mb["sa1"].map(idx); mb["area"] = mb.area
 pop = None
 if os.path.exists("data/raw/shared/mb_counts_2021.xlsx"):
     try:
-        rows = []
+        parts = []
         for df in pd.read_excel("data/raw/shared/mb_counts_2021.xlsx", sheet_name=None, header=None, dtype=str).values():
             h = df.index[df.apply(lambda r: r.astype(str).str.strip().eq("MB_CODE_2021").any(), axis=1)]
-            if len(h):
-                d = df.iloc[h[0] + 1:].copy(); d.columns = df.iloc[h[0]].astype(str).str.strip(); rows.append(d)
-        pop = pd.to_numeric(pd.concat(rows).set_index("MB_CODE_2021")["Person"], errors="coerce")
+            if not len(h):
+                continue
+            hdr = df.loc[h[0]].astype(str).str.strip().tolist()
+            if "Person" not in hdr:
+                continue
+            d = df.loc[h[0] + 1:, [hdr.index("MB_CODE_2021"), hdr.index("Person")]]
+            d.columns = ["code", "person"]
+            parts.append(d)
+        c = pd.concat(parts)
+        c["code"] = c["code"].astype(str).str.strip().str.replace(r"\.0$", "", regex=True)
+        c = c[c["code"].str.fullmatch(r"\d{11}")]           # drop titles, notes and footers
+        pop = pd.to_numeric(c["person"], errors="coerce").groupby(c["code"]).first()
         mb["pop"] = mb["code"].map(pop).fillna(0).values
+        if mb["pop"].sum() <= 0:
+            raise ValueError(f"no study mesh block matched the counts file ({len(pop)} codes read)")
+        print(f"mesh-block counts: {len(pop)} codes read, {int((mb['pop'] > 0).sum())} study mesh blocks with residents, "
+              f"{int(mb['pop'].sum())} residents (SA1 Census total {int(g1['Tot_P_P'].sum())})")
         NOTES.append("Mesh blocks weighted by 2021 Census resident counts (ABS Mesh Block Counts).")
     except Exception as e:
         print("WARNING could not read mesh-block counts:", e); pop = None
