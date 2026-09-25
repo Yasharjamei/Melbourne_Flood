@@ -74,3 +74,39 @@ Open:
 - **Ask Chayn Sun (RMIT) for the October 2022 HEC-RAS depth raster.** It's the biggest gain in credibility available.
 - **Add SHA-256 checksums for raw inputs.** DataVic overlays change whenever planning amendments are gazetted.
 - **Confirm Lama & Sun's "mean income generating population".** It appears to count people in the $91k–$103,999 bracket.
+
+## 6. How a circle shows what it counts (design chat, 2026-09-25)
+
+**What the Mashhad video does and the prototype didn't.** The polygons under each circle change colour. The prototype only drew a flat translucent disc, so SA1s looked the same whether they were counted or not.
+
+From a full-resolution frame at 0:13 (moderate confidence):
+- **Circle B:** the parcels inside are recoloured orange and keep their shapes. The tint stops at the circle's edge, so parcels crossing the boundary are only partly highlighted.
+- **Circle A:** the parcels inside are muted towards grey under a yellow dashed ring. The two circles use different treatments.
+- **How it's built:** most likely a clipping mask on the layer, not a selection of whole parcels. So the visual cut-off doesn't tell you how they count partial parcels in the totals.
+
+**Why the choice matters more here.** Mashhad's parcels are tiny compared with the circle, so clipping reads as precise. Our SA1s are large, and an 800 m circle often clips just a corner of several of them.
+
+| Option | Looks | Problem |
+|---|---|---|
+| 1. Clipped tint (like Mashhad) | Clean | Implies precision we don't have. The residents in a clipped corner are an even-spread estimate. |
+| 2. Tint every SA1 the circle touches, opacity = share of its residents counted | Busier | None. It shows exactly what each estimate is built from. |
+
+**Decision: option 2**, with a thin outline ring on top so the circle still reads as a circle. It puts the apportionment weakness on the map instead of in a footnote. It was cheap to add, because the grid already computes each SA1's share inside the circle.
+
+**Implemented** in `web/template.html`:
+- the circle becomes an outline only
+- a tint layer draws each touched SA1 in the circle's colour, with `fill-opacity = 0.08 + 0.62 × share`
+- the SA1 tooltip gains "Counted in A: xx% of residents"
+
+It was checked in Chromium against the snapshot data: the default circles touch 54 SA1s, and the A/B figures are unchanged. Once mesh-block weighting lands, "share" automatically becomes share of *residents* rather than share of *area*, because opacity is read from the same weights the totals use.
+
+## 7. Scope request: all Melbourne LGAs (2026-09-25)
+
+**Request:** extend from Maribyrnong + Moonee Valley to all Melbourne councils.
+
+What that implies:
+- **About 10,000 SA1s** across the 31 Greater Melbourne LGAs instead of 474. That includes large peri-urban councils (Yarra Ranges, Cardinia, Mornington Peninsula).
+- **The 50 m grid doesn't scale.** Greater Melbourne is roughly 10,000 km², which is about 4 million cells. As an inline page that means well over 100 MB.
+- **So scaling up and the accuracy fix are the same piece of work.** Replace the grid with **mesh blocks** (population-weighted, about 60k points for the metro area). That is roadmap item 2.
+- **The papers only cover two LGAs.** The metro build is a separate page. The two-council page stays as the one that reproduces and critiques the papers.
+- **Planning-overlay extents exist state-wide,** so flood context scales. HEC-RAS depth, if obtained, would still cover only the Maribyrnong catchment.
