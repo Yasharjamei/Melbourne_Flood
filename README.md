@@ -62,6 +62,8 @@ Neither paper publishes its HEC-RAS flood output. Lama & Sun's data is "availabl
 
 ```
 .
+├── .github/workflows/
+│   └── pages.yml        # CI: fetch -> build -> bundle -> deploy to GitHub Pages
 ├── pipeline/
 │   ├── 01_fetch.sh      # downloads every public input into data/raw/
 │   ├── 02_build.py      # SA1 attributes, overlay shares, 50 m grid -> data/processed/data.json
@@ -90,6 +92,12 @@ python pipeline/03_bundle.py   # -> dist/index.html  (open in a browser)
 Run every command from the repository root.
 
 **Network hosts the pipeline needs:** `geo.abs.gov.au`, `www.abs.gov.au`, `opendata.maps.vic.gov.au`. Add these to the environment's allowed domains in Claude Code on the web, or on a restricted network. The page itself loads D3 from `cdnjs.cloudflare.com` and fonts from Google Fonts.
+
+### Live site (GitHub Pages)
+
+Every push to `main` runs [`.github/workflows/pages.yml`](.github/workflows/pages.yml). It fetches, builds and bundles on a GitHub runner and publishes `dist/index.html` to **https://yasharjamei.github.io/Melbourne_Flood/**. Raw inputs are cached between runs and fetched again only when `pipeline/01_fetch.sh` changes.
+
+One-time setup: **Settings → Pages → Build and deployment → Source: GitHub Actions**. Pages on a private repo needs a paid GitHub plan. Otherwise make the repo public.
 
 **Reproducibility caveat:** `01_fetch.sh` pulls live endpoints. The ABS 2021 DataPack is frozen, but DataVic republishes planning overlays whenever an amendment is gazetted. A later run can therefore differ from the published build. The roadmap adds SHA-256 checksums for each input.
 
@@ -222,7 +230,7 @@ Ordered by how much each step changes the numbers, not the look.
 5. **SEIFA 2021 (IRSD / IRSAD)** at SA1, added to the table and choropleth.
 6. **Modelled depth.** If Chayn Sun shares the HEC-RAS October 2022 depth raster, replace the overlay proxy with depth bands (for example > 0.3 m, > 0.5 m, > 1.2 m, matching common vehicle and pedestrian stability thresholds). Otherwise use Melbourne Water's 1% AEP flood extent where licensing allows.
 7. **Second paper (Lee, Sun & Wachowicz).** Add its method once it is reviewed.
-8. **Publish** with GitHub Pages from `dist/`, with a link from the portfolio site.
+8. **Publish.** *(workflow added)* GitHub Pages deploys from `dist/` on every push to `main`. Still to do: link it from the portfolio site.
 
 ## Tools and Claude Code skills needed
 
