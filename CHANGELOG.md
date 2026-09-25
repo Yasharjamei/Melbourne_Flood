@@ -2,6 +2,15 @@
 
 Notable changes to the explorer and its pipeline. Dates are when a change landed on `main`.
 
+## [0.3.1] - 2026-09-25
+
+### Fixed
+- **Greater Melbourne page did not cover all of Greater Melbourne.** In 0.3.0, council boundaries were downloaded pre-simplified, which made some boundary rings cross themselves. The repair step (`buffer(0)`) then kept only one piece of each such polygon and threw the rest away, so every SA1 in the discarded pieces was left out. Council boundaries are now downloaded at full detail, and geometry is repaired with `make_valid`, which keeps all of the area.
+
+### Added
+- **Coverage check in `02_build.py`.** It reports, for each council, how many SA1s it has and what share of its area they cover. It warns outside 97–103% and stops the build outside 90–110%, so a gap like this can't be published silently again.
+- **CI previews.** Pull-request builds screenshot both pages and push the screenshots and built pages to the `ci-preview` branch.
+
 ## [0.3.0] - 2026-09-25
 
 ### Added

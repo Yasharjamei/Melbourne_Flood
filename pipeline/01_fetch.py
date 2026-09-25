@@ -159,7 +159,8 @@ def main():
     fine = 0.00002 if a.study == "west" else 0.00006
 
     print("LGAs")
-    lgas = arcgis("LGA", "state_code_2021='2'", None, 0.0001, f"{raw}/lga.geojson")
+    # Council boundaries at full detail: they decide which SA1s are in the study area.
+    lgas = arcgis("LGA", "state_code_2021='2'", None, 0, f"{raw}/lga.geojson")
     found = {norm_lga(f["properties"].get("lga_name_2021", "")) for f in lgas}
     missing = wanted - found
     if missing:

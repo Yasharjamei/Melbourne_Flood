@@ -138,3 +138,20 @@ What that implies:
 - **Two councils:** 474 SA1s. Mesh-block counts place 207,015 of 207,058 residents. FRI −0.169 to 0.272 (paper −0.148 to 0.228). Max Exposure 0.047 (paper 0.043).
 - **Greater Melbourne:** 31 councils, 11,293 SA1s, 58,563 mesh blocks, 543 suburbs, 2,302 overlay polygons. 4,833,357 of 4,833,389 residents placed. The page is 14.2 MB, about 3 MB compressed.
 
+## 9. v0.3.1: the metro page had holes (2026-09-25)
+
+**Report:** the live Greater Melbourne page didn't cover the whole metro area.
+
+**Cause:**
+- The fetch asked the ABS server for pre-simplified council boundaries (`maxAllowableOffset`), and that made some boundaries cross themselves.
+- The first metro build crashed on those boundaries. The fix at the time was `buffer(0)`, which "repairs" a self-crossing ring by keeping only one piece. On a simple test shape it kept half the area; `make_valid` kept all of it.
+- SA1s are assigned to a council by testing whether their representative point is inside it. So every SA1 in a discarded piece dropped out of the study area.
+
+**Why the verified-build numbers didn't catch it:** the check compared mesh-block residents with the Census totals *of the SA1s that had been selected*. That confirms the apportionment is internally consistent. It can't reveal SA1s that were never selected.
+
+**Fix:**
+- Council boundaries are fetched at full detail.
+- All geometry is repaired with `make_valid`.
+- A per-council coverage check fails the build if the SA1s don't tile a council.
+- PR builds publish screenshots to `ci-preview`, so the map itself is checked before merging, not just the build log.
+

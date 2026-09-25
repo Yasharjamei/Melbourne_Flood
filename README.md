@@ -9,7 +9,7 @@ On either page you drag two circles, **A** and **B**, anywhere on the map. A sid
 
 The project applies two flood-resilience papers to the same 474 SA1 "urban units" they studied. The interaction comes from a Mashhad "Demographic Explorer" web map. The goal is not to redo the papers' single index. It is to show what that index hides.
 
-> **Status (v0.3):**
+> **Status (v0.3.1):**
 > - Mesh-block weighting and Lama & Sun's six index maps are built for both pages, with suburbs on both.
 > - It goes live at **https://yasharjamei.github.io/Melbourne_Flood/** once GitHub Pages is enabled (see [Live site](#live-site-github-pages)).
 > - The first prototype, which used even spreading, is kept at [`snapshots/2026-09-25-prototype.html`](snapshots/2026-09-25-prototype.html).

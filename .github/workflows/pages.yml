@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write   # lets PR builds push screenshots to the ci-preview branch
   pages: write
   id-token: write
 
@@ -55,6 +55,18 @@ jobs:
           python pipeline/03_bundle.py
           touch dist/.nojekyll
           ls -la dist dist/metro
+
+      # Pull requests only: screenshot both pages and publish them, with the built
+      # pages, to the ci-preview branch so changes can be checked without deploying.
+      - name: Preview screenshots
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        run: |
+          pip install playwright && python -m playwright install --with-deps chromium
+          python .github/scripts/screenshot.py
+          mkdir -p /tmp/preview && cp -r dist shots /tmp/preview/
+          cd /tmp/preview && git init -q && git checkout -q -b ci-preview && git add -A
+          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "Preview of ${{ github.event.pull_request.head.sha }}"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ci-preview
 
       - uses: actions/upload-pages-artifact@v3
         with:
