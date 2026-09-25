@@ -41,7 +41,10 @@ def get(url, params=None, tries=4, binary=False):
 
 
 def get_json(url, params=None):
-    js = json.loads(get(url, params))
+    try:
+        js = json.loads(get(url, params))
+    except json.JSONDecodeError as e:    # truncated response from an overloaded server
+        raise RuntimeError(f"Invalid JSON from {url[:120]}: {e}")
     if isinstance(js, dict) and "error" in js:
         raise RuntimeError(f"Server error from {url}: {js['error']}")
     return js
@@ -57,14 +60,14 @@ def service_url(name):
     raise RuntimeError(f"No ABS service for {name}. Available: {sorted(names)}")
 
 
-def arcgis(name, where, bbox, offset_deg, out):
+def arcgis(name, where, bbox, offset_deg, out, page_max=2000):
     """Page through an ArcGIS layer, writing a GeoJSON FeatureCollection."""
     if os.path.exists(out):
         feats = json.load(open(out))["features"]; print(f"  {name}: cached ({len(feats)})"); return feats
     layer = service_url(name)
     info = get_json(layer, {"f": "json"})
     oid = info.get("objectIdField") or "objectid"
-    page = min(int(info.get("maxRecordCount") or 1000), 2000)
+    page = min(int(info.get("maxRecordCount") or 1000), page_max)
     print(f"  {name}: {layer.split('services/')[-1]} fields="
           f"{[f['name'] for f in info.get('fields', [])][:25]} page={page}")
     # Keyset paging (objectid > last) rather than resultOffset: deep offsets make the ABS
@@ -82,7 +85,7 @@ def arcgis(name, where, bbox, offset_deg, out):
         try:
             js = get_json(layer + "/query", p)
         except RuntimeError:
-            if size <= 250:
+            if size <= min(250, page_max // 4 or 1):
                 raise
             size //= 2
             print(f"  {name}: request failed, retrying with pages of {size}")
@@ -171,8 +174,9 @@ def main():
     fine = 0.00002 if a.study == "west" else 0.00006
 
     print("LGAs")
-    # Council boundaries at full detail: they decide which SA1s are in the study area.
-    lgas = arcgis("LGA", "state_code_2021='2'", None, 0, f"{raw}/lga.geojson")
+    # Council boundaries decide which SA1s are in the study area: near-full detail (1 m),
+    # a few at a time (one 82-council response at full detail came back truncated).
+    lgas = arcgis("LGA", "state_code_2021='2'", None, 0.00001, f"{raw}/lga.geojson", page_max=10)
     found = {norm_lga(f["properties"].get("lga_name_2021", "")) for f in lgas}
     missing = wanted - found
     if missing:
