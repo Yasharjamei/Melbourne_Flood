@@ -3,7 +3,7 @@
 An interactive web map of Melbourne, built as two pages from one pipeline:
 
 - **Maribyrnong & Moonee Valley** (`/`): the 474 SA1s studied by both papers. This page reproduces, and critiques, Lama & Sun (2026).
-- **Greater Melbourne** (`/metro/`): all 31 metropolitan councils, about 10,000 SA1s, with the same tools.
+- **Greater Melbourne** (`/metro/`): all 31 metropolitan councils, 11,293 SA1s and 543 suburbs, with the same tools.
 
 On either page you drag two circles, **A** and **B**, anywhere on the map. A side panel compares who lives inside each one: an age–sex pyramid, flood-relevant needs (aged 75+, aged 0–4, need for assistance, no car, limited English and so on), and how many residents fall inside the planning-scheme flood overlays.
 
@@ -14,6 +14,20 @@ The project applies two flood-resilience papers to the same 474 SA1 "urban units
 > - It goes live at **https://yasharjamei.github.io/Melbourne_Flood/** once GitHub Pages is enabled (see [Live site](#live-site-github-pages)).
 > - The first prototype, which used even spreading, is kept at [`snapshots/2026-09-25-prototype.html`](snapshots/2026-09-25-prototype.html).
 > - Changes are listed in [`CHANGELOG.md`](CHANGELOG.md), and the history and decisions in [`docs/PROJECT_LOG.md`](docs/PROJECT_LOG.md).
+
+### Verified build (GitHub Actions, live ABS and DataVic data)
+
+| | Maribyrnong & Moonee Valley | Greater Melbourne |
+|---|---|---|
+| Councils / SA1s / suburbs | 2 / 474 / 24 | 31 / 11,293 / 543 |
+| Mesh blocks (with residents) | 2,661 (2,228) | 58,563 (48,770) |
+| Residents placed by mesh-block counts / Census SA1 total | 207,015 / 207,058 | 4,833,357 / 4,833,389 |
+| Flood-overlay polygons (LSIO, FO, SBO) | 72 | 2,302 |
+| FRI range (paper, two councils: −0.148 to 0.228) | −0.169 to 0.272 | −0.225 to 0.211 |
+| Max Exposure (paper: 0.043 of a possible 0.047) | 0.047 | 0.047 |
+| Page size (compressed on the wire) | 0.6 MB | 14.2 MB (about 3 MB) |
+
+The residents placed by mesh-block counts match the Census SA1 totals to within 0.02%; the small gap is ABS perturbation between the two releases. The FRI range lands close to the paper's, even with the substituted depth, elevation and sand inputs.
 
 ---
 
@@ -138,7 +152,7 @@ One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
 
 1. **Study area.** Set in `pipeline/config.py`.
    - `west` is the papers' two councils.
-   - `metro` is the 31 Greater Melbourne councils: Merri-bek appears under its ASGS 2021 name, Moreland.
+   - `metro` is the 31 Greater Melbourne councils: Merri-bek appears under its ASGS 2021 name, Moreland. Its planning overlays are fetched under the current name, Merri-bek.
    - An SA1 is kept if its representative point falls inside a study council. For `west`, that leaves 474 SA1s, the same count as Lama & Sun.
 2. **Census attributes.** The 2021 General Community Profile (SA1, VIC) supplies the figures.
 
@@ -194,7 +208,7 @@ Lama & Sun (2026) build their index in five steps. **All five are implemented in
 **Assumptions the paper leaves open, and the choices made here:**
 - **Direction for elevation and sand.** The paper doesn't say whether low elevation or high sand is inverted before weighting. Its text implies both should be (low ground and clay soils flood). Their highest Exposure score, 0.043 out of a possible 0.047, is in low-lying Flemington. That only makes sense if low elevation scores high. Both are inverted here.
 - **Classes.** The paper maps five classes without naming the method, which is probably natural breaks. Quintiles are used here, so class boundaries won't match the published figures exactly.
-- **Normalisation scope.** For `metro`, indicators are normalised across all ~10,000 SA1s, so its index values aren't comparable with the two-council page.
+- **Normalisation scope.** For `metro`, indicators are normalised across all 11,293 SA1s, so its index values aren't comparable with the two-council page.
 
 What this project adds on top:
 
@@ -266,7 +280,7 @@ Both treat "dependent" as one number. Lama & Sun define it as under 20 plus over
 - **Coarse age data.** Age–sex data stops at SA1 level, about 400 people. Below roughly 500 m radius, a circle's pyramid is mostly apportionment artefact.
 - **No basemap** in the self-contained build.
 - **No SEIFA yet.** Income is a population-weighted mean of SA1 medians, which isn't a true median.
-- **Metro page size.** About 10,000 SA1 outlines drawn as SVG, which is slower on phones. MapLibre with vector tiles is the fix (roadmap).
+- **Metro page size.** 14.2 MB (about 3 MB compressed), with 11,293 SA1 outlines drawn as SVG. That's slower on phones. MapLibre with vector tiles is the fix (roadmap).
 - **ABS perturbation.** Small random adjustments mean totals differ slightly between tables.
 
 ## Roadmap

@@ -5,7 +5,7 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 ## [0.3.0] - 2026-09-25
 
 ### Added
-- **Greater Melbourne page** (`/metro/`): all 31 metropolitan councils (about 10,000 SA1s), built from the same pipeline. The two-council page stays at `/` and links across.
+- **Greater Melbourne page** (`/metro/`): all 31 metropolitan councils (11,293 SA1s, 58,563 mesh blocks, 543 suburbs), built from the same pipeline. The two-council page stays at `/` and links across.
 - **Lama & Sun (2026) index maps**, following the paper's Table 2 weights and Appendix formulas:
   - Exposure, Sensitivity, Adaptive capacity
   - FRI = Adaptive capacity − (Sensitivity + Exposure)
@@ -27,8 +27,14 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 - **`pipeline/config.py`**: study areas and index weights in one place.
 - **CI** builds both pages on every pull request, so pipeline changes are tested on live data before they reach `main`.
 
+### Fixed during CI verification
+- Flood overlays: filter by council name; a CQL bounding-box filter returned nothing.
+- Census G43: real column names are `non_sch_qual_*`. Certificates are counted once, through `CertTot`.
+- Geometries repaired on load; server-side simplification had left invalid council boundaries.
+- Mesh-block counts workbook parsed by its `MB_CODE_2021` and `Person` columns only, so title and footer rows are skipped.
+
 ### Changed
-- **Mesh-block weighting replaces the 50 m even-spread grid.** Residents are placed using ABS Mesh Block Counts, or Residential mesh-block area if the counts can't be downloaded. Circle figures for the default A/B comparison move slightly as a result.
+- **Mesh-block weighting replaces the 50 m even-spread grid.** Residents are placed using ABS Mesh Block Counts, or Residential mesh-block area if the counts can't be downloaded. In the verified build the counts cover 207,015 of 207,058 residents (two councils) and 4,833,357 of 4,833,389 (metro). Circle figures for the default A/B comparison move slightly as a result.
 - **`pipeline/01_fetch.sh` is replaced by `pipeline/01_fetch.py`** (pure Python):
   - pages through ABS and DataVic services
   - caches downloads

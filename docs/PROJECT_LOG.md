@@ -134,3 +134,7 @@ What that implies:
 - The page rendered in Chromium with no errors, and all six index layers, the suburb search and the cross-link worked.
 - Real-data runs happen in CI on the pull request.
 
+**Verified on live data** ([run 36142233452](https://github.com/Yasharjamei/Melbourne_Flood/actions/runs/36142233452)), after four fixes that only real data could reveal: overlay filter, G43 column names, invalid council geometry, and the counts workbook layout.
+- **Two councils:** 474 SA1s. Mesh-block counts place 207,015 of 207,058 residents. FRI −0.169 to 0.272 (paper −0.148 to 0.228). Max Exposure 0.047 (paper 0.043).
+- **Greater Melbourne:** 31 councils, 11,293 SA1s, 58,563 mesh blocks, 543 suburbs, 2,302 overlay polygons. 4,833,357 of 4,833,389 residents placed. The page is 14.2 MB, about 3 MB compressed.
+
