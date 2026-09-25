@@ -7,7 +7,8 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 ### Added
 - **Basemap.** The map is now drawn with MapLibre GL JS (WebGL) over CARTO Positron, or Dark Matter in dark mode. Data layers sit under the basemap's labels, and there's a toggle to hide the basemap. If the basemap host can't be reached, the page falls back to a plain background.
 - **Council filter.** Zooms to one council and hides the others. Colour classes, the comparison column and circle counts all switch to that council.
-- **Per-variable symbology.** Each variable family has its own single-hue palette: teal for people and housing, red for need and vulnerability, green for income and capacity, blue for flood. FRI and IFRI use a diverging red–blue scale split at zero. A legend card shows each class's value range and what the empty class means.
+- **Per-variable symbology.** Each of the 17 variables has its own ColorBrewer scheme. The near-white step is dropped, so a low class never looks like "no data". FRI and IFRI use two different diverging red–blue schemes split at zero. A legend card shows each class's value range.
+- **Council → suburb slicer.** Choosing a council narrows the suburb list. Choosing a suburb filters the map to that suburb's SA1s and outlines it, and the colour classes, comparison column and circle counts switch to the suburb.
 - **Grouped "Show on map" menu**, replacing two rows of buttons.
 - **Light and dark mode toggle.** It's remembered between visits, swaps the basemap too, and keeps the chosen variable, council, circles and view across the switch.
 - **Analysis page** (`analysis/`, one per study area), reproducing the rest of Lama & Sun's statistical results:
@@ -15,6 +16,8 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
   - **MGWR by variable:** bandwidth, share of SA1s significant (multiple-testing corrected), coefficient range, and **VIF**, since the paper's count indicators are strongly collinear.
   - **Figure 4:** local R² and ten coefficient maps as small multiples. SA1s that aren't significant are grey.
   - **Figure 7:** a 6×6 scatter matrix of the indices, with Pearson's r and adjusted R².
+- **MGWR safeguards.** Bandwidths are floored at 50 SA1s, and the result is validated. The first real-data run chose bandwidths of 10–16 and diverged to R² = −3.7 × 10²⁰, with singular local matrices from collinear counts (VIF: employed 53.5, educated 44.9, population 39.4, dwellings 15.1). If MGWR still doesn't converge, the page says so and shows GWR coefficients instead.
+- **Polygons oriented clockwise on export.** D3's spherical maths read anticlockwise rings as "the whole globe", which zoomed the council filter out to the world map and blanked the Figure 4 maps.
 - **`pipeline/lamasun_stats.py`:** GWR and MGWR (PySAL `mgwr`, adaptive bisquare kernel, standardised variables). It runs on the two-council study area only, because MGWR's cost grows with the square of the number of SA1s.
 
 ### Changed

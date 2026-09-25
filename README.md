@@ -82,18 +82,19 @@ Neither paper publishes its HEC-RAS flood output. Lama & Sun's data is "availabl
 - **Basemap and map engine:** MapLibre GL JS (WebGL) over a CARTO basemap (Positron in light mode, Dark Matter in dark mode, © OpenStreetMap contributors). Data layers draw beneath the basemap's street and place labels. If the basemap can't load, the page falls back to a plain background, and a toggle hides the basemap.
 - **Choropleth** of every SA1, chosen from one grouped "Show on map" menu. Each variable family has its own symbology:
 
-  | Family | Palette | Classes |
+  | Variable | ColorBrewer scheme | Classes |
   |---|---|---|
-  | People (density, age), housing type | teal, light → dark | quintiles |
-  | Need and access (assistance, health, no car, English, unemployment) | red | quintiles |
-  | Income, Adaptive capacity | green | quintiles |
-  | Area in flood overlay | blue | quintiles of SA1s with any overlay; "not in an overlay" left clear |
-  | Exposure, Sensitivity, Damage (Lama & Sun) | red | quintiles |
-  | FRI and IFRI (Lama & Sun) | diverging red – blue, split at 0 | three quantile classes each side of 0 |
+  | Residents per hectare / Aged 75+ / Aged 0–4 | YlGnBu / PuBuGn / GnBu | quintiles |
+  | Need help / Long-term health / No car / Limited English | Reds / RdPu / Greys / PuRd | quintiles |
+  | 4+ storey dwellings / Unemployment / Income | BuPu / YlOrBr / Greens | quintiles |
+  | Area in flood overlay | Blues | quintiles of SA1s with any overlay; "not in an overlay" left clear |
+  | Exposure / Sensitivity / Adaptive capacity / Damage | OrRd / PuBu / YlGn / YlOrRd | quintiles |
+  | FRI / IFRI | RdBu / RdYlBu (diverging, split at 0) | three quantile classes each side of 0 |
 
-  Violet and orange are reserved for circles A and B, and no map palette uses them. That pair passed the colour-blindness validator in light and dark mode. A legend card on the map shows each class's value range.
+  Violet and orange mark circles A and B. That pair passed the colour-blindness validator in light and dark mode. A legend card on the map shows each class's value range.
 - **Light / dark mode** toggle, remembered between visits.
 - **Analysis page** (`analysis/`): the paper's Table 5 (GWR vs MGWR), Figure 4 (local R² and MGWR coefficient maps) and Figure 7 (index correlation matrix). See [Lama & Sun's statistical analysis](#lama--suns-statistical-analysis-table-5-figures-4-and-7).
+- **Council → suburb slicer:** the suburb list follows the chosen council. Choosing a suburb filters the map, legend classes, comparison column and circles to that suburb.
 - **Council filter:** pick any council to zoom to it and hide the rest. Colour classes are recomputed within that council, the panel's comparison column switches to it, and circles count only its residents.
 - **Lama & Sun (2026) maps:** Exposure, Sensitivity, Adaptive capacity, Flood Resilience Index (FRI), Damage index and Integrated FRI (IFRI). These are the six maps in the paper's Figures 5 and 6, shown in five classes (quintiles). The panel also gives each circle's resident-weighted FRI, Damage and IFRI.
 - **Suburbs** (ABS Suburbs and Localities 2021):
@@ -240,6 +241,11 @@ This build follows 2.2.3, for two reasons:
 - IFRI is a deterministic function of those same inputs, so regressing it on them would give an R² near 1, not the reported 0.72.
 
 **The results aren't comparable with the paper's,** because the response is the overlay-share proxy, which is zero for most SA1s, instead of HEC-RAS depth. The page says so beside the table.
+
+**Result on real data (two councils, 474 SA1s):**
+- **GWR:** R² 0.53, adjusted R² 0.46, bandwidth 173.
+- **MGWR:** didn't converge on the paper's specification. The count indicators are strongly collinear (VIF: employed 53.5, educated 44.9, population 39.4, dwellings 15.1), and the local regressions are numerically singular. MGWR bandwidths are now floored at 50 SA1s and the result is validated. If it still fails, the page says so and shows GWR coefficients.
+- This is a finding about the specification, not only about our proxy. Any response variable would face the same collinear design matrix.
 
 **Collinearity.** The page reports a variance inflation factor for each variable. Population, dwellings, employed, educated and income earners are all counts that grow with SA1 size. Their coefficients can't be interpreted separately wherever VIF is above 10, and that applies to the paper's specification too.
 
