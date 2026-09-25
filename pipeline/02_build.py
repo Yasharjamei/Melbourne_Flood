@@ -72,9 +72,11 @@ def band(sx):
 M, F = band("M"), band("F")
 # Lama & Sun's "mean income generating population" ($91,000-$103,999 a year) is exactly
 # the ABS weekly personal income band $1,750-$1,999.
-inc_col = col(g17, r"P_1750_1999_Tot", r"P_1750_1999.*Tot.*")
-edu_cols = [c for c in g43.columns if re.fullmatch(r"Non_sc_quals_.*_P", c, flags=re.I)
-            and not re.search(r"Tot|NS|Lvl_edu_IDes|Inadq", c, flags=re.I)]
+inc_col = col(g17, r"P_1750_1999_Tot", r"P_1750_1999.*Tot.*", r"P.*1750_1999.*")
+# Non-school qualifications: postgrad, grad dip/cert, bachelor, adv dip/dip, and all certificates
+# (CertTot already sums Cert III/IV, I/II and nfd, so those are not added again).
+edu_cols = [c for c in g43.columns if re.fullmatch(
+    r"non_sch_qual_(PostGrad_Dgre|Gr_Dip_Gr_Crt|Bchelr_Degree|Advnd_Dip_Dip|CertTot_Level)_P", c, flags=re.I)]
 if not edu_cols:
     raise KeyError(f"no non-school qualification columns in G43: {list(g43.columns)}")
 print("education columns:", edu_cols, "| income column:", inc_col)
