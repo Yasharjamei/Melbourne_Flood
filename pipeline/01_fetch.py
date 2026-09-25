@@ -67,21 +67,33 @@ def arcgis(name, where, bbox, offset_deg, out):
     page = min(int(info.get("maxRecordCount") or 1000), 2000)
     print(f"  {name}: {layer.split('services/')[-1]} fields="
           f"{[f['name'] for f in info.get('fields', [])][:25]} page={page}")
-    feats, off = [], 0
+    # Keyset paging (objectid > last) rather than resultOffset: deep offsets make the ABS
+    # server time out (a 504 at offset 62,000 on Greater Melbourne mesh blocks).
+    feats, last, size = [], -1, page
     while True:
-        p = {"where": where, "outFields": "*", "outSR": 4326, "f": "geojson",
-             "orderByFields": oid, "resultOffset": off, "resultRecordCount": page,
+        p = {"where": f"({where}) AND {oid} > {last}", "outFields": "*", "outSR": 4326, "f": "geojson",
+             "orderByFields": f"{oid} ASC", "resultRecordCount": size,
              "geometryPrecision": 6, "returnGeometry": "true"}
         if offset_deg:
             p["maxAllowableOffset"] = offset_deg
         if bbox:
             p.update(geometry=",".join(map(str, bbox)), geometryType="esriGeometryEnvelope",
                      inSR=4326, spatialRel="esriSpatialRelIntersects")
-        js = get_json(layer + "/query", p)
+        try:
+            js = get_json(layer + "/query", p)
+        except RuntimeError:
+            if size <= 250:
+                raise
+            size //= 2
+            print(f"  {name}: request failed, retrying with pages of {size}")
+            continue
         got = js.get("features", [])
+        if not got:
+            break
         feats += got
-        off += len(got)
-        if not got or (len(got) < page and not js.get("exceededTransferLimit")):
+        ids = [f.get("properties", {}).get(oid, f.get("id")) for f in got]
+        last = max(i for i in ids if i is not None)
+        if len(got) < size and not js.get("exceededTransferLimit"):
             break
     if not feats:
         raise RuntimeError(f"{name}: query returned no features")

@@ -10,6 +10,7 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 ### Added
 - **Coverage check in `02_build.py`.** It reports, for each council, how many SA1s it has and what share of its area they cover. It warns outside 97–103% and stops the build outside 90–110%, so a gap like this can't be published silently again.
 - **CI previews.** Pull-request builds screenshot both pages and push the screenshots and built pages to the `ci-preview` branch.
+- **Sturdier ABS downloads.** ArcGIS layers are paged by object ID (`objectid > last`) instead of by record offset. The ABS server timed out at offset 62,000 on Greater Melbourne mesh blocks. Failed pages are retried at half size.
 
 ## [0.3.0] - 2026-09-25
 
