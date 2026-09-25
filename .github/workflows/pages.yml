@@ -1,10 +1,12 @@
 name: Build and deploy to GitHub Pages
 
-# Runs the full pipeline (fetch -> build -> bundle) and publishes dist/index.html.
+# Pull requests: fetch -> build -> bundle both pages, to prove the pipeline (no deploy).
+# Pushes to main: the same, then publish dist/ to GitHub Pages.
 # Needs Settings -> Pages -> Source: "GitHub Actions".
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -13,12 +15,13 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  group: pages-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -29,31 +32,36 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      # Raw inputs are ~100 MB; reuse them until the fetch script changes.
+      # Raw inputs (Census DataPack ~100 MB, mesh blocks, overlays, DEM) are reused
+      # until the fetch script or study-area config changes.
       - name: Cache raw inputs
-        id: raw
         uses: actions/cache@v4
         with:
           path: data/raw
-          key: raw-${{ hashFiles('pipeline/01_fetch.sh') }}
+          key: raw-v2-${{ hashFiles('pipeline/01_fetch.py', 'pipeline/config.py') }}
 
-      - name: Fetch public inputs
-        if: steps.raw.outputs.cache-hit != 'true'
-        run: bash pipeline/01_fetch.sh
+      - name: Fetch, Maribyrnong + Moonee Valley
+        run: python pipeline/01_fetch.py --study west
+      - name: Build, Maribyrnong + Moonee Valley
+        run: python pipeline/02_build.py --study west
 
-      - name: Build dataset
-        run: python pipeline/02_build.py
+      - name: Fetch, Greater Melbourne
+        run: python pipeline/01_fetch.py --study metro
+      - name: Build, Greater Melbourne
+        run: python pipeline/02_build.py --study metro
 
-      - name: Bundle page
+      - name: Bundle pages
         run: |
           python pipeline/03_bundle.py
           touch dist/.nojekyll
+          ls -la dist dist/metro
 
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:

@@ -1,10 +1,33 @@
 # Who lives in the flood path
 
-An interactive web map for Maribyrnong and Moonee Valley (Melbourne). You drag two circles, **A** and **B**, anywhere across the two councils. A side panel compares who lives inside each one: an age–sex pyramid, flood-relevant needs (aged 75+, aged 0–4, need for assistance, no car, limited English and so on), and how many residents fall inside the planning-scheme flood overlays.
+An interactive web map of Melbourne, built as two pages from one pipeline:
+
+- **Maribyrnong & Moonee Valley** (`/`): the 474 SA1s studied by both papers. This page reproduces, and critiques, Lama & Sun (2026).
+- **Greater Melbourne** (`/metro/`): all 31 metropolitan councils, 11,293 SA1s and 543 suburbs, with the same tools.
+
+On either page you drag two circles, **A** and **B**, anywhere on the map. A side panel compares who lives inside each one: an age–sex pyramid, flood-relevant needs (aged 75+, aged 0–4, need for assistance, no car, limited English and so on), and how many residents fall inside the planning-scheme flood overlays.
 
 The project applies two flood-resilience papers to the same 474 SA1 "urban units" they studied. The interaction comes from a Mashhad "Demographic Explorer" web map. The goal is not to redo the papers' single index. It is to show what that index hides.
 
-> **Status:** working prototype (Census 2021, area-weighted apportionment, no basemap). To see it, open [`snapshots/2026-09-25-prototype.html`](snapshots/2026-09-25-prototype.html) in a browser. History and decisions are in [`docs/PROJECT_LOG.md`](docs/PROJECT_LOG.md). See [Roadmap](#roadmap) for what comes next and why.
+> **Status (v0.3):**
+> - Mesh-block weighting and Lama & Sun's six index maps are built for both pages, with suburbs on both.
+> - It goes live at **https://yasharjamei.github.io/Melbourne_Flood/** once GitHub Pages is enabled (see [Live site](#live-site-github-pages)).
+> - The first prototype, which used even spreading, is kept at [`snapshots/2026-09-25-prototype.html`](snapshots/2026-09-25-prototype.html).
+> - Changes are listed in [`CHANGELOG.md`](CHANGELOG.md), and the history and decisions in [`docs/PROJECT_LOG.md`](docs/PROJECT_LOG.md).
+
+### Verified build (GitHub Actions, live ABS and DataVic data)
+
+| | Maribyrnong & Moonee Valley | Greater Melbourne |
+|---|---|---|
+| Councils / SA1s / suburbs | 2 / 474 / 24 | 31 / 11,293 / 543 |
+| Mesh blocks (with residents) | 2,661 (2,228) | 58,563 (48,770) |
+| Residents placed by mesh-block counts / Census SA1 total | 207,015 / 207,058 | 4,833,357 / 4,833,389 |
+| Flood-overlay polygons (LSIO, FO, SBO) | 72 | 2,302 |
+| FRI range (paper, two councils: −0.148 to 0.228) | −0.169 to 0.272 | −0.225 to 0.211 |
+| Max Exposure (paper: 0.043 of a possible 0.047) | 0.047 | 0.047 |
+| Page size (compressed on the wire) | 0.6 MB | 14.2 MB (about 3 MB) |
+
+The residents placed by mesh-block counts match the Census SA1 totals to within 0.02%; the small gap is ABS perturbation between the two releases. The FRI range lands close to the paper's, even with the substituted depth, elevation and sand inputs.
 
 ---
 
@@ -12,7 +35,7 @@ The project applies two flood-resilience papers to the same 474 SA1 "urban units
 
 1. [Why this exists](#why-this-exists)
 2. [Source material](#source-material)
-3. [What the prototype does](#what-the-prototype-does)
+3. [What the explorer does](#what-the-explorer-does)
 4. [Repository layout](#repository-layout)
 5. [Running it](#running-it)
 6. [Method](#method)
@@ -28,7 +51,7 @@ The project applies two flood-resilience papers to the same 474 SA1 "urban units
 
 Both papers reduce vulnerable people to one number per SA1. Lama & Sun's **"dependent population"** counts everyone **under 20 and everyone over 59** together. Two neighbourhoods with the same "dependent %" can need completely different flood responses. A street of toddlers and a street of 85-year-olds have different evacuation plans, transport needs and medical risks.
 
-The default comparison already shows this, using Census 2021 and 800 m circles on two riverside suburbs:
+The default comparison already shows this, using Census 2021 and 800 m circles on two riverside suburbs. These figures come from the v0.1 prototype, which spread people evenly. Mesh-block weighting moves them slightly:
 
 | Measure | Avondale Heights (A) | Footscray (B) |
 |---|---|---|
@@ -50,13 +73,19 @@ Both PDFs are in [`papers/`](papers/). They are CC BY 4.0, so redistributing the
 
 Neither paper publishes its HEC-RAS flood output. Lama & Sun's data is "available from the corresponding author upon reasonable request". Lee et al. say their Census, SEIFA, terrain, land-cover and building-footprint inputs are public, but the Melbourne Water/Jacobs flood extent and the council 3D building data are licensed. This project therefore rebuilds everything it can from public sources and names every substitution.
 
-## What the prototype does
+## What the explorer does
 
 - **Two draggable circles** (A and B) with one shared radius, 300–2,000 m.
+- **Every SA1 a circle touches is shaded** in that circle's colour, darker where more of its residents are counted. The estimate's make-up is visible on the map, and the tooltip gives the exact share.
 - **Overlaid age–sex pyramid** in **percentages**, not counts, so a denser circle doesn't just look bigger. A is filled, B is outlined, and the two-council average sits in grey behind.
 - **Indicator table** comparing A and B: aged 75+, aged 0–4, need for assistance, long-term health condition, no car, limited English, unemployment, dwellings in 4+ storey blocks, median household income, and estimated residents inside riverine (LSIO + Floodway) and overland-flow (SBO) overlays.
-- **Choropleth** of all 474 SA1s, which can be shaded by any indicator.
-- **Self-contained output:** one `dist/index.html` with the data inlined. It opens offline and has no basemap (see roadmap).
+- **Choropleth** of every SA1, shaded by any of those indicators.
+- **Lama & Sun (2026) maps:** Exposure, Sensitivity, Adaptive capacity, Flood Resilience Index (FRI), Damage index and Integrated FRI (IFRI). These are the six maps in the paper's Figures 5 and 6, shown in five classes (quintiles). The panel also gives each circle's resident-weighted FRI, Damage and IFRI.
+- **Suburbs** (ABS Suburbs and Localities 2021):
+  - dashed outlines, with labels that appear as you zoom in
+  - a "Find a suburb" box that zooms the map to a suburb
+  - suburb names in tooltips and under each circle's resident count
+- **Self-contained output:** one HTML file per page with the data inlined. It opens offline and has no basemap yet (see roadmap).
 
 ## Repository layout
 
@@ -65,15 +94,17 @@ Neither paper publishes its HEC-RAS flood output. Lama & Sun's data is "availabl
 ├── .github/workflows/
 │   └── pages.yml        # CI: fetch -> build -> bundle -> deploy to GitHub Pages
 ├── pipeline/
-│   ├── 01_fetch.sh      # downloads every public input into data/raw/
-│   ├── 02_build.py      # SA1 attributes, overlay shares, 50 m grid -> data/processed/data.json
-│   └── 03_bundle.py     # inlines data.json into web/template.html -> dist/index.html
+│   ├── config.py        # study areas (west, metro) and Lama & Sun weights
+│   ├── 01_fetch.py      # downloads public inputs -> data/raw/<study>/, data/raw/gcp/, data/raw/shared/
+│   ├── 02_build.py      # SA1 + mesh-block + suburb data and indices -> data/processed/<study>.json
+│   └── 03_bundle.py     # inlines each dataset into web/template.html -> dist/index.html, dist/metro/index.html
 ├── web/
 │   └── template.html    # the explorer (D3 v7, inline SVG map, no build step)
 ├── papers/              # the two source papers (CC BY 4.0)
 ├── snapshots/           # frozen builds, e.g. the first published prototype (open in a browser)
 ├── docs/
 │   └── PROJECT_LOG.md   # history, decisions and open questions
+├── CHANGELOG.md
 ├── requirements.txt
 └── README.md
 ```
@@ -82,31 +113,47 @@ Neither paper publishes its HEC-RAS flood output. Lama & Sun's data is "availabl
 
 ## Running it
 
-Requires Python 3.10+, `bash`, `curl`, `unzip`. On Windows, use Git Bash or WSL for `01_fetch.sh`.
+Requires Python 3.10+. It's pure Python, so it works the same in Windows PowerShell.
 
 ```bash
 python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-bash pipeline/01_fetch.sh      # public data -> data/raw/        (needs internet, ~100 MB)
-python pipeline/02_build.py    # -> data/processed/data.json
-python pipeline/03_bundle.py   # -> dist/index.html  (open in a browser)
+
+python pipeline/01_fetch.py --study west     # Maribyrnong + Moonee Valley (~150 MB incl. Census DataPack)
+python pipeline/02_build.py --study west
+python pipeline/01_fetch.py --study metro    # all 31 councils (adds several hundred MB of boundaries/overlays)
+python pipeline/02_build.py --study metro
+python pipeline/03_bundle.py                 # -> dist/index.html and dist/metro/index.html
 ```
+
+Build `west` only if you don't need the metro page; `03_bundle.py` bundles whichever datasets exist.
+
+Some inputs are **optional**: mesh-block resident counts, the elevation model and soil sand. If a download fails, the build carries on and records the substitution in the page footer. For example, "Mesh-block counts unavailable: residents placed on Residential mesh blocks in proportion to area".
 
 Run every command from the repository root.
 
-**Network hosts the pipeline needs:** `geo.abs.gov.au`, `www.abs.gov.au`, `opendata.maps.vic.gov.au`. Add these to the environment's allowed domains in Claude Code on the web, or on a restricted network. The page itself loads D3 from `cdnjs.cloudflare.com` and fonts from Google Fonts.
+**Network hosts the pipeline needs:** `geo.abs.gov.au`, `www.abs.gov.au`, `opendata.maps.vic.gov.au`, `copernicus-dem-30m.s3.amazonaws.com` and `maps.isric.org`. Add these to the environment's allowed domains in Claude Code on the web, or on a restricted network. The page itself loads D3 from `cdnjs.cloudflare.com` and fonts from Google Fonts.
 
 ### Live site (GitHub Pages)
 
-Every push to `main` runs [`.github/workflows/pages.yml`](.github/workflows/pages.yml). It fetches, builds and bundles on a GitHub runner and publishes `dist/index.html` to **https://yasharjamei.github.io/Melbourne_Flood/**. Raw inputs are cached between runs and fetched again only when `pipeline/01_fetch.sh` changes.
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) fetches, builds and bundles both pages on a GitHub runner:
+- **On every pull request** it builds only, to prove the pipeline works on live data.
+- **On every push to `main`** it also publishes the pages:
+  - **https://yasharjamei.github.io/Melbourne_Flood/**
+  - **https://yasharjamei.github.io/Melbourne_Flood/metro/**
+
+Raw inputs are cached, and downloaded again only when `pipeline/01_fetch.py` or `pipeline/config.py` changes.
 
 One-time setup: **Settings → Pages → Build and deployment → Source: GitHub Actions**. Pages on a private repo needs a paid GitHub plan. Otherwise make the repo public.
 
-**Reproducibility caveat:** `01_fetch.sh` pulls live endpoints. The ABS 2021 DataPack is frozen, but DataVic republishes planning overlays whenever an amendment is gazetted. A later run can therefore differ from the published build. The roadmap adds SHA-256 checksums for each input.
+**Reproducibility caveat:** `01_fetch.py` pulls live endpoints. The ABS 2021 DataPack is frozen, but DataVic republishes planning overlays whenever an amendment is gazetted. A later run can therefore differ from the published build. The roadmap adds SHA-256 checksums for each input.
 
 ## Method
 
-1. **Study area.** SA1s (ASGS 2021) are fetched for a bounding box. An SA1 is kept if its representative point falls inside the Maribyrnong or Moonee Valley LGA. That leaves 474 SA1s, the same count as Lama & Sun.
+1. **Study area.** Set in `pipeline/config.py`.
+   - `west` is the papers' two councils.
+   - `metro` is the 31 Greater Melbourne councils: Merri-bek appears under its ASGS 2021 name, Moreland. Its planning overlays are fetched under the current name, Merri-bek.
+   - An SA1 is kept if its representative point falls inside a study council. For `west`, that leaves 474 SA1s, the same count as Lama & Sun.
 2. **Census attributes.** The 2021 General Community Profile (SA1, VIC) supplies the figures.
 
    | Indicator | Table |
@@ -118,16 +165,25 @@ One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
    | Limited English | G13E |
    | Dwellings with no car | G34 |
    | Dwelling structure, incl. 4+ storey flats | G36 |
-   | Unemployment | G46B |
+   | Unemployment, employed persons | G46B |
+   | Non-school qualifications ("educated population") | G43 |
+   | Personal income $1,750–$1,999/wk ("mean income generating population") | G17A–C |
 
    Denominators exclude "not stated".
 3. **Flood overlays.** The Vicmap Planning `plan_overlay` layer is filtered to LSIO and FO (riverine) and SBO (overland flow), then dissolved. Each SA1 gets the share of its area inside each overlay.
-4. **Apportionment grid.** A 50 m point grid (EPSG:7855) covers the study area. Each point takes the SA1 it falls in and flags for riverine and overland overlays. An SA1 too small to hold a point gets one at its representative point.
-5. **Circle aggregation (in the browser).** Each SA1's counts are spread evenly across its grid points. A circle sums the share of each SA1's points inside it. "Residents in overlay" does the same for points that are both inside the circle and flagged.
+4. **Mesh-block weighting.** This replaced the v0.1 50 m grid, which spread people evenly.
+   - Each ABS 2021 mesh block gets a weight: its share of its SA1's residents, from the ABS Mesh Block Counts.
+   - If that file can't be downloaded, residents go onto Residential mesh blocks in proportion to their area.
+   - Each mesh block also records its category and the share of its area inside riverine and overland-flow overlays.
+5. **Circle aggregation (in the browser).** A circle counts the mesh blocks whose representative point is inside it.
+   - Each SA1 contributes its counts multiplied by the summed weight of those mesh blocks.
+   - "Residents in overlay" uses the same weights, multiplied by each mesh block's overlay share.
+   - Age–sex shares are assumed constant within an SA1, because mesh blocks carry no age data.
+6. **Suburbs.** Each SA1 is assigned to an ABS Suburb and Locality (SAL 2021) by its representative point.
 
 ## How this maps onto the papers
 
-Lama & Sun (2026) build their index in five steps.
+Lama & Sun (2026) build their index in five steps. **All five are implemented in `02_build.py` (v0.3).**
 
 1. Eleven indicators in three dimensions are z-scored, then min–max normalised to 0–1.
 2. AHP weights are applied (n = 11, CR = 0.042).
@@ -137,17 +193,22 @@ Lama & Sun (2026) build their index in five steps.
 
 | Dimension | Indicator | AHP weight | Public substitute here | Status |
 |---|---|---|---|---|
-| Exposure | Flood depth (HEC-RAS, Oct 2022 event) | 0.019 | LSIO/FO/SBO overlay share (extent only, no depth) | Proxy |
-| Exposure | Elevation (Vicmap DEM 10 m) | 0.014 | Vicmap Elevation DEM 10 m, SA1 mean | Planned |
-| Exposure | Sand % in soil (30 m) | 0.014 | Soil and Landscape Grid of Australia, sand % | Planned |
-| Sensitivity | Land use (Esri 10 m) | 0.050 | Esri Land Cover 10 m / ABS mesh-block category | Planned |
+| Exposure | Flood depth (HEC-RAS, Oct 2022 event) | 0.019 | Share of SA1 inside LSIO/FO/SBO overlays (extent only, no depth) | Proxy |
+| Exposure | Elevation (Vicmap DEM 10 m); low = more exposed | 0.014 | Copernicus GLO-30 (30 m surface model), mesh-block samples, area-weighted to SA1 | Substitute |
+| Exposure | Sand % in soil (30 m); more sand = better drainage | 0.014 | SoilGrids 250 m, 0–5 cm | Substitute |
+| Sensitivity | Land use (Esri 10 m) | 0.050 | Share of SA1 area in built-up mesh-block categories (not Parkland, Water or Primary Production) | Substitute |
 | Sensitivity | Number of dwellings | 0.050 | G36 total dwellings | Available |
 | Sensitivity | Population | 0.074 | G01 | Available |
 | Sensitivity | Dependent population (< 20 and > 59) | 0.074 | G04, **and split into age bands** | Available and extended |
 | Sensitivity | Long-term health condition | 0.110 | G20 | Available |
 | Adaptive capacity | Employed population | 0.168 | G46 | Available |
-| Adaptive capacity | Educated population | 0.168 | G49 (non-school qualification) | Planned |
-| Adaptive capacity | "Mean income generating population" (income bracket $91k–$103,999) | 0.259 | G17 personal income bands | Planned, definition to confirm |
+| Adaptive capacity | Educated population | 0.168 | G43 non-school qualifications | Available |
+| Adaptive capacity | "Mean income generating population" ($91,000–$103,999 a year) | 0.259 | G17 persons earning $1,750–$1,999 a week, which is exactly that bracket | Available |
+
+**Assumptions the paper leaves open, and the choices made here:**
+- **Direction for elevation and sand.** The paper doesn't say whether low elevation or high sand is inverted before weighting. Its text implies both should be (low ground and clay soils flood). Their highest Exposure score, 0.043 out of a possible 0.047, is in low-lying Flemington. That only makes sense if low elevation scores high. Both are inverted here.
+- **Classes.** The paper maps five classes without naming the method, which is probably natural breaks. Quintiles are used here, so class boundaries won't match the published figures exactly.
+- **Normalisation scope.** For `metro`, indicators are normalised across all 11,293 SA1s, so its index values aren't comparable with the two-council page.
 
 What this project adds on top:
 
@@ -159,7 +220,7 @@ What this project adds on top:
 
 - **Adaptive capacity carries 0.595 of the weight and flood depth 0.019** (weights from Table 2). An FRI map may therefore mostly show income, education and employment. The plan is to recompute FRI with and without the flood-depth term and report how many SA1s change resilience class.
 - **The indicators appear to be counts, not rates.** Population, dwellings, employed and educated all scale with SA1 size, so larger SA1s can score higher on sensitivity and on adaptive capacity at once. The build will compute both count and rate variants.
-- **Damage uses the same uniform-density assumption** as this prototype. Replacing both with dasymetric weights (roadmap item 2) fixes the prototype and the reproduced Damage Index together.
+- **Damage assumes people are spread evenly within each SA1** (`A1/A × X`, as in the paper). The circles here use mesh-block weights instead. So the Damage index reproduces the paper's assumption, while the circle figures don't share it.
 
 ### Lee, Sun & Wachowicz (2026): spatially adaptive weighting
 
@@ -214,23 +275,25 @@ Both treat "dependent" as one number. Lama & Sun define it as under 20 plus over
 
 ## Known limitations
 
-- **Area-weighted apportionment. This is the largest error source.** Residents are spread over parks, rail yards and industrial land. The Avondale Heights circle shows **0 residents in the riverine overlay** despite touching the Maribyrnong River. The most likely reason is that its riverside SA1s put the overlay on open space while the people live upslope.
+- **Apportionment is still an estimate.** Mesh blocks (v0.3) put people where they actually live, down to about 30–60 residents per block. But a circle includes a whole mesh block or none of it, and age–sex shares are assumed constant within each SA1. The v0.1 even-spreading error, which showed 0 riverine-overlay residents at Avondale Heights, should shrink. That needs re-checking on the first live build.
 - **Overlays are planning controls, not flood modelling.** They show extent only, with no depth, and they don't match the October 2022 event the papers simulated.
 - **Coarse age data.** Age–sex data stops at SA1 level, about 400 people. Below roughly 500 m radius, a circle's pyramid is mostly apportionment artefact.
 - **No basemap** in the self-contained build.
 - **No SEIFA yet.** Income is a population-weighted mean of SA1 medians, which isn't a true median.
+- **Metro page size.** 14.2 MB (about 3 MB compressed), with 11,293 SA1 outlines drawn as SVG. That's slower on phones. MapLibre with vector tiles is the fix (roadmap).
 - **ABS perturbation.** Small random adjustments mean totals differ slightly between tables.
 
 ## Roadmap
 
 Ordered by how much each step changes the numbers, not the look.
 
-1. **Repository hygiene.** *(done)* Layout matches the commands, papers in `papers/`, and this README. Next: SHA-256 manifest of raw inputs, and `01_fetch.sh` fails loudly on an empty or HTML download.
-2. **Dasymetric weighting from mesh blocks.** ABS 2021 mesh blocks (about 30–60 residents each) publish real **population and dwelling counts** and a **land-use category** (Residential, Parkland, Industrial…). That makes them the best public weight layer: parks and industrial blocks get their true, usually near-zero, population, not an even share. Within each mesh block, split further by G-NAF residential address points or building footprints. Mesh blocks carry **no age–sex data**, so a circle's pyramid is still built from SA1 age shares, now weighted by where people actually live. Check that SA1 totals are preserved within ABS perturbation, then report how the A/B figures and in-overlay counts change.
+1. **Repository hygiene.** *(done, v0.2)* Layout matches the commands, papers in `papers/`, and this README. Next: SHA-256 manifest of raw inputs, and `01_fetch.sh` fails loudly on an empty or HTML download.
+2. **Dasymetric weighting from mesh blocks.** *(done, v0.3; G-NAF refinement and the mesh-block view mode still open)* ABS 2021 mesh blocks (about 30–60 residents each) publish real **population and dwelling counts** and a **land-use category** (Residential, Parkland, Industrial…). That makes them the best public weight layer: parks and industrial blocks get their true, usually near-zero, population, not an even share. Within each mesh block, split further by G-NAF residential address points or building footprints. Mesh blocks carry **no age–sex data**, so a circle's pyramid is still built from SA1 age shares, now weighted by where people actually live. Check that SA1 totals are preserved within ABS perturbation, then report how the A/B figures and in-overlay counts change.
    - **Mesh-block view mode.** A third geography next to SA1 and circle, answering "who lives *here*". The panel shows mesh-block population, dwellings and category, plus the age pyramid of the parent SA1, labelled as *inherited*, never as the mesh block's own.
-3. **Reproduce the Lama & Sun indicators.** Add elevation, sand %, land use, education and the income bracket. Compute FRI, Damage Index and IFRI with their AHP weights. Map them next to the pyramids, and run the sensitivity checks above.
+3. **Reproduce the Lama & Sun indicators.** *(done, v0.3; the sensitivity checks below are still open)* Add elevation, sand %, land use, education and the income bracket. Compute FRI, Damage Index and IFRI with their AHP weights. Map them next to the pyramids, and run the sensitivity checks above.
 4. **MapLibre GL JS plus a real basemap.** Replace the inline SVG map. SA1s become a vector source. Circles become draggable GeoJSON using Turf.js `circle` and `booleanPointInPolygon`. Basemap: OpenFreeMap or CARTO Positron/Dark Matter (no key), or MapTiler/Mapbox with a key kept out of git. Add the video's **Circle / Compare / Density** modes. Parcels mode depends on step 2.
 5. **SEIFA 2021 (IRSD / IRSAD)** at SA1, added to the table and choropleth.
+5b. **All Greater Melbourne.** *(done, v0.3)* A second page for the 31 councils, sharing the pipeline.
 6. **Modelled depth.** If Chayn Sun shares the HEC-RAS October 2022 depth raster, replace the overlay proxy with depth bands (for example > 0.3 m, > 0.5 m, > 1.2 m, matching common vehicle and pedestrian stability thresholds). Otherwise use Melbourne Water's 1% AEP flood extent where licensing allows.
 7. **Second paper (Lee, Sun & Wachowicz).** Add its method once it is reviewed.
 8. **Publish.** *(workflow added)* GitHub Pages deploys from `dist/` on every push to `main`. Still to do: link it from the portfolio site.
@@ -242,8 +305,7 @@ Ordered by how much each step changes the numbers, not the look.
 | Tool | Why | Install |
 |---|---|---|
 | Python 3.10+ with `geopandas`, `shapely`, `pandas`, `numpy` | Pipeline | `pip install -r requirements.txt` |
-| `rasterio`, `rasterstats` | Elevation, sand % and depth rasters per SA1 (roadmap 3, 6) | to be added to `requirements.txt` |
-| `bash`, `curl`, `unzip` | `01_fetch.sh` | Git Bash or WSL on Windows |
+| `rasterio`, `openpyxl` | Elevation/sand sampling; reading the mesh-block counts workbook | in `requirements.txt` |
 | MapLibre GL JS, Turf.js | Basemap map and circle geometry (roadmap 4) | CDN (`cdn.jsdelivr.net/npm/maplibre-gl`, `@turf/turf`) or npm |
 | Optional: `tippecanoe` / PMTiles | Only if the SA1 layer outgrows inline GeoJSON | not needed yet |
 
@@ -268,9 +330,8 @@ The cloud environment's network policy blocks the data hosts by default. To run 
 
 | Dataset | Unlocks | Source | Public? |
 |---|---|---|---|
-| Mesh Block 2021 boundaries and counts (population, dwellings, category) | Dasymetric weighting, mesh-block view | ABS ASGS 2021 and "Mesh Block Counts, 2021" | Yes |
 | SEIFA 2021 at SA1 (IRSD, IRSAD, IER, IEO) | Lee et al. vulnerability and exposure | ABS | Yes |
-| Vicmap Elevation DEM 10 m | Elevation, slope, curvature, drainage density | DataVic / Vicmap | Yes |
+| Vicmap Elevation DEM 10 m (to replace Copernicus 30 m) | Finer elevation, slope, curvature, drainage density | DataVic / Vicmap | Yes |
 | Microsoft Global ML Building Footprints (Australia) | Building density, dasymetric refinement | Microsoft (ODbL) | Yes |
 | Tree canopy extent | Vegetation density | DataVic (DELWP) | Yes |
 | Vicmap road casement | Transport density | DataVic | Yes |
@@ -282,4 +343,7 @@ The cloud environment's network policy blocks the data hosts by default. To run 
 
 - **ABS** Census 2021 GCP DataPack (SA1, VIC) and ASGS 2021 boundaries: CC BY 4.0, © Commonwealth of Australia.
 - **Vicmap Planning** overlays via DataVic: CC BY 4.0, © State of Victoria.
+- **ABS** Mesh Block Counts 2021 and Suburbs and Localities 2021: CC BY 4.0.
+- **Copernicus GLO-30 DEM:** © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA.
+- **SoilGrids 2.0 (ISRIC):** CC BY 4.0.
 - **Lama & Sun (2026):** CC BY 4.0. The methodology and weights are cited and credited. None of the authors' data is redistributed here.
