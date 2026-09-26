@@ -8,7 +8,7 @@ points, DEM, soil sand) log a warning and 02_build.py falls back, saying so in i
 
 Every download is cached under data/raw/: delete a file to fetch it again.
 """
-import argparse, io, json, math, os, sys, time, urllib.parse, urllib.request, zipfile
+import argparse, io, json, math, os, re, sys, time, urllib.parse, urllib.request, zipfile
 sys.path.insert(0, os.path.dirname(__file__))
 from config import STUDIES, norm_lga
 
@@ -159,7 +159,6 @@ def wfs_overlays(bbox, lgas, out):
 def wfs_layer(pattern, prefer):
     """Find a layer on the Vicmap GeoServer by name. Layer names change between
     GeoServer releases, so search GetCapabilities instead of hard-coding one."""
-    import re
     caps = get(WFS, {"service": "WFS", "version": "2.0.0", "request": "GetCapabilities"})
     names = re.findall(r"<(?:wfs:)?Name>([^<]+)</(?:wfs:)?Name>", caps)
     hits = [n for n in names if re.search(pattern, n, re.I)]
@@ -187,14 +186,29 @@ def wfs_points(bbox, out, pattern=r"address", prefer=(r"address_point$", r"addr.
     # The WFS 2.0 URN form of EPSG:4326 is lat/lon; the short form is lon/lat on GeoServer.
     boxes = [f"{bbox[1]},{bbox[0]},{bbox[3]},{bbox[2]},urn:ogc:def:crs:EPSG::4326",
              f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]},EPSG:4326"]
-    pts, start, n = [], 0, 50000
+    # The server caps every response (5,000 features at the time of writing) whatever `count`
+    # asks for, so page until an empty response, sort on a key for stable paging, and check the
+    # total against the server's own numberMatched.
+    fields = re.findall(r'name="([^"]+)"', desc)
+    key = next((f for f in ("ufi", "pfi", "objectid", "id") if f in fields), None)
+    pts, start, total = [], 0, None
     while True:
-        js = get_json(WFS, {"service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": layer,
-                            "outputFormat": "application/json", "srsName": "EPSG:4326", "propertyName": geom,
-                            "bbox": boxes[0], "count": n, "startIndex": start})
+        q = {"service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": layer,
+             "outputFormat": "application/json", "srsName": "EPSG:4326", "propertyName": geom,
+             "bbox": boxes[0], "count": 50000, "startIndex": start}
+        if key:
+            q["sortBy"] = key
+        js = get_json(WFS, q)
         got = js.get("features", [])
         if not got and start == 0 and len(boxes) > 1:
             print("  address points: none with lat/lon bbox, retrying lon/lat"); boxes.pop(0); continue
+        if total is None:
+            total = js.get("numberMatched", js.get("totalFeatures"))
+            total = total if isinstance(total, int) else None
+            print(f"  address points: {total if total is not None else 'unknown'} matched; "
+                  f"{len(got)} per page, sorted by {key or '(server order)'}")
+        if not got:
+            break
         for f in got:
             c = (f.get("geometry") or {}).get("coordinates")
             if c:
@@ -202,10 +216,12 @@ def wfs_points(bbox, out, pattern=r"address", prefer=(r"address_point$", r"addr.
                     c = c[0]
                 pts.append(c[:2])
         start += len(got)
-        if len(got) < n:
+        if total is not None and start >= total:
             break
-        if start % 500000 == 0:
+        if start % 250000 < len(got):
             print(f"  address points: {start:,} so far")
+    if total is not None and len(pts) < 0.99 * total:
+        raise RuntimeError(f"incomplete download: {len(pts):,} of {total:,} address points")
     if not pts:
         raise RuntimeError(f"{layer} returned no points in {bbox}")
     a = np.asarray(pts, dtype=np.float32)

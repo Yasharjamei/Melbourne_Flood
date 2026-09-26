@@ -227,3 +227,9 @@ The Casey screenshot now shows A = 4,503 (Cranbourne East) and B = 3,958 (Narre 
 
 **History rewrite (not done in-session).** The request to re-author earlier commits and remove the branch name and trailers from history needs a force-push to `main`. The session's permission policy blocked it, so it is left for the repository owner to run or approve.
 
+**Caught before merging: a truncated address download.** The first CI run fetched only 5,000 address points per study area. The Vicmap server caps every response at 5,000 features whatever `count` requests, and the paging loop took a short page as the end. Only 269 of 2,661 mesh blocks (west) had addresses, so most kept their area share. The exposure numbers from that run were a silent mix of two methods and were not published. Fixes:
+- `wfs_points` pages until an empty response, sorts on the layer key, and fails if it receives fewer points than the server's `numberMatched`.
+- `02_build.py` refuses the address method when under 80% of populated mesh blocks have a point.
+
+Both were tested against a simulated capped server and a truncated file.
+

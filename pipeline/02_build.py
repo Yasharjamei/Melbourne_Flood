@@ -205,11 +205,17 @@ if os.path.exists(ADDR):
         g = pts.groupby("m")
         n = g.size().reindex(mb.index).fillna(0)
         has = n > 0
+        # Guard: a truncated download leaves most mesh blocks without addresses and would
+        # silently mix two methods. Require addresses in 80% of populated mesh blocks.
+        cover = float(has[mb["pop"] > 0].mean()) if (mb["pop"] > 0).any() else 0.0
+        if cover < 0.8:
+            raise RuntimeError(f"only {cover:.0%} of populated mesh blocks have an address point")
         for k in ("riv", "sbo", "any"):
             mb.loc[has, k] = (g[k].sum().reindex(mb.index)[has] / n[has]).values
         mb["naddr"] = n.astype(int).values
         print(f"address points: {len(a):,} read, {len(pts):,} in study mesh blocks, "
-              f"{int(pts['any'].sum()):,} inside an overlay; {int(has.sum())} of {len(mb)} mesh blocks have addresses")
+              f"{int(pts['any'].sum()):,} inside an overlay; {int(has.sum())} of {len(mb)} mesh blocks have addresses "
+              f"({cover:.1%} of populated ones)")
         NOTES.append("Flood exposure: share of each mesh block's Vicmap Address points inside an overlay, "
                      "weighted by mesh-block residents (area share where a mesh block has no address).")
     except Exception as e:
