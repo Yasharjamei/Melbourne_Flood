@@ -233,3 +233,9 @@ The Casey screenshot now shows A = 4,503 (Cranbourne East) and B = 3,958 (Narre 
 
 Both were tested against a simulated capped server and a truncated file.
 
+**Result (CI, head 575e759).**
+- **Address download:** 184,780 points (west) and 3,123,830 (metro, 19 minutes with 8 parallel requests). Every populated mesh block has at least one.
+- **Residents in overlays**, by area share → by address: 10,721 → 7,170 (west) and 239,650 → 185,538 (metro). The area measure overstated exposure by 50% and 29%.
+- **Largest single correction:** a Footscray SA1 with 48% of its area but about 1% of its residents in an overlay.
+- **Regression:** MGWR R² 0.444 vs GWR 0.218. Elevation is significant everywhere. Sand was not dropped this time, because GWR chose a wider bandwidth.
+

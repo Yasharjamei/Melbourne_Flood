@@ -24,9 +24,12 @@ The project applies two flood-resilience papers to the same 474 SA1 "urban units
 | Mesh blocks (with residents) | 2,661 (2,228) | 58,563 (48,770) |
 | Residents placed by mesh-block counts / Census SA1 total | 207,015 / 207,058 | 4,833,357 / 4,833,389 |
 | Flood-overlay polygons (LSIO, FO, SBO) | 72 | 2,302 |
-| FRI range (paper, two councils: −0.148 to 0.228) | −0.169 to 0.272 | −0.225 to 0.211 |
+| FRI range (paper, two councils: −0.148 to 0.228) | −0.168 to 0.272 | −0.225 to 0.211 |
+| Vicmap Address points fetched / inside study mesh blocks | 184,780 / 135,885 | 3,123,830 / 2,967,784 |
+| Populated mesh blocks with at least one address | 100% | 100% |
+| **Residents in a flood overlay: by area share → by address** | **10,721 → 7,170** (area overstated by 50%) | **239,650 → 185,538** (by 29%) |
 | Max Exposure (paper: 0.043 of a possible 0.047) | 0.047 | 0.047 |
-| Page size (compressed on the wire) | 0.6 MB | 14.2 MB (about 3 MB) |
+| Page size (compressed on the wire) | 0.6 MB | 14.3 MB (about 3 MB) |
 
 The residents placed by mesh-block counts match the Census SA1 totals to within 0.02%; the small gap is ABS perturbation between the two releases. The FRI range lands close to the paper's, even with the substituted depth, elevation and sand inputs.
 
@@ -197,7 +200,10 @@ One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
    - **Since v0.5, exposure is measured on residents, not land.** Every Vicmap Address point (one per property or unit) is joined to its mesh block and flagged if it lies inside an overlay.
    - A mesh block's in-overlay share is the share of its **addresses** inside the overlay. A mesh block without addresses falls back to its area share.
    - Each SA1's share is the resident-weighted mean over its mesh blocks. The old area share is kept in the data as `fa` for comparison.
-   - **Why it matters:** a mesh block or SA1 beside a creek often contains a reserve that is the only part in the overlay. By area it looks exposed; by where people live, it may not be. The reverse happens where housing sits in a narrow overlay strip. The verified build table above reports how far the two measures differ.
+   - **Why it matters:** a mesh block or SA1 beside a creek often contains a reserve that is the only part in the overlay. By area it looks exposed; by where people live, it often isn't.
+   - **Measured on the published build:** the area measure overstated residents in overlays by **50%** in Maribyrnong + Moonee Valley (10,721 → 7,170) and by **29%** across Greater Melbourne (239,650 → 185,538).
+   - 824 metro SA1s dropped by more than 5 percentage points, and 191 rose. Some SA1s have housing in a narrow overlay strip, which the area share understated.
+   - Example: SA1 21303134845 in Footscray has 48% of its area in an overlay but about 1% of its residents.
    - If the address layer can't be fetched, the build falls back to mesh-block area shares, still resident-weighted, and says so in the page footer.
 4. **Mesh-block weighting.** This replaced the v0.1 50 m grid, which spread people evenly.
    - Each ABS 2021 mesh block gets a weight: its share of its SA1's residents, from the ABS Mesh Block Counts.
@@ -235,9 +241,9 @@ Each check below runs on every build unless marked otherwise. Anything not teste
 | Quantity | Lama & Sun (2026) | This build |
 |---|---|---|
 | Number of SA1s in Maribyrnong + Moonee Valley | 474 | 474 |
-| FRI range | −0.148 to 0.228 | −0.169 to 0.272 |
+| FRI range | −0.148 to 0.228 | −0.168 to 0.272 |
 | Maximum Exposure (of a possible 0.047) | 0.043 | 0.047 |
-| MGWR better than GWR? | yes (R² 0.767 vs 0.755) | yes (R² 0.647 vs 0.526) |
+| MGWR better than GWR? | yes (R² 0.767 vs 0.755) | yes (R² 0.444 vs 0.218; lower because the response is now residents, not land) |
 
 The ranges agree closely, even though three inputs are public substitutes:
 
@@ -320,13 +326,18 @@ This build follows 2.2.3, for two reasons:
 
 **The results aren't comparable with the paper's,** because the response is the overlay-share proxy, which is zero for most SA1s, instead of HEC-RAS depth. The page says so beside the table.
 
-**Result on real data (two councils, 474 SA1s):**
-- **Sand % in soil was dropped.** SoilGrids is a 250 m raster, so sand barely varies inside a neighbourhood and is collinear with the local intercept. GWR's intercept and sand coefficients blew up (means of about 10¹¹ and 10¹⁵). The pipeline now detects this, drops the variable and refits, and the page names what was dropped.
-- **GWR:** R² 0.526, adjusted R² 0.458, AICc 1130.4, bandwidth 175 SA1s. The paper reports 0.755, 0.684, 916.1 and 62.
-- **MGWR:** R² 0.647, adjusted R² 0.588, AICc 1013.8. The paper reports 0.767, 0.724 and 831.6. Bandwidths are 51–98 SA1s for the intercept, elevation, land use and dependent population, which vary locally. The other six are global (473 SA1s).
-- **As in the paper, MGWR beats GWR** on every fit statistic. Earlier runs diverged. The singular sand column caused that, not (as I first thought) the collinear counts alone. Bandwidths stay floored at 50 SA1s, and a failed fit still falls back to GWR with a note on the page.
+**Result on real data (two councils, 474 SA1s, v0.5: response = share of residents in an overlay):**
+- **GWR:** R² 0.218, adjusted R² 0.152, AICc 1310.7, bandwidth 291 SA1s. The paper reports 0.755, 0.684, 916.1 and 62.
+- **MGWR:** R² 0.444, adjusted R² 0.364, AICc 1206.3. The paper reports 0.767, 0.724 and 831.6.
+  - Only the intercept and land use vary locally (bandwidth 51 SA1s).
+  - Elevation is regional (327).
+  - The other eight are global (473 SA1s).
+- **As in the paper, MGWR beats GWR** on every fit statistic.
+- **Elevation is the one clear, stable effect.** It is negative and significant in every SA1: lower ground has more residents inside overlays, as it should.
+- **Why the fit dropped from v0.4** (then GWR 0.526, MGWR 0.647, on the *area* share): much of the old area share was parks and creek reserves. Land cover explains those well, and they had nothing to do with where people live. The resident-based response is the harder and more honest target.
+- **The sand history.** In v0.4, SoilGrids sand (a 250 m raster) was almost constant inside each GWR neighbourhood, and its coefficient blew up to about 10¹⁵. A guard now detects this, drops the variable and refits, and the page names it. With the v0.5 response, GWR chose a wider bandwidth (291) and sand stayed stable, so nothing was dropped. The guard remains in place.
 
-**Collinearity.** The page reports a variance inflation factor for each variable (population 39.0, dwellings 15.0, employed 53.4, educated 44.9). Population, dwellings, employed, educated and income earners are all counts that grow with SA1 size. Their coefficients can't be interpreted separately wherever VIF is above 10, and that applies to the paper's specification too. The fitted model shows the symptom: population (+0.63) and employed population (−0.63) are both significant everywhere, with near-equal and opposite coefficients. That is a suppression pair, not two real effects.
+**Collinearity.** The page reports a variance inflation factor for each variable: population 39.4, dwellings 15.1, employed 53.5, educated 44.9. Population, dwellings, employed, educated and income earners are all counts that grow with SA1 size. Their coefficients can't be interpreted separately wherever VIF is above 10, and that applies to the paper's specification too. The fitted model shows the symptom: population is +0.67 and significant everywhere, while employed (−0.43) and educated (−0.37) pull the other way. That is a suppression pattern, not three real effects.
 
 **Scope.** GWR and MGWR run on the two-council study area (474 SA1s, about 12 minutes on 4 cores). They aren't run on the 11,293 metro SA1s, because MGWR's cost grows with the square of the number of units. The correlation matrix is computed for both pages.
 
