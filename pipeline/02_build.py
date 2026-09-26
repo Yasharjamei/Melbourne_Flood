@@ -179,15 +179,54 @@ if os.path.exists("data/raw/shared/mb_counts_2021.xlsx"):
 if pop is None:
     mb["pop"] = np.where(mb["cat"].str.lower().str.startswith("residential"), mb["area"], 0.0)
     NOTES.append("Mesh-block counts unavailable: residents placed on Residential mesh blocks in proportion to area.")
+# ---------------- address points: where dwellings actually sit inside each mesh block
+# A mesh block holds about 30-60 dwellings, but can also contain a park or creek reserve
+# that is the only part in a flood overlay. Its area share then overstates how many
+# residents are exposed. Vicmap Address has one point per property or unit, so the share
+# of a mesh block's addresses inside an overlay is a closer estimate of its residents'.
+mb["riv"] = share_in(mb, riv); mb["sbo"] = share_in(mb, sbo)
+mb["any"] = np.minimum(1, mb["riv"] + mb["sbo"])
+mb["naddr"] = 0
+ADDR = f"{RAW}/addr.npy"
+if os.path.exists(ADDR):
+    try:
+        a = np.load(ADDR)
+        pts = gpd.GeoDataFrame(geometry=gpd.points_from_xy(a[:, 0], a[:, 1]), crs=4326).to_crs(CRS)
+        pts = gpd.sjoin(pts, mb[["geometry"]], predicate="within", how="inner")
+        pts = pts[~pts.index.duplicated()].rename(columns={"index_right": "m"})[["m", "geometry"]]
+        def inside(zone):
+            parts = gpd.GeoDataFrame(geometry=list(getattr(zone, "geoms", [zone])), crs=CRS)
+            parts = parts[~parts.is_empty]
+            if parts.empty:
+                return np.zeros(len(pts), bool)
+            hit = gpd.sjoin(pts, parts, predicate="within", how="inner").index.unique()
+            return pts.index.isin(hit)
+        pts["riv"] = inside(riv); pts["sbo"] = inside(sbo); pts["any"] = pts["riv"] | pts["sbo"]
+        g = pts.groupby("m")
+        n = g.size().reindex(mb.index).fillna(0)
+        has = n > 0
+        for k in ("riv", "sbo", "any"):
+            mb.loc[has, k] = (g[k].sum().reindex(mb.index)[has] / n[has]).values
+        mb["naddr"] = n.astype(int).values
+        print(f"address points: {len(a):,} read, {len(pts):,} in study mesh blocks, "
+              f"{int(pts['any'].sum()):,} inside an overlay; {int(has.sum())} of {len(mb)} mesh blocks have addresses")
+        NOTES.append("Flood exposure: share of each mesh block's Vicmap Address points inside an overlay, "
+                     "weighted by mesh-block residents (area share where a mesh block has no address).")
+    except Exception as e:
+        print("WARNING could not use address points:", e)
+if not mb["naddr"].any():
+    NOTES.append("Flood exposure: area share of each mesh block inside an overlay, weighted by mesh-block residents "
+                 "(address points unavailable for this build).")
 tot = mb.groupby("i")["pop"].transform("sum")
 atot = mb.groupby("i")["area"].transform("sum")
 mb["w"] = np.where(tot > 0, mb["pop"] / tot.where(tot > 0, 1), mb["area"] / atot)
-mb["riv"] = share_in(mb, riv); mb["sbo"] = share_in(mb, sbo)
 area_i = mb.groupby("i")["area"].sum()
 nonurban = mb["cat"].str.lower().str.contains("parkland|water|primary production")
 urban = ((mb["area"] * ~nonurban).groupby(mb["i"]).sum() / area_i).reindex(range(len(sa))).fillna(0)
-rivA = ((mb["area"] * mb["riv"]).groupby(mb["i"]).sum() / area_i).reindex(range(len(sa))).fillna(0)
-sboA = ((mb["area"] * mb["sbo"]).groupby(mb["i"]).sum() / area_i).reindex(range(len(sa))).fillna(0)
+# Resident-weighted shares per SA1: w is each mesh block's share of the SA1's residents.
+rw = lambda k: (mb["w"] * mb[k]).groupby(mb["i"]).sum().reindex(range(len(sa))).fillna(0)
+rivA, sboA, anyA = rw("riv"), rw("sbo"), rw("any")
+areaA = ((mb["area"] * mb["any"]).groupby(mb["i"]).sum() / area_i).reindex(range(len(sa))).fillna(0)
 print(f"mesh blocks: {len(mb)}; categories: {mb['cat'].value_counts().head(8).to_dict()}")
 
 # ---------------- rasters sampled at mesh-block points, area-weighted to SA1
@@ -218,12 +257,12 @@ NOTES.append("Elevation: Copernicus GLO-30 surface model, 30 m (the paper used t
              else "Elevation unavailable for this build, so the elevation term is left out of Exposure.")
 NOTES.append("Sand: SoilGrids 250 m, 0-5 cm (the paper used the 30 m Victorian soil grid)." if sand is not None
              else "Soil sand % unavailable for this build, so the sand term is left out of Exposure.")
-NOTES.append("Flood depth: share of each SA1 inside LSIO/FO/SBO planning overlays (the paper used HEC-RAS depth).")
+NOTES.append("Flood depth: share of each SA1's residents inside LSIO/FO/SBO planning overlays (the paper used HEC-RAS depth).")
 
 # ---------------- Lama & Sun (2026) indices
 dwell = g36[dwell_cols].sum(axis=1).values
 dep = M[:, :4].sum(axis=1) + F[:, :4].sum(axis=1) + M[:, 12:].sum(axis=1) + F[:, 12:].sum(axis=1)   # under 20 and 60+
-flood = np.minimum(1, rivA.values + sboA.values)
+flood = anyA.values   # residents, not land: a flooded park no longer counts as exposure
 ind = pd.DataFrame({
     "flood": flood, "elev": elev.values if elev is not None else np.nan,
     "sand": sand.values if sand is not None else np.nan, "urban": urban.values, "dwell": dwell,
@@ -275,6 +314,7 @@ for i, c in enumerate(codes):
         d_flathigh=int(g36.loc[c, "OPDs_F_ap_I_4to8_sty_blk_Ds"] + g36.loc[c, "OPDs_F_ap_I_9_m_sty_blk_Ds"]),
         d_other=int(g36.loc[c, "OPDs_Other_dwelling_Tot_Dwgs"]), inc=int(g2.loc[c, "Median_tot_hhd_inc_weekly"]),
         riv=round(float(rivA[i]), 4), sbo=round(float(sboA[i]), 4),
+        fl=round(float(anyA[i]), 4), fa=round(float(areaA[i]), 4),
         ls=[r4(dim["exposure"][i]), r4(dim["sensitivity"][i]), r4(dim["adaptive"][i]), r4(FRI[i]), r4(DMG[i]), r4(IFRI[i])]))
 
 # ---------------- geometry for the browser
@@ -298,6 +338,7 @@ mbo = mb.assign(x=p4.x.round(5), y=p4.y.round(5))
 mbo = mbo[(mbo["w"] > 0) | (mbo["riv"] + mbo["sbo"] > 0)]
 out = dict(
     meta=dict(study=STUDY, title=ST["title"], label=ST["label"], n=len(sa), lat0=round(float(p4.y.mean()), 3),
+              addr=bool(mb["naddr"].any()),
               notes=NOTES, other={"west": ["All of Melbourne", "metro/"], "metro": ["Maribyrnong & Moonee Valley", "../"]}[STUDY]),
     sa1=recs, shapes=[gj(g) for g in sa.geometry], stats=stats,
     mb=[[r.x, r.y, int(r.i), round(float(r.w), 4), round(float(r.riv), 2), round(float(r.sbo), 2)] for r in mbo.itertuples()],

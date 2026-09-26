@@ -77,6 +77,8 @@ td.us{font-weight:600}
 <script id="data" type="application/json">__DATA__</script>
 <script>
 (function(){
+// Analysis page: Lama & Sun Table 5 + bandwidth/VIF table (from D.stats, west only), Fig. 4
+// coefficient maps, Fig. 7 scatter matrix of the six indices (D.sa1[].ls). See docs/ARCHITECTURE.md §2.7.
 const D=JSON.parse(document.getElementById('data').textContent),S=D.sa1,META=D.meta,ST=D.stats;
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const DARK=css('--ground').toLowerCase()==='#141817';

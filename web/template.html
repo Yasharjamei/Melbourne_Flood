@@ -132,7 +132,7 @@ td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
     <table id="tbl"><colgroup><col><col style='width:62px'><col style='width:62px'><col style='width:90px'></colgroup><thead><tr><th>Indicator</th><th class="a">A</th><th class="b">B</th><th style='padding-left:8px' class="alllab"></th></tr></thead><tbody></tbody></table>
     <div class="warn" id="depnote">Lama &amp; Sun group everyone under 20 and over 59 as one "dependent population". The pyramid above shows why that hides the difference between a young family suburb and an ageing one: they need different evacuation plans.</div>
     <div class="foot">
-      <p>Census 2021 General Community Profile (ABS) by SA1; SA1, mesh block, suburb and council boundaries, ASGS 2021. Flood extents are Victorian planning scheme overlays: Land Subject to Inundation and Floodway (riverine) and Special Building Overlay (overland flow), Vicmap Planning, DataVic. Basemap © OpenStreetMap contributors © CARTO.</p>
+      <p>Census 2021 General Community Profile (ABS) by SA1; SA1, mesh block, suburb and council boundaries, ASGS 2021. Flood extents are Victorian planning scheme overlays: Land Subject to Inundation and Floodway (riverine) and Special Building Overlay (overland flow), Vicmap Planning, DataVic. Residents are placed within mesh blocks at Vicmap Address points (DataVic, CC BY 4.0) where available. Basemap © OpenStreetMap contributors © CARTO.</p>
       <p>Circle figures are estimates. Each SA1's counts are split across its mesh blocks in proportion to where people live, and a circle counts the mesh blocks whose centre falls inside it. With a council selected, circles count residents of that council only. Age–sex shares within an SA1 are assumed the same across its mesh blocks. ABS perturbation means totals can differ slightly between tables.</p>
       <p>Lama &amp; Sun (2026) indices use their Table 2 weights and formulas: FRI = Adaptive capacity − (Sensitivity + Exposure); IFRI = 0.5·FRI − 0.5·Damage index. Maps use five quantile classes; FRI and IFRI use three classes each side of zero. Substitutions for data the paper used but did not publish:</p>
       <ul id="notes" style="margin:0 0 6px 18px;padding:0"></ul>
@@ -144,6 +144,9 @@ td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
 <script id="data" type="application/json">__DATA__</script>
 <script>
 (function(){
+// Map page. Data contract (D = data/processed/<study>.json): see docs/ARCHITECTURE.md §3.
+// Flow: load data -> build METRICS/filters -> map.on('load') adds layers and pins -> every
+// interaction ends in recolour() (map classes) and/or update() (side panel + pyramid).
 const D=JSON.parse(document.getElementById('data').textContent);
 const S=D.sa1, C=D.mb, NB=18, META=D.meta;
 const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -177,7 +180,7 @@ const METRICS=[
   {g:'Housing and income',k:'high',l:'Dwellings in 4+ storey blocks',f:s=>pct(s.d_flathigh,s.dwell),fmt:P,r:'BuPu',zero:true,none:'No 4+ storey dwellings'},
   {g:'Housing and income',k:'unemp',l:'Unemployment rate',f:s=>pct(s.unemp,s.lf),fmt:P,r:'YlOrBr'},
   {g:'Housing and income',k:'inc',l:'Median household income',f:s=>s.inc>0?s.inc:NaN,fmt:v=>'$'+Math.round(v).toLocaleString(),r:'Greens',unit:'Per week'},
-  {g:'Flood',k:'flood',l:'Area in flood overlay',f:s=>Math.min(1,s.riv+s.sbo),fmt:v=>(v*100).toFixed(0)+'%',r:'Blues',zero:true,none:'Not in an overlay'},
+  {g:'Flood',k:'flood',l:'Residents in flood overlay',f:s=>s.fl!=null?s.fl:Math.min(1,s.riv+s.sbo),fmt:v=>(v*100).toFixed(0)+'%',r:'Blues',zero:true,none:'Not in an overlay'},
   ...['Exposure','Sensitivity','Adaptive capacity','Flood Resilience Index (FRI)','Damage index','Integrated FRI (IFRI)'].map((l,j)=>({
     g:'Lama & Sun (2026) indices',k:'ls'+j,l,ls:true,f:s=>s.ls&&s.ls[j]!=null?s.ls[j]:NaN,fmt:v=>v.toFixed(3),
     r:['OrRd','PuBu','YlGn','RdBu','YlOrRd','RdYlBu'][j],div:j===3||j===5,
@@ -246,14 +249,19 @@ loadStyle().then(style=>{
     add({id:'riv-line',type:'line',source:'riv',paint:{'line-color':'#1c5cab','line-width':.8}});
     add({id:'tint-a',type:'fill',source:'sa1',paint:{'fill-color':css('--a'),'fill-opacity':fs('ta',0)}});
     add({id:'tint-b',type:'fill',source:'sa1',paint:{'fill-color':css('--b'),'fill-opacity':fs('tb',0)}});
-    add({id:'sal-line',type:'line',source:'sal',minzoom:10.5,paint:{'line-color':css('--muted'),'line-width':.7,'line-dasharray':[3,2],'line-opacity':.8}});
+    // Suburb boundaries: a pale halo under a solid dark line keeps them readable over any fill
+    // colour; both thicken with zoom. (Previously a thin dashed grey line from zoom 10.5.)
+    add({id:'sal-halo',type:'line',source:'sal',minzoom:9,layout:{'line-join':'round'},paint:{'line-color':css('--panel'),'line-opacity':.75,
+      'line-width':['interpolate',['linear'],['zoom'],9,1.6,12,3.2,15,5]}});
+    add({id:'sal-line',type:'line',source:'sal',minzoom:9,layout:{'line-join':'round'},paint:{'line-color':css('--ink'),'line-opacity':['interpolate',['linear'],['zoom'],9,.45,12,.8],
+      'line-width':['interpolate',['linear'],['zoom'],9,.6,12,1.3,15,2.2]}});
     add({id:'sal-sel',type:'line',source:'sal',filter:['==',['get','name'],''],paint:{'line-color':css('--ink'),'line-width':2.4}});
     add({id:'lga-line',type:'line',source:'lga',paint:{'line-color':css('--ink'),'line-width':['interpolate',['linear'],['zoom'],9,1,13,2.2],'line-opacity':.85}});
     add({id:'sa1-hover',type:'line',source:'sa1',paint:{'line-color':css('--ink'),'line-width':['case',['boolean',['feature-state','hover'],false],2,0]}});
     map.addLayer({id:'rings',type:'line',source:'rings',paint:{'line-color':['get','col'],'line-width':2.4}});
     const tf=sym&&sym.layout&&sym.layout['text-font'];
     if(style.glyphs&&tf){ // suburb names, only when the basemap supplies fonts
-      map.addLayer({id:'sal-label',type:'symbol',source:'salpt',minzoom:11.5,layout:{'text-field':['get','name'],'text-font':tf,'text-size':11,'text-transform':'uppercase','text-letter-spacing':.06,'text-max-width':8},
+      map.addLayer({id:'sal-label',type:'symbol',source:'salpt',minzoom:11,layout:{'text-field':['get','name'],'text-font':tf,'text-size':['interpolate',['linear'],['zoom'],11,11,14,13],'text-transform':'uppercase','text-letter-spacing':.06,'text-max-width':8},
         paint:{'text-color':css('--muted'),'text-halo-color':css('--panel'),'text-halo-width':1.6}});
     }
     if(style===BLANK)document.getElementById('bm').parentElement.style.display='none';
@@ -269,6 +277,7 @@ loadStyle().then(style=>{
   });
 });
 
+// Map and control event handlers (hover tooltip, click to place pins, layer toggles, filters).
 function wire(){
   map.on('mousemove','sa1-fill',e=>{
     const f=e.features[0];if(!f)return;const i=f.id,s=S[i];
@@ -276,7 +285,7 @@ function wire(){
     hoverId=i;map.setFeatureState({source:'sa1',id:i},{hover:true});
     const v=metric.f(s),r=map.getContainer().getBoundingClientRect();
     tip.style.display='block';tip.style.left=Math.min(e.point.x+14,r.width-270)+'px';tip.style.top=(e.point.y+14)+'px';
-    tip.innerHTML=`<strong>${s.sub}</strong> · ${s.lga}<br>SA1 ${s.id} · ${s.pop.toLocaleString()} residents<br>${metric.l}: ${isFinite(v)?metric.fmt(v):'n/a'}${(s.riv+s.sbo)>0?`<br>${Math.round(Math.min(1,s.riv+s.sbo)*100)}% in flood overlay`:''}${[['A',tintA],['B',tintB]].map(([n,w])=>share(w,i)?`<br>Counted in ${n}: ${share(w,i)} of residents`:'').join('')}`;
+    tip.innerHTML=`<strong>${s.sub}</strong> · ${s.lga}<br>SA1 ${s.id} · ${s.pop.toLocaleString()} residents<br>${metric.l}: ${isFinite(v)?metric.fmt(v):'n/a'}${(s.fl!=null?s.fl:s.riv+s.sbo)>0?`<br>${Math.round(Math.min(1,s.fl!=null?s.fl:s.riv+s.sbo)*100)}% of residents in a flood overlay`:''}${[['A',tintA],['B',tintB]].map(([n,w])=>share(w,i)?`<br>Counted in ${n}: ${share(w,i)} of residents`:'').join('')}`;
   });
   map.on('mouseleave','sa1-fill',()=>{tip.style.display='none';if(hoverId!==null)map.setFeatureState({source:'sa1',id:hoverId},{hover:false});hoverId=null;});
   map.on('click',e=>{
@@ -289,13 +298,15 @@ function wire(){
   });
   const vis=(ids,on)=>ids.forEach(id=>map.getLayer(id)&&map.setLayoutProperty(id,'visibility',on?'visible':'none'));
   document.getElementById('fl').addEventListener('change',e=>{vis(['riv-fill','riv-line','sbo-fill','sbo-line'],e.target.checked);drawLegend();});
-  document.getElementById('sb').addEventListener('change',e=>vis(['sal-line','sal-label'],e.target.checked));
+  document.getElementById('sb').addEventListener('change',e=>vis(['sal-halo','sal-line','sal-label'],e.target.checked));
   document.getElementById('bm').addEventListener('change',e=>vis(baseLayers,e.target.checked));
   document.getElementById('rad').addEventListener('input',e=>{R=+e.target.value;document.getElementById('radv').textContent=R+' m';drawRings();schedule();});
   document.getElementById('reset').addEventListener('click',()=>{areas.forEach(a=>a.marker.remove());areas.length=0;const h=document.getElementById('hint');h.style.display=null;h.textContent='Click the map to place area A, then area B. Drag either pin to move it.';drawRings();update();});
   lsel.on('change',function(){activeLga=this.value||null;activeSub=null;fillSuburbs();applyFilter();});
   ssel.on('change',function(){activeSub=this.value||null;applyFilter();});
 }
+// Apply the council/suburb filter to every SA1 layer, zoom to what is left, and recompute
+// the comparison column, the colour classes and the panel for the visible area only.
 function applyFilter(){
   const conds=[];if(activeLga)conds.push(['==',['get','lga'],activeLga]);if(activeSub)conds.push(['==',['get','sub'],activeSub]);
   const f=conds.length?['all',...conds]:null;
@@ -339,6 +350,8 @@ function drawRings(){
 
 // ---- colour classes
 let breaks=[],cols=[];
+// Quintile breaks (or three classes each side of 0 for diverging metrics) over the visible
+// SA1s, written to each feature's state so MapLibre repaints without rebuilding sources.
 function recolour(){
   if(!map)return;
   const vals=[];S.forEach((s,i)=>{if(!visible(i))return;const v=metric.f(s);if(isFinite(v)&&(metric.ls||s.pop>=10)&&!(metric.zero&&v<=0))vals.push(v);});
@@ -369,6 +382,8 @@ function drawLegend(){
 
 // ---- aggregation
 const COS=Math.cos(META.lat0*Math.PI/180);
+// What circle a counts: each mesh-block point within R metres adds its resident share w to
+// its SA1 (and w x in-overlay share to the flood tallies). Returns sumW() of those weights.
 function agg(a){
   const w=new Float64Array(S.length), wr=new Float64Array(S.length), ws=new Float64Array(S.length);
   const r2=R*R;
@@ -376,6 +391,8 @@ function agg(a){
     if(dx*dx+dy*dy<=r2){const f=c[3];w[c[2]]+=f;wr[c[2]]+=f*c[4];ws[c[2]]+=f*c[5];}}
   const o=sumW(w,wr,ws);o.w=w;return o;
 }
+// Sum SA1 records weighted by w (share of each SA1 counted); wr/ws are the shares counted
+// inside riverine / overland-flow overlays. Indices are resident-weighted means.
 function sumW(w,wr,ws){
   const o={M:new Float64Array(NB),F:new Float64Array(NB)};const keys=['pop','ages','o75','u5','nfa','nfa_d','ltc','ltc_d','emp','unemp','lf','eng','eng_d','car0','car_d','d_house','d_semi','d_flatlow','d_flathigh','d_other','dwell'];
   keys.forEach(k=>o[k]=0);o.popRiv=0;o.popSbo=0;o.o75Fl=0;o.nfaFl=0;o.km2=0;let incN=0,incW=0;o.ls=new Float64Array(6);o.lsW=0;
@@ -415,6 +432,7 @@ const ROWS=[
 ];
 const fmt=(v,t)=>!isFinite(v)?'–':t==='i'?v.toFixed(3):t==='p'?(v*100).toFixed(1)+'%':t==='$'?'$'+Math.round(v).toLocaleString():Math.round(v).toLocaleString();
 const tb=d3.select('#tbl tbody');
+// Redraw the side panel: headline counts, comparison table and pyramid for A, B and the area.
 function update(){
   const A=areas.find(a=>a.id==='a'),B=areas.find(a=>a.id==='b');
   let oa=A?agg(A):null, ob=B?agg(B):null;
@@ -438,6 +456,7 @@ function near(a){
 // ---- pyramid
 const py=d3.select('#pyr'),PW=400,PH=330,mid=PW/2,lab=34,top=6,bh=(PH-top-24)/NB;
 function shares(o){const t=o.ages||1;return {M:Array.from(o.M,v=>v/t),F:Array.from(o.F,v=>v/t)};}
+// Age-sex pyramid as shares of each group's residents: A solid, B outline, area grey behind.
 function drawPyr(oa,ob){
   py.selectAll('*').remove();
   const sets=[shares(ALL)];if(oa)sets.push(shares(oa));if(ob)sets.push(shares(ob));

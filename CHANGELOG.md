@@ -2,6 +2,22 @@
 
 Notable changes to the explorer and its pipeline. Dates are when a change landed on `main`.
 
+## [0.5.0] - 2026-09-26
+
+### Changed
+- **Flood exposure is measured on residents, not land.** Every Vicmap Address point (one per property or unit, DataVic, CC BY 4.0) is joined to its mesh block and tested against the overlays. A mesh block's in-overlay share is now the share of its addresses inside, not of its area, and each SA1 takes the resident-weighted mean over its mesh blocks. A creek reserve that is the only flooded part of a block no longer makes its residents look exposed. The "Flood" map variable, the tooltip, circle tallies, Lama & Sun's exposure and damage terms and the GWR/MGWR response all use the new measure. The old area share stays in the data as `fa`.
+- **Clearer suburb boundaries.** They're now solid dark lines on a pale halo, thickening with zoom and shown from zoom 9 instead of 10.5, where before they were thin dashed grey lines. Suburb names appear from zoom 11 and grow as you zoom in.
+- If the address layer is unavailable, the build falls back to mesh-block area shares, still resident-weighted, and the page footer says which one was used.
+
+### Added
+- **`docs/ARCHITECTURE.md`**: a code guide covering the data flow, every file and function group, the JSON contract between pipeline and pages, recipes for common changes and the deliberate oddities that must not be "fixed".
+- **README: "How accurate is the data, and how it was tested".** It covers the checks that run on every build (council coverage, population reconciliation, geometry repair, regression guards), the comparison with the paper, the development tests, the spatial precision of each stage, and what is not tested.
+- **`CONTRIBUTING.md`**: setup, local build, what to check before a pull request, and conventions.
+- Header and function comments in both web pages.
+
+### Removed
+- Place-specific references to the reference web map that inspired the circle interaction.
+
 ## [0.4.0] - 2026-09-25
 
 ### Added

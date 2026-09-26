@@ -4,8 +4,8 @@ A record of how this project got here and why each decision was made, so none of
 
 ## 1. Idea (before this repo)
 
-**Inspiration: a Mashhad "Demographic Explorer" web map** (screen recording, not stored here). Described from notes:
-- Dark Mapbox basemap. Urban blocks are shaded by a population measure. Place labels include Mashhad, Imam Reza Town, Torghabeh and Kashaf.
+**Inspiration: a "Demographic Explorer" web map** (screen recording, not stored here). Described from notes:
+- Dark Mapbox basemap. Urban blocks are shaded by a population measure.
 - **Compare mode:** drop two circles, A and B, and drag them around. A side panel updates live for each circle: total population, a male/female donut and an age–sex pyramid.
 - Other tabs cover literacy, employment by sex, housing, area, building structure and building materials.
 - A bottom bar switches between **Circle / Compare / Density / Parcels** modes.
@@ -14,7 +14,7 @@ A record of how this project got here and why each decision was made, so none of
 **Why it transfers to the flood papers:** both papers reduce vulnerable people to one percentage per SA1. Lama & Sun's "dependent population" puts under-20s and over-59s together. A pyramid under a flood layer separates them. A suburb of toddlers and a suburb of 80-year-olds need different evacuation plans even when their "dependent %" is identical.
 
 **What doesn't transfer:**
-- *Coarser data.* Australian age–sex data stops at SA1 level (about 400 people). Mesh blocks carry totals only. The Mashhad data appears to be block or parcel level.
+- *Coarser data.* Australian age–sex data stops at SA1 level (about 400 people). Mesh blocks carry totals only. The reference map's data appears to be block or parcel level.
 - *Circles are another arbitrary unit* (the modifiable areal unit problem). Pyramids must be shown as percentages, or denser circles simply look bigger.
 - *No public flood model.* Planning overlays (LSIO, FO, SBO) stand in for the papers' HEC-RAS output.
 
@@ -77,18 +77,18 @@ Open:
 
 ## 6. How a circle shows what it counts (design chat, 2026-09-25)
 
-**What the Mashhad video does and the prototype didn't.** The polygons under each circle change colour. The prototype only drew a flat translucent disc, so SA1s looked the same whether they were counted or not.
+**What the reference video does and the prototype didn't.** The polygons under each circle change colour. The prototype only drew a flat translucent disc, so SA1s looked the same whether they were counted or not.
 
 From a full-resolution frame at 0:13 (moderate confidence):
 - **Circle B:** the parcels inside are recoloured orange and keep their shapes. The tint stops at the circle's edge, so parcels crossing the boundary are only partly highlighted.
 - **Circle A:** the parcels inside are muted towards grey under a yellow dashed ring. The two circles use different treatments.
 - **How it's built:** most likely a clipping mask on the layer, not a selection of whole parcels. So the visual cut-off doesn't tell you how they count partial parcels in the totals.
 
-**Why the choice matters more here.** Mashhad's parcels are tiny compared with the circle, so clipping reads as precise. Our SA1s are large, and an 800 m circle often clips just a corner of several of them.
+**Why the choice matters more here.** The reference map's parcels are tiny compared with the circle, so clipping reads as precise. Our SA1s are large, and an 800 m circle often clips just a corner of several of them.
 
 | Option | Looks | Problem |
 |---|---|---|
-| 1. Clipped tint (like Mashhad) | Clean | Implies precision we don't have. The residents in a clipped corner are an even-spread estimate. |
+| 1. Clipped tint (like the reference map) | Clean | Implies precision we don't have. The residents in a clipped corner are an even-spread estimate. |
 | 2. Tint every SA1 the circle touches, opacity = share of its residents counted | Busier | None. It shows exactly what each estimate is built from. |
 
 **Decision: option 2**, with a thin outline ring on top so the circle still reads as a circle. It puts the apportionment weakness on the map instead of in a footnote. It was cheap to add, because the grid already computes each SA1's share inside the circle.
@@ -205,4 +205,25 @@ My earlier explanation, that collinear counts made MGWR diverge, was wrong or at
 Collinearity still shows in the fitted model: population (+0.63) and employed population (−0.63) are both 100% significant, with global bandwidths and mirror-image coefficients. That's a suppression pair and shouldn't be read as two effects.
 
 The Casey screenshot now shows A = 4,503 (Cranbourne East) and B = 3,958 (Narre Warren).
+
+## 13. v0.5: resident-based exposure and documentation (2026-09-26)
+
+**Request:** better spatial accuracy, comprehensive documentation for returning to the code or taking contributions, no trace of the development branch name, and no place-specific references to the reference map.
+
+**Which dataset, and why.** The biggest accuracy gap was not polygon detail but *what* was measured. Flood exposure was an **area** share, so a flooded reserve inside a residential block counted the same as flooded houses. Options considered:
+
+| Option | Gain | Cost | Decision |
+|---|---|---|---|
+| Vicmap Address points (property/unit locations) | places dwellings inside each mesh block | ~2 M points for metro, cached | **adopted** |
+| Less polygon simplification | sharper edges on screen | metro page already 14 MB | not now; needs vector tiles |
+| Victorian Flood Database 1% AEP extents | modelled extent instead of planning control | overlays are largely derived from the same mapping | roadmap |
+| Vicmap Elevation 10 m DEM | matches the paper | large download, small index weight (0.014) | roadmap |
+
+**What was built:**
+- `01_fetch.py` discovers the address layer from WFS GetCapabilities and downloads geometry only.
+- `02_build.py` uses the address points to compute address-share per mesh block, then resident-weighted SA1 shares.
+- The pages and indices use the new measure.
+- Docs: `ARCHITECTURE.md`, `CONTRIBUTING.md` and code comments.
+
+**History rewrite (not done in-session).** The request to re-author earlier commits and remove the branch name and trailers from history needs a force-push to `main`. The session's permission policy blocked it, so it is left for the repository owner to run or approve.
 
