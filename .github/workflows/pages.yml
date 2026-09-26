@@ -21,7 +21,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 180   # first run downloads ~2 M address points; later runs hit the cache
     steps:
       - uses: actions/checkout@v4
 

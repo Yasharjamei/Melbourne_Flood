@@ -7,11 +7,12 @@ An interactive web map of Melbourne, built as two pages from one pipeline:
 
 On either page you drag two circles, **A** and **B**, anywhere on the map. A side panel compares who lives inside each one: an age–sex pyramid, flood-relevant needs (aged 75+, aged 0–4, need for assistance, no car, limited English and so on), and how many residents fall inside the planning-scheme flood overlays.
 
-The project applies two flood-resilience papers to the same 474 SA1 "urban units" they studied. The interaction comes from a Mashhad "Demographic Explorer" web map. The goal is not to redo the papers' single index. It is to show what that index hides.
+The project applies two flood-resilience papers to the same 474 SA1 "urban units" they studied. The interaction comes from an existing "Demographic Explorer" web map. The goal is not to redo the papers' single index. It is to show what that index hides.
 
-> **Status (v0.4):**
-> - Mesh-block weighting and Lama & Sun's six index maps are built for both pages, with suburbs on both.
-> - It goes live at **https://yasharjamei.github.io/Melbourne_Flood/** once GitHub Pages is enabled (see [Live site](#live-site-github-pages)).
+> **Status (v0.5):**
+> - Live at **https://yasharjamei.github.io/Melbourne_Flood/** (and `/metro/`, `/analysis/`).
+> - Flood exposure is measured on **residents**: each dwelling is placed at its Vicmap Address point, so a flooded park no longer counts as exposure (see [Method](#method), step 3).
+> - **Working on the code?** Start with [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (how it fits together, data contract, gotchas) and [`CONTRIBUTING.md`](CONTRIBUTING.md) (setup, checks, pull requests).
 > - The first prototype, which used even spreading, is kept at [`snapshots/2026-09-25-prototype.html`](snapshots/2026-09-25-prototype.html).
 > - Changes are listed in [`CHANGELOG.md`](CHANGELOG.md), and the history and decisions in [`docs/PROJECT_LOG.md`](docs/PROJECT_LOG.md).
 
@@ -23,9 +24,12 @@ The project applies two flood-resilience papers to the same 474 SA1 "urban units
 | Mesh blocks (with residents) | 2,661 (2,228) | 58,563 (48,770) |
 | Residents placed by mesh-block counts / Census SA1 total | 207,015 / 207,058 | 4,833,357 / 4,833,389 |
 | Flood-overlay polygons (LSIO, FO, SBO) | 72 | 2,302 |
-| FRI range (paper, two councils: −0.148 to 0.228) | −0.169 to 0.272 | −0.225 to 0.211 |
+| FRI range (paper, two councils: −0.148 to 0.228) | −0.168 to 0.272 | −0.225 to 0.211 |
+| Vicmap Address points fetched / inside study mesh blocks | 184,780 / 135,885 | 3,123,830 / 2,967,784 |
+| Populated mesh blocks with at least one address | 100% | 100% |
+| **Residents in a flood overlay: by area share → by address** | **10,721 → 7,170** (area overstated by 50%) | **239,650 → 185,538** (by 29%) |
 | Max Exposure (paper: 0.043 of a possible 0.047) | 0.047 | 0.047 |
-| Page size (compressed on the wire) | 0.6 MB | 14.2 MB (about 3 MB) |
+| Page size (compressed on the wire) | 0.6 MB | 14.3 MB (about 3 MB) |
 
 The residents placed by mesh-block counts match the Census SA1 totals to within 0.02%; the small gap is ABS perturbation between the two releases. The FRI range lands close to the paper's, even with the substituted depth, elevation and sand inputs.
 
@@ -39,11 +43,12 @@ The residents placed by mesh-block counts match the Census SA1 totals to within 
 4. [Repository layout](#repository-layout)
 5. [Running it](#running-it)
 6. [Method](#method)
-7. [How this maps onto the papers](#how-this-maps-onto-the-papers)
-8. [Known limitations](#known-limitations)
-9. [Roadmap](#roadmap)
-10. [Tools and Claude Code skills needed](#tools-and-claude-code-skills-needed)
-11. [Data sources and licences](#data-sources-and-licences)
+7. [How accurate is the data, and how it was tested](#how-accurate-is-the-data-and-how-it-was-tested)
+8. [How this maps onto the papers](#how-this-maps-onto-the-papers)
+9. [Known limitations](#known-limitations)
+10. [Roadmap](#roadmap)
+11. [Tools and Claude Code skills needed](#tools-and-claude-code-skills-needed)
+12. [Data sources and licences](#data-sources-and-licences)
 
 ---
 
@@ -67,7 +72,7 @@ Avondale Heights' higher dependency comes almost entirely from older residents. 
 |---|---|---|
 | Lama, P. & Sun, Q. C. (2026). *Assessing urban flood resilience: a comprehensive framework with evidence from Melbourne.* **Urban Informatics** 5:25. [doi:10.1007/s44212-026-00115-0](https://doi.org/10.1007/s44212-026-00115-0) (CC BY 4.0) | Study area, 474 SA1 units, indicator set, AHP weights, FRI / Damage Index / IFRI formulas | Read and summarised below |
 | Lee, N., Sun, Q. C. & Wachowicz, M. (2026). *Flood risk assessment at the neighbourhood level using Spatially Adaptive Weighting.* Research Square preprint. [doi:10.21203/rs.3.rs-10610207/v1](https://doi.org/10.21203/rs.3.rs-10610207/v1) (CC BY 4.0) | IPCC hazard / exposure / vulnerability split, 14 indicators as **rates**, SEIFA IER and IEO, MGWR-derived **local** weights | Read and summarised below |
-| Mashhad "Demographic Explorer" (screen recording) | Interaction model: two draggable circles, live side-by-side pyramids, Circle / Compare / Density / Parcels modes | Described from notes, video not stored here |
+| A "Demographic Explorer" web map (screen recording) | Interaction model: two draggable circles, live side-by-side pyramids, Circle / Compare / Density / Parcels modes | Described from notes, video not stored here |
 
 Both PDFs are in [`papers/`](papers/). They are CC BY 4.0, so redistributing them here is allowed.
 
@@ -107,20 +112,25 @@ Neither paper publishes its HEC-RAS flood output. Lama & Sun's data is "availabl
 
 ```
 .
-├── .github/workflows/
-│   └── pages.yml        # CI: fetch -> build -> bundle -> deploy to GitHub Pages
+├── .github/
+│   ├── workflows/pages.yml   # CI: fetch -> build -> bundle -> (PR) screenshots / (main) deploy
+│   └── scripts/screenshot.py # headless-Chromium previews of the built pages
 ├── pipeline/
 │   ├── config.py        # study areas (west, metro) and Lama & Sun weights
 │   ├── 01_fetch.py      # downloads public inputs -> data/raw/<study>/, data/raw/gcp/, data/raw/shared/
 │   ├── 02_build.py      # SA1 + mesh-block + suburb data and indices -> data/processed/<study>.json
+│   ├── lamasun_stats.py # VIF, GWR and MGWR (Lama & Sun Table 5, Fig. 4)
 │   └── 03_bundle.py     # inlines each dataset into web/template.html -> dist/index.html, dist/metro/index.html
 ├── web/
-│   └── template.html    # the explorer (MapLibre GL JS map + D3 panel, no build step)
+│   ├── template.html    # the explorer (MapLibre GL JS map + D3 panel, no build step)
+│   └── analysis.html    # Table 5, Fig. 4 coefficient maps, Fig. 7 correlation matrix
 ├── papers/              # the two source papers (CC BY 4.0)
 ├── snapshots/           # frozen builds, e.g. the first published prototype (open in a browser)
 ├── docs/
+│   ├── ARCHITECTURE.md  # code guide: data flow, every file, JSON contract, deliberate oddities
 │   └── PROJECT_LOG.md   # history, decisions and open questions
 ├── CHANGELOG.md
+├── CONTRIBUTING.md      # setup, local build, checks, pull-request flow
 ├── requirements.txt
 └── README.md
 ```
@@ -144,7 +154,7 @@ python pipeline/03_bundle.py                 # -> dist/index.html and dist/metro
 
 Build `west` only if you don't need the metro page; `03_bundle.py` bundles whichever datasets exist.
 
-Some inputs are **optional**: mesh-block resident counts, the elevation model and soil sand. If a download fails, the build carries on and records the substitution in the page footer. For example, "Mesh-block counts unavailable: residents placed on Residential mesh blocks in proportion to area".
+Some inputs are **optional**: mesh-block resident counts, Vicmap Address points, the elevation model and soil sand. If a download fails, the build carries on and records the substitution in the page footer. For example, "Mesh-block counts unavailable: residents placed on Residential mesh blocks in proportion to area".
 
 Run every command from the repository root.
 
@@ -186,7 +196,15 @@ One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
    | Personal income $1,750–$1,999/wk ("mean income generating population") | G17A–C |
 
    Denominators exclude "not stated".
-3. **Flood overlays.** The Vicmap Planning `plan_overlay` layer is filtered to LSIO and FO (riverine) and SBO (overland flow), then dissolved. Each SA1 gets the share of its area inside each overlay.
+3. **Flood overlays and who is inside them.** The Vicmap Planning `plan_overlay` layer is filtered to LSIO and FO (riverine) and SBO (overland flow), then dissolved.
+   - **Since v0.5, exposure is measured on residents, not land.** Every Vicmap Address point (one per property or unit) is joined to its mesh block and flagged if it lies inside an overlay.
+   - A mesh block's in-overlay share is the share of its **addresses** inside the overlay. A mesh block without addresses falls back to its area share.
+   - Each SA1's share is the resident-weighted mean over its mesh blocks. The old area share is kept in the data as `fa` for comparison.
+   - **Why it matters:** a mesh block or SA1 beside a creek often contains a reserve that is the only part in the overlay. By area it looks exposed; by where people live, it often isn't.
+   - **Measured on the published build:** the area measure overstated residents in overlays by **50%** in Maribyrnong + Moonee Valley (10,721 → 7,170) and by **29%** across Greater Melbourne (239,650 → 185,538).
+   - 824 metro SA1s dropped by more than 5 percentage points, and 191 rose. Some SA1s have housing in a narrow overlay strip, which the area share understated.
+   - Example: SA1 21303134845 in Footscray has 48% of its area in an overlay but about 1% of its residents.
+   - If the address layer can't be fetched, the build falls back to mesh-block area shares, still resident-weighted, and says so in the page footer.
 4. **Mesh-block weighting.** This replaced the v0.1 50 m grid, which spread people evenly.
    - Each ABS 2021 mesh block gets a weight: its share of its SA1's residents, from the ABS Mesh Block Counts.
    - If that file can't be downloaded, residents go onto Residential mesh blocks in proportion to their area.
@@ -196,6 +214,72 @@ One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
    - "Residents in overlay" uses the same weights, multiplied by each mesh block's overlay share.
    - Age–sex shares are assumed constant within an SA1, because mesh blocks carry no age data.
 6. **Suburbs.** Each SA1 is assigned to an ABS Suburb and Locality (SAL 2021) by its representative point.
+
+## How accurate is the data, and how it was tested
+
+Accuracy here has three parts:
+
+- **Where** things are: boundaries and flood extents.
+- **How many** people are counted.
+- **Whether the method reproduces the paper.**
+
+Each check below runs on every build unless marked otherwise. Anything not tested is listed at the end, because that's where the real limits are.
+
+### Checks that run on every build (the build fails or warns)
+
+| Check | What it guards against | Result on the published build |
+|---|---|---|
+| **Council coverage:** for every council, the area of its SA1s is compared with the council's own boundary. Outside 97–103% it warns; outside 90–110% the build **fails**. | Missing or duplicated SA1s, e.g. a truncated download | Passes for all 31 councils; 11,293 SA1s. Knox is at 103.8%, just over the warning line, because a few SA1s straddle its boundary. |
+| **Population reconciliation:** residents placed by mesh-block counts are compared with the Census SA1 total. | Mesh blocks lost in the join, or counts from the wrong release | 207,015 vs 207,058 (two councils) and 4,833,357 vs 4,833,389 (metro): within 0.02%. The gap is ABS perturbation, the small random noise ABS adds for privacy. |
+| **Address download completeness:** points received are compared with the server's own `numberMatched`; the build then requires address points in at least 80% of populated mesh blocks, or it falls back to area shares and says so. | A silently truncated download mixing two methods | Added after the first CI run fetched only 5,000 points, because the server caps each page. Caught before publishing. |
+| **Geometry repair:** every polygon goes through `make_valid`, and rings are oriented clockwise on export. | Self-intersections that crash overlays; maps that render as "the whole world" | Found and fixed real defects in the metro SA1s (see CHANGELOG 0.3.1 and 0.4.0) |
+| **Regression guards:** coefficients are checked for blow-ups, MGWR for divergence, and VIF is reported. | Publishing numerically meaningless coefficients | Caught a locally constant soil layer (sand coefficient about 10¹⁵) and dropped it; MGWR then converged |
+| **Fallback notes:** every optional input that fails is named in the page footer. | Silent substitution | Visible on each page |
+
+### Checks against the paper (same 474 SA1s)
+
+| Quantity | Lama & Sun (2026) | This build |
+|---|---|---|
+| Number of SA1s in Maribyrnong + Moonee Valley | 474 | 474 |
+| FRI range | −0.148 to 0.228 | −0.168 to 0.272 |
+| Maximum Exposure (of a possible 0.047) | 0.043 | 0.047 |
+| MGWR better than GWR? | yes (R² 0.767 vs 0.755) | yes (R² 0.444 vs 0.218; lower because the response is now residents, not land) |
+
+The ranges agree closely, even though three inputs are public substitutes:
+
+- flood depth → planning overlays
+- 10 m DEM → Copernicus 30 m
+- 30 m soil grid → SoilGrids 250 m
+
+Lower R² is expected: the response variable is a stand-in for their flood depths.
+
+### Checks run during development (not automated)
+
+- **Screenshots of every page on every pull request** (CI → `ci-preview` branch). They were reviewed before merging and caught:
+  - the council filter zooming out to the world map
+  - blank coefficient maps
+  - circles left outside a filtered council
+  - exploding GWR coefficients
+- **Synthetic tests** of the regression guard (a piecewise-constant covariate reproduces the blow-up and the guard removes it) and of the address-point step (random points in mesh blocks, compared with the area-share result).
+- **Interaction tests in headless Chromium:** every variable in the menu gets its own legend; the council → suburb slicer narrows the list and filters the map; pins move inside the filtered area.
+
+### Spatial precision, stage by stage
+
+| Stage | Precision |
+|---|---|
+| Boundaries downloaded from ABS | generalised to about 2 m (two councils) or 6 m (metro) |
+| Boundaries drawn on screen | simplified to 4 m (two councils) or 12 m (metro), to keep the metro page loadable; coordinates rounded to about 1 m |
+| Flood overlays | Vicmap Planning polygons as gazetted; the planning-scheme maps are their source of truth |
+| Who is inside an overlay | Vicmap Address point per property or unit (v0.5); before v0.5, mesh-block area |
+| Age and sex | SA1 only (about 400 people). **Nothing finer exists publicly.** |
+
+### What is *not* tested, and the limits that follow
+
+- **No ground truth for flooding.** Overlays are planning controls, not observed or modelled water. No one has validated them here against the October 2022 flood extent, and no depth is available.
+- **No unit-test suite.** The checks above are integration checks on live data.
+- **Circles apportion; they don't observe.** A circle's age mix is its SA1s' mix weighted by residents. Below roughly 500 m radius, treat pyramids as indicative.
+- **Address points count every property equally,** so a house, a flat and a shop each count as one. Commercial addresses in overlays can slightly inflate exposure in mixed-use blocks.
+- **Live sources change.** DataVic republishes overlays when planning amendments are gazetted, so a rebuild can differ slightly from the published version.
 
 ## How this maps onto the papers
 
@@ -242,13 +326,18 @@ This build follows 2.2.3, for two reasons:
 
 **The results aren't comparable with the paper's,** because the response is the overlay-share proxy, which is zero for most SA1s, instead of HEC-RAS depth. The page says so beside the table.
 
-**Result on real data (two councils, 474 SA1s):**
-- **Sand % in soil was dropped.** SoilGrids is a 250 m raster, so sand barely varies inside a neighbourhood and is collinear with the local intercept. GWR's intercept and sand coefficients blew up (means of about 10¹¹ and 10¹⁵). The pipeline now detects this, drops the variable and refits, and the page names what was dropped.
-- **GWR:** R² 0.526, adjusted R² 0.458, AICc 1130.4, bandwidth 175 SA1s. The paper reports 0.755, 0.684, 916.1 and 62.
-- **MGWR:** R² 0.647, adjusted R² 0.588, AICc 1013.8. The paper reports 0.767, 0.724 and 831.6. Bandwidths are 51–98 SA1s for the intercept, elevation, land use and dependent population, which vary locally. The other six are global (473 SA1s).
-- **As in the paper, MGWR beats GWR** on every fit statistic. Earlier runs diverged. The singular sand column caused that, not (as I first thought) the collinear counts alone. Bandwidths stay floored at 50 SA1s, and a failed fit still falls back to GWR with a note on the page.
+**Result on real data (two councils, 474 SA1s, v0.5: response = share of residents in an overlay):**
+- **GWR:** R² 0.218, adjusted R² 0.152, AICc 1310.7, bandwidth 291 SA1s. The paper reports 0.755, 0.684, 916.1 and 62.
+- **MGWR:** R² 0.444, adjusted R² 0.364, AICc 1206.3. The paper reports 0.767, 0.724 and 831.6.
+  - Only the intercept and land use vary locally (bandwidth 51 SA1s).
+  - Elevation is regional (327).
+  - The other eight are global (473 SA1s).
+- **As in the paper, MGWR beats GWR** on every fit statistic.
+- **Elevation is the one clear, stable effect.** It is negative and significant in every SA1: lower ground has more residents inside overlays, as it should.
+- **Why the fit dropped from v0.4** (then GWR 0.526, MGWR 0.647, on the *area* share): much of the old area share was parks and creek reserves. Land cover explains those well, and they had nothing to do with where people live. The resident-based response is the harder and more honest target.
+- **The sand history.** In v0.4, SoilGrids sand (a 250 m raster) was almost constant inside each GWR neighbourhood, and its coefficient blew up to about 10¹⁵. A guard now detects this, drops the variable and refits, and the page names it. With the v0.5 response, GWR chose a wider bandwidth (291) and sand stayed stable, so nothing was dropped. The guard remains in place.
 
-**Collinearity.** The page reports a variance inflation factor for each variable (population 39.0, dwellings 15.0, employed 53.4, educated 44.9). Population, dwellings, employed, educated and income earners are all counts that grow with SA1 size. Their coefficients can't be interpreted separately wherever VIF is above 10, and that applies to the paper's specification too. The fitted model shows the symptom: population (+0.63) and employed population (−0.63) are both significant everywhere, with near-equal and opposite coefficients. That is a suppression pair, not two real effects.
+**Collinearity.** The page reports a variance inflation factor for each variable: population 39.4, dwellings 15.1, employed 53.5, educated 44.9. Population, dwellings, employed, educated and income earners are all counts that grow with SA1 size. Their coefficients can't be interpreted separately wherever VIF is above 10, and that applies to the paper's specification too. The fitted model shows the symptom: population is +0.67 and significant everywhere, while employed (−0.43) and educated (−0.37) pull the other way. That is a suppression pattern, not three real effects.
 
 **Scope.** GWR and MGWR run on the two-council study area (474 SA1s, about 12 minutes on 4 cores). They aren't run on the 11,293 metro SA1s, because MGWR's cost grows with the square of the number of units. The correlation matrix is computed for both pages.
 
@@ -322,7 +411,7 @@ Both treat "dependent" as one number. Lama & Sun define it as under 20 plus over
 
 ## Known limitations
 
-- **Apportionment is still an estimate.** Mesh blocks (v0.3) put people where they actually live, down to about 30–60 residents per block. But a circle includes a whole mesh block or none of it, and age–sex shares are assumed constant within each SA1. The v0.1 even-spreading error, which showed 0 riverine-overlay residents at Avondale Heights, should shrink. That needs re-checking on the first live build.
+- **Apportionment is still an estimate.** Mesh blocks (v0.3) put people where they actually live, down to about 30–60 residents per block, and address points (v0.5) place them inside each block for flood exposure. But a circle includes a whole mesh block or none of it, and age–sex shares are assumed constant within each SA1. Every address point counts equally, so a house, a unit and a shop are each weighted as one. The v0.1 even-spreading error, which showed 0 riverine-overlay residents at Avondale Heights, should shrink. That needs re-checking on the first live build.
 - **Overlays are planning controls, not flood modelling.** They show extent only, with no depth, and they don't match the October 2022 event the papers simulated.
 - **Coarse age data.** Age–sex data stops at SA1 level, about 400 people. Below roughly 500 m radius, a circle's pyramid is mostly apportionment artefact.
 - **No SEIFA yet.** Income is a population-weighted mean of SA1 medians, which isn't a true median.
@@ -334,7 +423,7 @@ Both treat "dependent" as one number. Lama & Sun define it as under 20 plus over
 Ordered by how much each step changes the numbers, not the look.
 
 1. **Repository hygiene.** *(done, v0.2)* Layout matches the commands, papers in `papers/`, and this README. Next: SHA-256 manifest of raw inputs, and `01_fetch.sh` fails loudly on an empty or HTML download.
-2. **Dasymetric weighting from mesh blocks.** *(done, v0.3; G-NAF refinement and the mesh-block view mode still open)* ABS 2021 mesh blocks (about 30–60 residents each) publish real **population and dwelling counts** and a **land-use category** (Residential, Parkland, Industrial…). That makes them the best public weight layer: parks and industrial blocks get their true, usually near-zero, population, not an even share. Within each mesh block, split further by G-NAF residential address points or building footprints. Mesh blocks carry **no age–sex data**, so a circle's pyramid is still built from SA1 age shares, now weighted by where people actually live. Check that SA1 totals are preserved within ABS perturbation, then report how the A/B figures and in-overlay counts change.
+2. **Dasymetric weighting from mesh blocks.** *(done, v0.3; address-point refinement done in v0.5 with Vicmap Address; the mesh-block view mode is still open)* ABS 2021 mesh blocks (about 30–60 residents each) publish real **population and dwelling counts** and a **land-use category** (Residential, Parkland, Industrial…). That makes them the best public weight layer: parks and industrial blocks get their true, usually near-zero, population, not an even share. Within each mesh block, split further by G-NAF residential address points or building footprints. Mesh blocks carry **no age–sex data**, so a circle's pyramid is still built from SA1 age shares, now weighted by where people actually live. Check that SA1 totals are preserved within ABS perturbation, then report how the A/B figures and in-overlay counts change.
    - **Mesh-block view mode.** A third geography next to SA1 and circle, answering "who lives *here*". The panel shows mesh-block population, dwellings and category, plus the age pyramid of the parent SA1, labelled as *inherited*, never as the mesh block's own.
 3. **Reproduce the Lama & Sun indicators.** *(done, v0.3; the sensitivity checks below are still open)* Add elevation, sand %, land use, education and the income bracket. Compute FRI, Damage Index and IFRI with their AHP weights. Map them next to the pyramids, and run the sensitivity checks above.
 4. **MapLibre GL JS plus a real basemap.** *(done, v0.4: CARTO basemap, council filter, per-variable symbology; the Circle/Compare/Density modes and PMTiles are still open)* Replace the inline SVG map. SA1s become a vector source. Circles become draggable GeoJSON using Turf.js `circle` and `booleanPointInPolygon`. Basemap: OpenFreeMap or CARTO Positron/Dark Matter (no key), or MapTiler/Mapbox with a key kept out of git. Add the video's **Circle / Compare / Density** modes. Parcels mode depends on step 2.
@@ -379,7 +468,7 @@ The cloud environment's network policy blocks the data hosts by default. To run 
 |---|---|---|---|
 | SEIFA 2021 at SA1 (IRSD, IRSAD, IER, IEO) | Lee et al. vulnerability and exposure | ABS | Yes |
 | Vicmap Elevation DEM 10 m (to replace Copernicus 30 m) | Finer elevation, slope, curvature, drainage density | DataVic / Vicmap | Yes |
-| Microsoft Global ML Building Footprints (Australia) | Building density, dasymetric refinement | Microsoft (ODbL) | Yes |
+| Microsoft Global ML Building Footprints (Australia) | Building density; residential-only filtering of address points | Microsoft (ODbL) | Yes |
 | Tree canopy extent | Vegetation density | DataVic (DELWP) | Yes |
 | Vicmap road casement | Transport density | DataVic | Yes |
 | Maribyrnong catchment boundary | The 412-SA1 study area of Lee et al. | Melbourne Water / DEM watershed | Probably |
@@ -389,7 +478,7 @@ The cloud environment's network policy blocks the data hosts by default. To run 
 ## Data sources and licences
 
 - **ABS** Census 2021 GCP DataPack (SA1, VIC) and ASGS 2021 boundaries: CC BY 4.0, © Commonwealth of Australia.
-- **Vicmap Planning** overlays via DataVic: CC BY 4.0, © State of Victoria.
+- **Vicmap Planning** overlays and **Vicmap Address** points via DataVic: CC BY 4.0, © State of Victoria.
 - **ABS** Mesh Block Counts 2021 and Suburbs and Localities 2021: CC BY 4.0.
 - **Copernicus GLO-30 DEM:** © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA.
 - **SoilGrids 2.0 (ISRIC):** CC BY 4.0.

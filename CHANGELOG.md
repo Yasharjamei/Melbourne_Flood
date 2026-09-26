@@ -2,6 +2,28 @@
 
 Notable changes to the explorer and its pipeline. Dates are when a change landed on `main`.
 
+## [0.5.0] - 2026-09-26
+
+### Changed
+- **Flood exposure is measured on residents, not land.** Every Vicmap Address point (one per property or unit, DataVic, CC BY 4.0) is joined to its mesh block and tested against the overlays. A mesh block's in-overlay share is now the share of its addresses inside, not of its area, and each SA1 takes the resident-weighted mean over its mesh blocks. A creek reserve that is the only flooded part of a block no longer makes its residents look exposed. The "Flood" map variable, the tooltip, circle tallies, Lama & Sun's exposure and damage terms and the GWR/MGWR response all use the new measure. The old area share stays in the data as `fa`.
+- **Clearer suburb boundaries.** They're now solid dark lines on a pale halo, thickening with zoom and shown from zoom 9 instead of 10.5, where before they were thin dashed grey lines. Suburb names appear from zoom 11 and grow as you zoom in.
+- **Measured effect** (published build, 3.1 M address points, every populated mesh block covered):
+  - The area measure had overstated residents in flood overlays by 50% in Maribyrnong + Moonee Valley (10,721 → 7,170) and by 29% across Greater Melbourne (239,650 → 185,538).
+  - GWR/MGWR on the new response: GWR R² 0.218, MGWR 0.444. That is lower than v0.4's area-based 0.526 / 0.647, because parks were easy to predict. Elevation is now the one effect significant in every SA1.
+- If the address layer is unavailable, the build falls back to mesh-block area shares, still resident-weighted, and the page footer says which one was used.
+
+### Added
+- **`docs/ARCHITECTURE.md`**: a code guide covering the data flow, every file and function group, the JSON contract between pipeline and pages, recipes for common changes and the deliberate oddities that must not be "fixed".
+- **README: "How accurate is the data, and how it was tested".** It covers the checks that run on every build (council coverage, population reconciliation, geometry repair, regression guards), the comparison with the paper, the development tests, the spatial precision of each stage, and what is not tested.
+- **`CONTRIBUTING.md`**: setup, local build, what to check before a pull request, and conventions.
+- Header and function comments in both web pages.
+
+### Fixed (before release)
+- The first address download stopped at the server's 5,000-feature page cap. Paging now continues until the server's `numberMatched` count is reached. Pages are fetched 8 at a time, because the first metro download (about 630 pages) would otherwise exceed the CI time limit. The build refuses the address method if fewer than 80% of populated mesh blocks have a point.
+
+### Removed
+- Place-specific references to the reference web map that inspired the circle interaction.
+
 ## [0.4.0] - 2026-09-25
 
 ### Added

@@ -3,10 +3,12 @@
     python pipeline/01_fetch.py --study west     # Maribyrnong + Moonee Valley
     python pipeline/01_fetch.py --study metro    # all 31 Greater Melbourne councils
 
-Required inputs stop the run on failure. Optional ones (mesh-block counts, DEM,
-soil sand) log a warning and 02_build.py falls back, saying so in its output.
+Required inputs stop the run on failure. Optional ones (mesh-block counts, address
+points, DEM, soil sand) log a warning and 02_build.py falls back, saying so in its output.
+
+Every download is cached under data/raw/: delete a file to fetch it again.
 """
-import argparse, io, json, math, os, sys, time, urllib.parse, urllib.request, zipfile
+import argparse, io, json, math, os, re, sys, time, urllib.parse, urllib.request, zipfile
 sys.path.insert(0, os.path.dirname(__file__))
 from config import STUDIES, norm_lga
 
@@ -154,6 +156,97 @@ def wfs_overlays(bbox, lgas, out):
     raise RuntimeError("Flood overlay queries returned no features")
 
 
+def wfs_layer(pattern, prefer):
+    """Find a layer on the Vicmap GeoServer by name. Layer names change between
+    GeoServer releases, so search GetCapabilities instead of hard-coding one."""
+    caps = get(WFS, {"service": "WFS", "version": "2.0.0", "request": "GetCapabilities"})
+    names = re.findall(r"<(?:wfs:)?Name>([^<]+)</(?:wfs:)?Name>", caps)
+    hits = [n for n in names if re.search(pattern, n, re.I)]
+    print(f"  layers matching /{pattern}/: {hits[:12]}")
+    for p in prefer:
+        for n in hits:
+            if re.search(p, n, re.I):
+                return n
+    if not hits:
+        raise RuntimeError(f"no WFS layer matches {pattern}")
+    return hits[0]
+
+
+def wfs_points(bbox, out, pattern=r"address", prefer=(r"address_point$", r"addr.*point", r"address")):
+    """Vicmap Address points (one per property or unit) inside the study bbox, saved as a
+    compact float32 lon/lat array. Only the geometry is requested, which keeps the metro
+    download (about 2 million points) to a few hundred MB, cached after the first run."""
+    if os.path.exists(out):
+        print("  address points: cached"); return
+    import numpy as np
+    layer = wfs_layer(pattern, prefer)
+    desc = get(WFS, {"service": "WFS", "version": "2.0.0", "request": "DescribeFeatureType", "typeNames": layer})
+    geom = next((t.split('name="')[1].split('"')[0] for t in desc.split("<")
+                 if 'type="gml:' in t and 'name="' in t), "geom")
+    # The WFS 2.0 URN form of EPSG:4326 is lat/lon; the short form is lon/lat on GeoServer.
+    boxes = [f"{bbox[1]},{bbox[0]},{bbox[3]},{bbox[2]},urn:ogc:def:crs:EPSG::4326",
+             f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]},EPSG:4326"]
+    # The server caps every response (5,000 features at the time of writing) whatever `count`
+    # asks for, so fetch every page (in parallel once the total is known), sort on a key for
+    # stable paging, and check the number received against the server's own numberMatched.
+    fields = re.findall(r'name="([^"]+)"', desc)
+    key = next((f for f in ("ufi", "pfi", "objectid", "id") if f in fields), None)
+    def page(start):
+        q = {"service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": layer,
+             "outputFormat": "application/json", "srsName": "EPSG:4326", "propertyName": geom,
+             "bbox": boxes[0], "count": 50000, "startIndex": start}
+        if key:
+            q["sortBy"] = key
+        return get_json(WFS, q)
+
+    def coords(feats):
+        out = []
+        for f in feats:
+            c = (f.get("geometry") or {}).get("coordinates")
+            if c:
+                while isinstance(c[0], list):   # MultiPoint -> first point
+                    c = c[0]
+                out.append(c[:2])
+        return out
+
+    js = page(0)
+    if not js.get("features") and len(boxes) > 1:
+        print("  address points: none with lat/lon bbox, retrying lon/lat"); boxes.pop(0); js = page(0)
+    first = js.get("features", [])
+    total = js.get("numberMatched", js.get("totalFeatures"))
+    total = total if isinstance(total, int) else None
+    step = len(first)
+    print(f"  address points: {total if total is not None else 'unknown'} matched; "
+          f"{step} per page, sorted by {key or '(server order)'}")
+    pts = coords(first)
+    if total is not None and step:
+        # Each page takes ~10 s on the server, and metro needs ~500 of them: fetch 8 at a time.
+        from concurrent.futures import ThreadPoolExecutor
+        starts = list(range(step, total, step))
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            for k, got in enumerate(ex.map(lambda s: page(s).get("features", []), starts), 1):
+                pts += coords(got)
+                if k % 50 == 0:
+                    print(f"  address points: {len(pts):,} of {total:,}")
+    else:                                     # no total reported: page one at a time until empty
+        start = step
+        while step:
+            got = page(start).get("features", [])
+            if not got:
+                break
+            pts += coords(got); start += len(got)
+    if total is not None and len(pts) < 0.99 * total:
+        raise RuntimeError(f"incomplete download: {len(pts):,} of {total:,} address points")
+    if not pts:
+        raise RuntimeError(f"{layer} returned no points in {bbox}")
+    a = np.asarray(pts, dtype=np.float32)
+    lon_ok = (a[:, 0] >= bbox[0] - 1) & (a[:, 0] <= bbox[2] + 1)
+    if lon_ok.mean() < 0.5:                      # server answered in lat/lon order
+        a = a[:, ::-1].copy()
+    np.save(out, a)
+    print(f"  address points: {len(a):,} from {layer} -> {out}")
+
+
 def optional(label, fn):
     try:
         fn()
@@ -189,6 +282,9 @@ def main():
     print("Mesh blocks"); arcgis("MB", where, bbox, fine, f"{raw}/mb.geojson")
     print("Suburbs");     arcgis("SAL", where, bbox, fine * 2, f"{raw}/sal.geojson")
     print("Flood overlays"); wfs_overlays(bbox, st["lgas"], f"{raw}/flood.geojson")
+
+    print("Address points, Vicmap Address (optional)")
+    optional("address points", lambda: wfs_points(bbox, f"{raw}/addr.npy"))
 
     if not all(os.path.exists(f"data/raw/gcp/2021Census_{t}_VIC_SA1.csv") for t in GCP_TABLES):
         print("Census DataPack (~100 MB)")
