@@ -2,6 +2,35 @@
 
 Notable changes to the explorer and its pipeline. Dates are when a change landed on `main`.
 
+## [0.6.0] - 2026-09-27
+
+**One Greater Melbourne map, and more open data.**
+
+### Added
+- **SEIFA 2021 by SA1**, downloaded from the ABS: four map variables (IRSD, IRSAD, IER, IEO deciles), a resident-weighted IRSD row in the comparison panel, and IRSD as a seventh variable in the correlation matrix.
+- **Tree canopy** from Vicmap Vegetation tree extent 2020, a 20 cm canopy mask. Only the tiles overlapping the study area are read out of the 2 GB archive and reduced to 10 m canopy-percentage grids, then averaged per mesh block and SA1. It appears as a map variable and a panel row.
+- **Building footprints** (Microsoft Global ML Building Footprints, current release): building count and roof coverage per SA1, shown as a map variable and a panel row.
+- **Vicmap Elevation 10 m DEM**, the paper's own elevation source, from the Vicmap image service. Copernicus 30 m is the fallback. A **"Terrain (10 m relief)" toggle** overlays the Vicmap shaded relief. A hand-placed copy of the statewide DEM file (`data/raw/shared/vmelev_dem10m*.tif`, VicGrid) takes priority when present. The raster sampler now reprojects points to any raster CRS.
+- **GWR and MGWR for Greater Melbourne,** fitted on SA2s. MGWR on 11,293 SA1s would take days. The analysis page draws SA2 coefficient maps and says which unit was used.
+- **README:** Lama & Sun's indices in plain language (what each measures, its range, how to read it, and four cautions), plus "Keeping the data current".
+
+- **River basins** (Melbourne Water, stored in `data/static/`): each SA1 is tagged with its basin, each basin is an area preset (the Maribyrnong basin is Lee et al.'s study area), and there is a "River basins" outline toggle. **Drainage chains** come from Melbourne Water's *Catchments of all Waterways and Drains*: 3,409 subcatchments, stored in `data/static/` as a zipped geodatabase.
+  - Each SA1's tooltip shows its chain from subcatchment to creek to primary catchment.
+  - A "Creek catchments" toggle outlines and labels the creek-level catchments.
+  - If the file is missing, the pipeline falls back to finding the layer through the ArcGIS Online catalogue.
+- **Road reserves** from Vicmap Property road casement: the share of each SA1 that is road reserve (Lee et al.'s transport density), by 5 m rasterisation in 10 km tiles. The source is a DataVic order; because order links expire, the Vicmap WFS layer is the automatic fallback.
+
+### Changed
+- **One map for all of Greater Melbourne**, at the site's root. The papers' study area (Maribyrnong + Moonee Valley, 474 SA1s) is now a preset in the council menu, *Paper study area (Lama & Sun)*. With the preset on, Lama & Sun's indices are scaled within those 474 SA1s, as in the paper, and the legend says which scaling is shown. The analysis page fits both models: the paper's 474 SA1s, directly comparable with its Table 5, and all SA2s. `/metro/` redirects to the root.
+- The "Council" menu is now "Area", grouped into study areas, river basins and councils.
+- The map's variable menu and panel list only the variables a given build has data for.
+- **Fixed after the first CI run on real data:**
+  - SEIFA parsing now finds the Score/Decile header row instead of the first row mentioning "Disadvantage". The ABS title row also mentions it.
+  - Tree canopy reads all four statewide packages that overlap Greater Melbourne (Melbourne, Warburton, Port Phillip, Warragul). With only the Melbourne package, 18% of mesh blocks had no canopy value.
+  - The Vicmap DEM image service refuses `exportImage`, so the pipeline now reads the service's LERC elevation tiles at the level closest to 10 m. That adds the `lerc` dependency.
+- The GWR/MGWR bandwidth search has explicit bounds, and MGWR starts from the GWR bandwidth. The mgwr library's default floor (62) exceeded the number of units in small sets. Nothing changes for the 474-SA1 model.
+- A failed regression no longer stops the build: the maps are published, and the analysis page says the model could not be fitted.
+
 ## [0.5.0] - 2026-09-26
 
 ### Changed

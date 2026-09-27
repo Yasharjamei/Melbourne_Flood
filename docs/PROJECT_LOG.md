@@ -239,3 +239,38 @@ Both were tested against a simulated capped server and a truncated file.
 - **Largest single correction:** a Footscray SA1 with 48% of its area but about 1% of its residents in an overlay.
 - **Regression:** MGWR R² 0.444 vs GWR 0.218. Elevation is significant everywhere. Sand was not dropped this time, because GWR chose a wider bandwidth.
 
+## 14. v0.6: SEIFA, canopy, buildings, 10 m DEM, metro MGWR (2026-09-27)
+
+**Inputs offered by the owner, and what they turned out to be:**
+
+| Offered | What it is | Used as |
+|---|---|---|
+| SEIFA 2021 (attached files) | The attachments didn't reach the session, so the ABS workbook is downloaded directly instead | IRSD/IRSAD/IER/IEO deciles |
+| Vicmap 10 m DEM (WMTS link) | **Shaded relief: a picture, not elevation values** | A terrain toggle on the map. Values come from the separate `Vicmap_10m_DEM/ImageServer` |
+| Tree canopy (S3 zip) | 2 GB of 20 cm canopy/no-canopy GeoTIFFs in VicGrid 2020, one per 1:100k half-sheet | Remote-zip reads of only the overlapping tiles, averaged to 10 m (tested locally: 2 tiles for the two councils in 2.5 minutes) |
+| Microsoft building footprints | Per-quadkey line-delimited GeoJSON; the 2026-08 release | Count and roof coverage per SA1 |
+
+**Metro MGWR.** At SA1 level it isn't feasible: 474 SA1s take ~7 minutes, and cost grows with n², so 11,293 would take days. It is fitted on SA2s instead. Two library defaults broke on smaller unit sets and are now set explicitly:
+- the bandwidth search floor, 40 + 2k = 62
+- MGWR's own initial search
+
+**Statewide.** Possible, but not built. The tree-extent index covers all of Victoria (17 archives). An all-Victoria SA1 page would be about twice the metro page, around 30 MB, so it needs vector tiles first. The regression would run on SA2s (~520) or per region.
+
+**Single map (owner's request).** The two-council page was dropped in favour of one Greater Melbourne map. The paper comparison was kept, because it is the only place the reproduction can be checked:
+- a council-menu preset for the papers' 474 SA1s
+- the Lama & Sun indices re-scaled within those SA1s (`lsp`), because min–max scaling is area-relative
+- a second GWR/MGWR model on those SA1s
+
+**Bug found while doing this:** the index variables read the filter state before it was declared, a JavaScript temporal dead zone. The page never became ready. It was caught by the local browser test and would also have failed the CI screenshot step.
+
+**Road casement.** The owner supplied a DataVic *order* link: an 84 MB shapefile for the Melbourne Water region, in MGA 2020 zone 55. Order links are temporary, so `roads()` falls back to the same layer on the Vicmap WFS. The fixture test gave 5,138 polygons and a mean road-reserve share of 23.5% in the two paper councils.
+
+**River basins and subcatchments.**
+- The owner attached Melbourne Water's major river basins: 8 polygons, 3 MB. They are committed as static data, since there is no stable download link and they change rarely.
+- The owner also sent an ArcGIS export link for *Catchments of all Waterways and Drains*. It was signed to expire within 65 minutes, so the pipeline finds the same Melbourne Water layer through the ArcGIS Online catalogue search instead.
+- Fixture check: the two paper councils split into Maribyrnong (303 SA1s), Yarra (88) and Werribee (83). Werribee is plausible, since Melbourne Water's Werribee basin takes in the Kororoit and Laverton creek catchments.
+
+**Supplied "DEM Hydro Conditioning Guide v3": reviewed, not adopted as written.** Despite its title, it is an evacuation-routing spec. Its routing needs modelled depth and velocity, which aren't public, and its hazard thresholds understate ADR guideline 7-3: it removes roads only at H5 and routes civilians through H4. A reduced, honest version (static isolation analysis on the road network with flood overlays) is on the roadmap as item 7b.
+
+**Waterways and drains catchments, supplied as a file.** The owner then attached the full layer: a 3.2 MB zipped file geodatabase, 3,409 subcatchments, in EPSG:28355. It is committed to `data/static/` and read straight from the zip (`/vsizip/`), so the ArcGIS Online lookup is only a fallback now. Each record carries its drainage chain: subcatchment → major (creek) catchment → primary catchment → basin. In the paper councils the creek catchments are Kororoit Creek, Maribyrnong River, Moonee Ponds Creek, Stony Creek and Yarra River Main Stream. That explains the 83 SA1s in the Werribee basin: Kororoit Creek belongs to it.
+

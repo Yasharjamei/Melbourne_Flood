@@ -1,16 +1,18 @@
 # Who lives in the flood path
 
-An interactive web map of Melbourne, built as two pages from one pipeline:
+An interactive web map of **Greater Melbourne**: all 31 metropolitan councils, 11,293 SA1s and 543 suburbs, with an analysis page.
 
-- **Maribyrnong & Moonee Valley** (`/`): the 474 SA1s studied by both papers. This page reproduces, and critiques, Lama & Sun (2026).
-- **Greater Melbourne** (`/metro/`): all 31 metropolitan councils, 11,293 SA1s and 543 suburbs, with the same tools.
+- **The papers' own study area is built in.** Maribyrnong + Moonee Valley, the 474 SA1s both papers studied, is a one-click preset in the council menu: *Paper study area (Lama & Sun)*. With the preset on, Lama & Sun's indices are scaled within those 474 SA1s, as in the paper, so they can be checked against its figures.
+- **River basins.** Melbourne Water's major river basins (Maribyrnong, Yarra, Werribee, Dandenong, Western Port) are area presets and a toggleable outline layer. The Maribyrnong basin is the study area of Lee, Sun & Wachowicz. Melbourne Water's 3,409 waterways and drains subcatchments (also in `data/static/`) give each SA1 its drainage chain, shown in the tooltip, for example *Ascot Vale Main Drain → Maribyrnong River*. The 108 creek-level catchments are a second outline toggle, with names from zoom 11.
+- **The analysis page fits two models:** GWR/MGWR on the paper's 474 SA1s (the direct reproduction of their Table 5), and on all ~300 Greater Melbourne SA2s.
+- Until v0.6 the two councils had a separate page. The old `/metro/` address now redirects to the root.
 
 On either page you drag two circles, **A** and **B**, anywhere on the map. A side panel compares who lives inside each one: an age–sex pyramid, flood-relevant needs (aged 75+, aged 0–4, need for assistance, no car, limited English and so on), and how many residents fall inside the planning-scheme flood overlays.
 
 The project applies two flood-resilience papers to the same 474 SA1 "urban units" they studied. The interaction comes from an existing "Demographic Explorer" web map. The goal is not to redo the papers' single index. It is to show what that index hides.
 
 > **Status (v0.5):**
-> - Live at **https://yasharjamei.github.io/Melbourne_Flood/** (and `/metro/`, `/analysis/`).
+> - Live at **https://yasharjamei.github.io/Melbourne_Flood/** (analysis at `/analysis/`).
 > - Flood exposure is measured on **residents**: each dwelling is placed at its Vicmap Address point, so a flooded park no longer counts as exposure (see [Method](#method), step 3).
 > - **Working on the code?** Start with [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (how it fits together, data contract, gotchas) and [`CONTRIBUTING.md`](CONTRIBUTING.md) (setup, checks, pull requests).
 > - The first prototype, which used even spreading, is kept at [`snapshots/2026-09-25-prototype.html`](snapshots/2026-09-25-prototype.html).
@@ -18,7 +20,7 @@ The project applies two flood-resilience papers to the same 474 SA1 "urban units
 
 ### Verified build (GitHub Actions, live ABS and DataVic data)
 
-| | Maribyrnong & Moonee Valley | Greater Melbourne |
+| | Paper study area (Maribyrnong + Moonee Valley) | Greater Melbourne |
 |---|---|---|
 | Councils / SA1s / suburbs | 2 / 474 / 24 | 31 / 11,293 / 543 |
 | Mesh blocks (with residents) | 2,661 (2,228) | 58,563 (48,770) |
@@ -120,7 +122,7 @@ Neither paper publishes its HEC-RAS flood output. Lama & Sun's data is "availabl
 │   ├── 01_fetch.py      # downloads public inputs -> data/raw/<study>/, data/raw/gcp/, data/raw/shared/
 │   ├── 02_build.py      # SA1 + mesh-block + suburb data and indices -> data/processed/<study>.json
 │   ├── lamasun_stats.py # VIF, GWR and MGWR (Lama & Sun Table 5, Fig. 4)
-│   └── 03_bundle.py     # inlines each dataset into web/template.html -> dist/index.html, dist/metro/index.html
+│   └── 03_bundle.py     # inlines the dataset into web/template.html -> dist/index.html (+ /metro/ redirect)
 ├── web/
 │   ├── template.html    # the explorer (MapLibre GL JS map + D3 panel, no build step)
 │   └── analysis.html    # Table 5, Fig. 4 coefficient maps, Fig. 7 correlation matrix
@@ -145,16 +147,12 @@ Requires Python 3.10+. It's pure Python, so it works the same in Windows PowerSh
 python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-python pipeline/01_fetch.py --study west     # Maribyrnong + Moonee Valley (~150 MB incl. Census DataPack)
-python pipeline/02_build.py --study west
-python pipeline/01_fetch.py --study metro    # all 31 councils (adds several hundred MB of boundaries/overlays)
-python pipeline/02_build.py --study metro
-python pipeline/03_bundle.py                 # -> dist/index.html and dist/metro/index.html
+python pipeline/01_fetch.py     # all 31 councils; first run downloads ~1 GB (Census, boundaries, 3 M address points, canopy tiles, buildings)
+python pipeline/02_build.py     # ~20 minutes, mostly the two GWR/MGWR models
+python pipeline/03_bundle.py    # -> dist/index.html and dist/analysis/index.html
 ```
 
-Build `west` only if you don't need the metro page; `03_bundle.py` bundles whichever datasets exist.
-
-Some inputs are **optional**: mesh-block resident counts, Vicmap Address points, the elevation model and soil sand. If a download fails, the build carries on and records the substitution in the page footer. For example, "Mesh-block counts unavailable: residents placed on Residential mesh blocks in proportion to area".
+Some inputs are **optional**: mesh-block resident counts, Vicmap Address points, the elevation models, soil sand, SEIFA, tree canopy, road casement and building footprints. If a download fails, the build carries on and records the substitution in the page footer. For example, "Mesh-block counts unavailable: residents placed on Residential mesh blocks in proportion to area".
 
 Run every command from the repository root.
 
@@ -162,11 +160,11 @@ Run every command from the repository root.
 
 ### Live site (GitHub Pages)
 
-[`.github/workflows/pages.yml`](.github/workflows/pages.yml) fetches, builds and bundles both pages on a GitHub runner:
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) fetches, builds and bundles the map and analysis pages on a GitHub runner:
 - **On every pull request** it builds only, to prove the pipeline works on live data.
 - **On every push to `main`** it also publishes the pages:
-  - **https://yasharjamei.github.io/Melbourne_Flood/**
-  - **https://yasharjamei.github.io/Melbourne_Flood/metro/**
+  - **https://yasharjamei.github.io/Melbourne_Flood/** (map)
+  - **https://yasharjamei.github.io/Melbourne_Flood/analysis/** (correlations, GWR, MGWR)
 
 Raw inputs are cached, and downloaded again only when `pipeline/01_fetch.py` or `pipeline/config.py` changes.
 
@@ -177,9 +175,9 @@ One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
 ## Method
 
 1. **Study area.** Set in `pipeline/config.py`.
-   - `west` is the papers' two councils.
-   - `metro` is the 31 Greater Melbourne councils: Merri-bek appears under its ASGS 2021 name, Moreland. Its planning overlays are fetched under the current name, Merri-bek.
-   - An SA1 is kept if its representative point falls inside a study council. For `west`, that leaves 474 SA1s, the same count as Lama & Sun.
+   - The study is `metro`, the 31 Greater Melbourne councils. The papers' two councils (Maribyrnong, Moonee Valley) are its `paper` preset.
+   - Merri-bek appears under its ASGS 2021 name, Moreland. Its planning overlays are fetched under the current name, Merri-bek.
+   - An SA1 is kept if its representative point falls inside a study council. For the paper preset, that gives 474 SA1s, the same count as Lama & Sun.
 2. **Census attributes.** The 2021 General Community Profile (SA1, VIC) supplies the figures.
 
    | Indicator | Table |
@@ -268,7 +266,7 @@ Lower R² is expected: the response variable is a stand-in for their flood depth
 | Stage | Precision |
 |---|---|
 | Boundaries downloaded from ABS | generalised to about 2 m (two councils) or 6 m (metro) |
-| Boundaries drawn on screen | simplified to 4 m (two councils) or 12 m (metro), to keep the metro page loadable; coordinates rounded to about 1 m |
+| Boundaries drawn on screen | simplified to 12 m, to keep the page loadable (4 m on the pre-v0.6 two-council page); coordinates rounded to about 1 m |
 | Flood overlays | Vicmap Planning polygons as gazetted; the planning-scheme maps are their source of truth |
 | Who is inside an overlay | Vicmap Address point per property or unit (v0.5); before v0.5, mesh-block area |
 | Age and sex | SA1 only (about 400 people). **Nothing finer exists publicly.** |
@@ -293,8 +291,8 @@ Lama & Sun (2026) build their index in five steps. **All five are implemented in
 
 | Dimension | Indicator | AHP weight | Public substitute here | Status |
 |---|---|---|---|---|
-| Exposure | Flood depth (HEC-RAS, Oct 2022 event) | 0.019 | Share of SA1 inside LSIO/FO/SBO overlays (extent only, no depth) | Proxy |
-| Exposure | Elevation (Vicmap DEM 10 m); low = more exposed | 0.014 | Copernicus GLO-30 (30 m surface model), mesh-block samples, area-weighted to SA1 | Substitute |
+| Exposure | Flood depth (HEC-RAS, Oct 2022 event) | 0.019 | Share of the SA1's **residents** inside LSIO/FO/SBO overlays, placed by Vicmap Address points (extent only, no depth) | Proxy |
+| Exposure | Elevation (Vicmap DEM 10 m); low = more exposed | 0.014 | **Vicmap Elevation 10 m DEM**, the paper's own source (v0.6), sampled at mesh-block points and area-weighted to SA1. Copernicus 30 m is the fallback. | Same source |
 | Exposure | Sand % in soil (30 m); more sand = better drainage | 0.014 | SoilGrids 250 m, 0–5 cm | Substitute |
 | Sensitivity | Land use (Esri 10 m) | 0.050 | Share of SA1 area in built-up mesh-block categories (not Parkland, Water or Primary Production) | Substitute |
 | Sensitivity | Number of dwellings | 0.050 | G36 total dwellings | Available |
@@ -305,6 +303,39 @@ Lama & Sun (2026) build their index in five steps. **All five are implemented in
 | Adaptive capacity | Educated population | 0.168 | G43 non-school qualifications | Available |
 | Adaptive capacity | "Mean income generating population" ($91,000–$103,999 a year) | 0.259 | G17 persons earning $1,750–$1,999 a week, which is exactly that bracket | Available |
 
+### Lama & Sun's indices, in plain language
+
+Lama & Sun (2026) ask one question per SA1: **if a flood came, would this neighbourhood cope, or would the damage outrun its ability to recover?** They answer it with six numbers. Here is what each one means and how to read it on the map.
+
+**The three building blocks.** Each is a weighted sum of indicators scaled to 0–1, so each ranges from 0 up to its total weight.
+
+| Index | Question it answers | Built from (AHP weight) | Maximum | Higher means |
+|---|---|---|---|---|
+| **Exposure (E)** | How much hazard reaches this place? | flood (0.019), low elevation (0.014), low sand, i.e. poor drainage (0.014) | 0.047 | more exposed |
+| **Sensitivity (S)** | How much is there to be harmed? | built-up land (0.050), dwellings (0.050), population (0.074), dependent people under 20 and over 59 (0.074), long-term health conditions (0.110) | 0.358 | more to lose |
+| **Adaptive capacity (AC)** | How well can people absorb and recover? | employed (0.168), educated (0.168), residents on the reference income (0.259) | 0.595 | more capacity |
+
+**How each indicator is scaled.** Each is z-scored across the study area, then min–max scaled to 0–1, so every score is *relative to the other SA1s in the study*, not absolute. Elevation and sand are flipped, because higher ground and sandier soil mean *less* exposure. The weights come from the authors' Analytic Hierarchy Process survey (consistency ratio 0.042). Most of the weight sits in Adaptive capacity: income alone (0.259) outweighs all of Exposure (0.047) more than five times over.
+
+**The three results:**
+
+| Index | Formula | How to read it |
+|---|---|---|
+| **Flood Resilience Index (FRI)** | FRI = AC − (S + E) | **Above 0:** capacity outweighs sensitivity plus exposure, so the area is resilient. **Below 0:** it is not. The map uses a diverging red–blue scale split at 0. |
+| **Damage Index (DI)** | DI = normalise(Σ normalise(flood × X)) for the eight Sensitivity and Adaptive-capacity indicators X | How much of what is in the SA1 sits in the flood. It is 0 where nothing floods, whatever the SA1 contains. Since v0.5, "flood" is the share of *residents* in an overlay. |
+| **Integrated FRI (IFRI)** | IFRI = 0.5 × FRI − 0.5 × DI | Resilience minus likely damage. **Below 0: expected damage exceeds the ability to cope.** This is the paper's headline map. |
+
+**Reading them together:**
+- A high FRI with a low IFRI means a well-resourced area that sits in the flood, so the damage outweighs the resources.
+- A low FRI with an IFRI near 0 means a vulnerable area that is currently out of the flood's way.
+- The circles and pyramids show *who* is behind each number. FRI puts an under-20 and an 85-year-old in the same "dependent" count; the pyramid separates them.
+
+**Four cautions before quoting the indices:**
+1. **Scores are relative.** Because of min–max scaling, the same SA1 scores differently when scaled across Greater Melbourne and when scaled within the paper study area (the preset switches between them). Compare SA1s within one page, not across pages.
+2. **Exposure barely moves the result.** Its maximum is 0.047, against 0.595 for Adaptive capacity. FRI is therefore mostly a socio-economic index; the flood enters mainly through the Damage Index.
+3. **Counts, not rates.** Population, dwellings, employed, educated and income earners all grow with SA1 size. A large SA1 scores as both more "sensitive" and more "capable". The VIFs on the analysis page (up to 53) show how entangled these variables are.
+4. **"Reference income" is one bracket:** $91,000–$103,999 a year. Residents earning more than that don't count towards adaptive capacity.
+
 ### Lama & Sun's statistical analysis (Table 5, Figures 4 and 7)
 
 Implemented in `pipeline/lamasun_stats.py` and shown on the `analysis/` page.
@@ -314,7 +345,7 @@ Implemented in `pipeline/lamasun_stats.py` and shown on the `analysis/` page.
 | Section 2.2.3, Table 5 | GWR and MGWR, flood depth ~ 10 indicators; R², adjusted R², AICc, bandwidth | Yes, with PySAL `mgwr` (adaptive bisquare kernel, AICc golden-section search, standardised variables), shown beside the paper's values |
 | Figure 4a | Local R² map | Yes. It comes from the MGWR model where the library provides it, and from GWR otherwise; the page says which |
 | Figures 4b–k | MGWR local coefficient maps | Yes: ten small-multiple maps, with SA1s that aren't significant (multiple-testing corrected) greyed out |
-| Figure 7 | Scatter matrix of Exposure, Sensitivity, Adaptive capacity, FRI, Damage and IFRI with Pearson's r and adjusted R² | Yes, on both pages |
+| Figure 7 | Scatter matrix of Exposure, Sensitivity, Adaptive capacity, FRI, Damage and IFRI with Pearson's r and adjusted R² | Yes, for all 11,293 SA1s, plus SEIFA |
 
 **Response variable.** The paper contradicts itself here:
 - Section 2.2.3 says flood depth is the dependent variable.
@@ -339,12 +370,20 @@ This build follows 2.2.3, for two reasons:
 
 **Collinearity.** The page reports a variance inflation factor for each variable: population 39.4, dwellings 15.1, employed 53.5, educated 44.9. Population, dwellings, employed, educated and income earners are all counts that grow with SA1 size. Their coefficients can't be interpreted separately wherever VIF is above 10, and that applies to the paper's specification too. The fitted model shows the symptom: population is +0.67 and significant everywhere, while employed (−0.43) and educated (−0.37) pull the other way. That is a suppression pattern, not three real effects.
 
-**Scope.** GWR and MGWR run on the two-council study area (474 SA1s, about 12 minutes on 4 cores). They aren't run on the 11,293 metro SA1s, because MGWR's cost grows with the square of the number of units. The correlation matrix is computed for both pages.
+**Scope.** Two models are fitted in the same build: on the paper's own 474 SA1s (about 7 minutes), and **for all of Greater Melbourne on SA2s** (about 300 suburb-sized units).
+- **Why not SA1s:** MGWR's cost grows with the square of the number of units, so 11,293 SA1s would take days on a CI runner.
+- **How SA1s are combined into SA2s:**
+  - counts (population, dwellings and so on) are summed
+  - the flood share is resident-weighted
+  - elevation, sand and land use are area-weighted
+- **Caution:** SA2-scale coefficients can differ from SA1-scale ones (the modifiable areal unit problem), so read the two models as two scales, not two samples.
+
+The correlation matrix covers all 11,293 SA1s, now including the SEIFA disadvantage decile.
 
 **Assumptions the paper leaves open, and the choices made here:**
 - **Direction for elevation and sand.** The paper doesn't say whether low elevation or high sand is inverted before weighting. Its text implies both should be (low ground and clay soils flood). Their highest Exposure score, 0.043 out of a possible 0.047, is in low-lying Flemington. That only makes sense if low elevation scores high. Both are inverted here.
 - **Classes.** The paper maps five classes without naming the method, which is probably natural breaks. Quintiles are used here, so class boundaries won't match the published figures exactly.
-- **Normalisation scope.** For `metro`, indicators are normalised across all 11,293 SA1s, so its index values aren't comparable with the two-council page.
+- **Normalisation scope.** On the map, indicators are normalised across all 11,293 SA1s. The paper preset switches to indices normalised within its 474 SA1s (`lsp` in the data), which are the ones to compare with the paper.
 
 What this project adds on top:
 
@@ -369,17 +408,19 @@ What this project adds on top:
 | Hazard | Mean flood depth (HEC-RAS, Oct 2022, permanent water removed) | m | + | none public; overlay proxy only | Proxy |
 | Hazard | Flood spread (share of SA1 at depth ≥ 0.15 m) | % | + | LSIO/FO/SBO overlay share | Proxy |
 | Hazard | Drainage density | km⁻¹ | + | Vicmap Hydro / DEM-derived streams | Planned |
-| Vulnerability | Mean elevation | m | − | Vicmap Elevation DEM 10 m | Planned |
+| Vulnerability | Mean elevation | m | − | Vicmap Elevation DEM 10 m | Data in (v0.6) |
 | Vulnerability | Mean slope | ° | − | DEM derivative | Planned |
 | Vulnerability | Mean curvature | m⁻¹ | − | DEM derivative | Planned |
-| Vulnerability | SEIFA IER (economic resources) | score | − | ABS SEIFA 2021, SA1 | Planned |
-| Vulnerability | Vegetation density | % | − | DELWP/Vicmap tree canopy | Planned |
-| Vulnerability | Transport density | % | − | Vicmap road casement | Planned |
+| Vulnerability | SEIFA IER (economic resources) | score | − | ABS SEIFA 2021, SA1 | Data in (v0.6) |
+| Vulnerability | Vegetation density | % | − | Vicmap tree extent 2020 (20 cm) | Data in (v0.6) |
+| Vulnerability | Transport density | % | − | Vicmap road casement | Data in (v0.6) |
 | Exposure | Population density | people/m² | + | G01 ÷ SA1 area (**dasymetric: residential area**) | Available |
-| Exposure | Building density | % | + | Microsoft Global ML Building Footprints (public) | Planned |
+| Exposure | Building density | % | + | Microsoft Global ML Building Footprints (public) | Data in (v0.6) |
 | Exposure | Dependent population | % | + | G04, **and split into age bands** | Available and extended |
 | Exposure | Population with health condition (ASSNP) | % | + | G18 need for assistance | Available |
-| Exposure | SEIFA IEO (education–occupation) | score | − | ABS SEIFA 2021, SA1 | Planned |
+| Exposure | SEIFA IEO (education–occupation) | score | − | ABS SEIFA 2021, SA1 | Data in (v0.6) |
+
+*"Data in" means the indicator is on the map; Lee et al.'s spatially adaptive index itself isn't computed yet. Only slope, curvature and drainage density are still missing, and they are DEM derivatives.*
 
 **Weighting:**
 - **Hazard** is the equal-weighted mean of its three indicators.
@@ -427,10 +468,16 @@ Ordered by how much each step changes the numbers, not the look.
    - **Mesh-block view mode.** A third geography next to SA1 and circle, answering "who lives *here*". The panel shows mesh-block population, dwellings and category, plus the age pyramid of the parent SA1, labelled as *inherited*, never as the mesh block's own.
 3. **Reproduce the Lama & Sun indicators.** *(done, v0.3; the sensitivity checks below are still open)* Add elevation, sand %, land use, education and the income bracket. Compute FRI, Damage Index and IFRI with their AHP weights. Map them next to the pyramids, and run the sensitivity checks above.
 4. **MapLibre GL JS plus a real basemap.** *(done, v0.4: CARTO basemap, council filter, per-variable symbology; the Circle/Compare/Density modes and PMTiles are still open)* Replace the inline SVG map. SA1s become a vector source. Circles become draggable GeoJSON using Turf.js `circle` and `booleanPointInPolygon`. Basemap: OpenFreeMap or CARTO Positron/Dark Matter (no key), or MapTiler/Mapbox with a key kept out of git. Add the video's **Circle / Compare / Density** modes. Parcels mode depends on step 2.
-5. **SEIFA 2021 (IRSD / IRSAD)** at SA1, added to the table and choropleth.
+5. **SEIFA 2021 (IRSD / IRSAD / IER / IEO)** at SA1. *(done, v0.6)*
 5b. **All Greater Melbourne.** *(done, v0.3)* A second page for the 31 councils, sharing the pipeline.
 6. **Modelled depth.** If Chayn Sun shares the HEC-RAS October 2022 depth raster, replace the overlay proxy with depth bands (for example > 0.3 m, > 0.5 m, > 1.2 m, matching common vehicle and pedestrian stability thresholds). Otherwise use Melbourne Water's 1% AEP flood extent where licensing allows.
 7. **Second paper (Lee, Sun & Wachowicz).** Add its method once it is reviewed.
+7b. **Evacuation isolation**, a reduced version of the supplied *Evacuation Route Optimization* spec.
+   - **What:** road centrelines (Vicmap Transport or OpenStreetMap) as a graph. Road segments inside a flood overlay are removed, and the analysis counts residents whose SA1 no longer connects to land outside every overlay. The question it answers is "who could be cut off".
+   - **What is not adopted from the spec:**
+     - its ADR H1–H6 routing needs modelled depth *and* velocity, which aren't public
+     - its thresholds don't match ADR guideline 7-3: H2 is already unsafe for small vehicles, and H4 is unsafe for all people and vehicles, but the spec only removes roads at H5
+     - its code routes civilians through H4 water
 8. **Publish.** *(workflow added)* GitHub Pages deploys from `dist/` on every push to `main`. Still to do: link it from the portfolio site.
 
 ## Tools and Claude Code skills needed
@@ -466,14 +513,42 @@ The cloud environment's network policy blocks the data hosts by default. To run 
 
 | Dataset | Unlocks | Source | Public? |
 |---|---|---|---|
-| SEIFA 2021 at SA1 (IRSD, IRSAD, IER, IEO) | Lee et al. vulnerability and exposure | ABS | Yes |
-| Vicmap Elevation DEM 10 m (to replace Copernicus 30 m) | Finer elevation, slope, curvature, drainage density | DataVic / Vicmap | Yes |
-| Microsoft Global ML Building Footprints (Australia) | Building density; residential-only filtering of address points | Microsoft (ODbL) | Yes |
-| Tree canopy extent | Vegetation density | DataVic (DELWP) | Yes |
-| Vicmap road casement | Transport density | DataVic | Yes |
+| ~~SEIFA 2021 at SA1 (IRSD, IRSAD, IER, IEO)~~ | **Added in v0.6**: four map variables, a panel row and the correlation matrix | ABS | Yes |
+| ~~Vicmap Elevation DEM 10 m~~ | **Added in v0.6** as the elevation source (image service), plus a shaded-relief terrain layer on the map. Slope, curvature and drainage density are still to do. | DataVic / Vicmap | Yes |
+| ~~Microsoft Global ML Building Footprints~~ | **Added in v0.6**: building count and roof coverage per SA1. Residential-only filtering of address points is still to do. | Microsoft (ODbL) | Yes |
+| ~~Tree canopy extent~~ | **Added in v0.6**: Vicmap tree extent 2020 (20 cm) as canopy % per SA1 | DataVic (DEECA) | Yes |
+| ~~Vicmap road casement~~ | **Added in v0.6**: road-reserve share per SA1 (Lee et al.'s transport density), from a DataVic order with the Vicmap WFS as fallback | DataVic | Yes |
 | Maribyrnong catchment boundary | The 412-SA1 study area of Lee et al. | Melbourne Water / DEM watershed | Probably |
 | HEC-RAS October 2022 depth raster | Real hazard (depth, spread ≥ 0.15 m) instead of overlays | Chayn Sun (RMIT), on request | No |
 | Melbourne Water 1% AEP flood extent | Better proxy than planning overlays | Melbourne Water / Jacobs | Licensed |
+
+### Keeping the data current
+
+The Census is the anchor, and it is five-yearly. Everything else can be refreshed more often.
+
+| Input | Current vintage here | Next or newer release | How to update |
+|---|---|---|---|
+| Census age, sex, need, income (ABS GCP) | 2021 | **2026 Census**, first release expected mid-2027 | Change `GCP_URL` and the table names in `01_fetch.py`; the ASGS 2026 boundaries come with it |
+| Population between Censuses | 2021 | ABS **Estimated Resident Population**, annual, by SA2, age and sex | Could scale SA1 age structure to the latest SA2 totals (not built yet) |
+| SEIFA | 2021 | 2026 SEIFA, about a year after the Census | Change `SEIFA_URLS` |
+| Planning overlays (LSIO, FO, SBO) | **live**, fetched at build time | updated whenever an amendment is gazetted | Automatic on every build |
+| Address points (Vicmap Address) | **live** | weekly | Automatic |
+| Building footprints (Microsoft) | the release listed in `dataset-links.csv` (2026-08 at the time of writing) | periodic | Automatic: the manifest points at the newest tiles. Overture Maps buildings, which merge Microsoft, OpenStreetMap and others and are released monthly, are an alternative. |
+| Tree canopy | 2020 | the next statewide tree-extent capture | Change `CANOPY_ZIPS` (four 1:250k packages cover Greater Melbourne) |
+| Road casement | the DataVic order date | live on the Vicmap WFS | Order links expire, so the pipeline falls back to the WFS layer automatically; to pin a new snapshot, order it on DataVic and put the link in `ROAD_ORDER_URLS` |
+| Elevation | Vicmap 10 m DEM (image service, LERC tiles) | LiDAR-derived 1–5 m DEMs via ELVIS for parts of Melbourne | A different fetch function; the build only needs GeoTIFFs |
+
+**Using the statewide Vicmap 10 m DEM file on your own computer.** DataVic also publishes the whole DEM as one file: [`vmelev_dem10m_Geotiff_GDA94_VicGrid.zip`](https://cl-isd-prd-datashare-s3-delivery.s3.amazonaws.com/PrePackages/vmelev_dem10m_Geotiff_GDA94_VicGrid.zip).
+- **Size:** 11.9 GB zipped, 12.5 GB unzipped, one float32 GeoTIFF in VicGrid (EPSG:3111).
+- **Why CI doesn't use it:** the zip uses **Deflate64**, so no tool can read part of it remotely. The whole file would have to be downloaded on every uncached run, and it is larger than GitHub's cache.
+- **Locally it is the best source:**
+  1. Download it once.
+  2. Extract it with Windows Explorer or 7-Zip; both handle Deflate64.
+  3. Put `vmelev_dem10m_Geotiff_GDA94_Vicgrid.tif` in `data/raw/shared/`.
+  4. Run `02_build.py`. It prefers this file over the image service and over Copernicus. The TIFF is internally tiled, so only the study area is read.
+| Flood hazard | planning overlays | Melbourne Water flood mapping and Victorian Flood Database extents | Swap the `riv`/`sbo` polygons (see ARCHITECTURE §4) |
+
+**To refresh everything that is live,** re-run the GitHub Action (Actions → *Build and deploy* → *Run workflow*). Delete the cache first if you want to force fresh downloads. A scheduled monthly run would keep the live inputs current; add a `schedule:` trigger to `pages.yml` if you want that.
 
 ## Data sources and licences
 
@@ -482,4 +557,8 @@ The cloud environment's network policy blocks the data hosts by default. To run 
 - **ABS** Mesh Block Counts 2021 and Suburbs and Localities 2021: CC BY 4.0.
 - **Copernicus GLO-30 DEM:** © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA.
 - **SoilGrids 2.0 (ISRIC):** CC BY 4.0.
+- **ABS SEIFA 2021** (SA1): CC BY 4.0.
+- **Vicmap Elevation 10 m DEM**, **Vicmap Vegetation tree extent 2020** and **Vicmap Property road casement**, via DataVic: CC BY 4.0, © State of Victoria.
+- **Melbourne Water** major river basins and *Catchments of all Waterways and Drains* (both in `data/static/`, supplied by the owner from Melbourne Water's open data hub): CC BY 4.0.
+- **Microsoft Global ML Building Footprints:** ODbL.
 - **Lama & Sun (2026):** CC BY 4.0. The methodology and weights are cited and credited. None of the authors' data is redistributed here.

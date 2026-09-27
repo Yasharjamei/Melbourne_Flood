@@ -20,11 +20,13 @@ For *why* the project exists and how it maps onto the papers, see the [README](.
  ABS Census GCP DataPack ─────┤
  ABS Mesh Block Counts ───────┤   01_fetch.py ──► data/raw/<study>/   (cached, git-ignored)
  Vicmap Planning (WFS) ───────┤        │
- Vicmap Address (WFS) ────────┤        ▼
+ Vicmap Address (WFS) ────────┤        │
+ Vicmap 10 m DEM, canopy ─────┤        │
+ SEIFA, MS buildings ─────────┤        ▼
  Copernicus DEM, SoilGrids ───┘   02_build.py ──► data/processed/<study>.json
-                                       │   └─ lamasun_stats.py (GWR / MGWR, two-council study only)
+                                       │   └─ lamasun_stats.py (GWR / MGWR: SA1s west, SA2s metro)
                                        ▼
-                                  03_bundle.py ──► dist/index.html, dist/metro/index.html      ◄── web/template.html
+                                  03_bundle.py ──► dist/index.html (+ /metro/ redirect)          ◄── web/template.html
                                                    dist/**/analysis/index.html                 ◄── web/analysis.html
                                        │
                                        ▼
@@ -39,14 +41,14 @@ There is **no server and no database**. Each page is one self-contained HTML fil
 
 If the basemap is unreachable, the page falls back to a plain background.
 
-There are two **study areas**, defined in `pipeline/config.py`:
+There is one **study area**, `metro`, defined in `pipeline/config.py`. The papers' own area is a *preset* inside it:
 
 | key | councils | output | notes |
 |---|---|---|---|
-| `west` | Maribyrnong, Moonee Valley (474 SA1s) | `dist/index.html` | the papers' own study area; runs GWR/MGWR |
-| `metro` | all 31 Greater Melbourne councils (11,293 SA1s) | `dist/metro/index.html` | GWR/MGWR skipped: cost grows with n² |
+| `metro` | all 31 Greater Melbourne councils (11,293 SA1s) | `dist/index.html` | GWR/MGWR on ~300 SA2s (cost grows with n²) |
+| `metro.paper` (preset) | Maribyrnong, Moonee Valley (474 SA1s) | same page, council menu | GWR/MGWR on its SA1s (the paper's Table 5); Lama & Sun indices also scaled within it (`lsp`) |
 
-Every pipeline step takes `--study <key>`.
+Every pipeline step takes `--study <key>` (default `metro`). Adding a small study to `STUDIES` is the quickest way to iterate. `03_bundle.py` also writes redirects from the retired `/metro/` addresses.
 
 ---
 
@@ -69,6 +71,8 @@ docs/
   ARCHITECTURE.md    this file
   PROJECT_LOG.md     decisions and history
 papers/              the two source papers (PDF)
+data/static/         inputs with no stable download link, committed: Melbourne Water river basins and
+                     waterways/drains catchments (zipped geodatabase, read in place)
 snapshots/           the first prototype, frozen
 ```
 
@@ -79,7 +83,8 @@ snapshots/           the first prototype, frozen
   - `lgas`: ASGS 2021 council names
   - `out`: output path under `dist/`
   - `simplify_m`: polygon simplification tolerance in metres; this trades page size against edge accuracy
-  - `mgwr`: whether to run the regressions
+  - `mgwr`: `"SA2"` fits the study-wide model on SA2s
+  - `paper`: `{label, lgas}`, the papers' study area, which becomes the map preset `__paper`, a second GWR/MGWR model on its SA1s, and the paper-scaled indices `lsp`
 - `norm_lga()` lowercases a name, strips " (Vic.)" and maps Merri-bek to its ASGS 2021 name, Moreland.
 - `LAMA_SUN` holds Table 2 of the paper: for each dimension, a list of `(indicator, AHP weight, direction)`. Direction −1 flips the normalised value, so for example lower elevation means higher exposure.
 - `DAMAGE_INDICATORS` lists the X terms of the damage index D = Σ flood × X.
@@ -94,11 +99,15 @@ snapshots/           the first prototype, frozen
 | `wfs_overlays` | LSIO/FO/SBO planning overlays from Vicmap, filtered **by council name** | a BBOX filter returned 0 features; bbox is only the fallback |
 | `wfs_layer` | finds a Vicmap layer by regex in GetCapabilities | layer names change between GeoServer releases |
 | `wfs_points` | Vicmap Address points, geometry only, saved as a float32 `addr.npy` | tries both axis orders; about 2 M points for metro |
+| `HttpRange` | a seekable file over HTTP range requests | lets `zipfile` list and extract single members of a remote zip |
+| `canopy` | Vicmap tree extent (20 cm, 0/1/2 = no tree, tree, no data), reduced to 10 m canopy-% grids in `data/raw/shared/canopy10/` | reads only the tiles that overlap the study area, straight from the four statewide zips (Melbourne, Warburton, Port Phillip, Warragul) (`/vsizip//vsicurl/`); ~30 s per tile |
+| `buildings` | Microsoft ML building footprints (quadkey tiles from `dataset-links.csv`), saved as `lon, lat, area m², height` | area from degrees² × cos(latitude), which is accurate to well under 1% at building scale |
+| `dem10` | Vicmap 10 m DEM from the image service: `exportImage` if allowed, else its LERC elevation tiles at the level nearest 10 m, mosaicked to `dem10.tif` (Web Mercator) | the *shaded relief* service is only a picture and is used as a map layer, not as data |
 | `optional` | runs an optional download and only warns on failure | 02_build falls back and records the fallback in `NOTES` |
 
 **Required inputs:** councils, SA1, mesh blocks, suburbs (SAL), overlays and the Census DataPack. A failure here stops the run.
 
-**Optional inputs:** mesh-block counts, address points, DEM and sand.
+**Optional inputs:** mesh-block counts, address points, the Vicmap 10 m DEM (falls back to Copernicus 30 m), Copernicus DEM, sand, SEIFA, tree canopy and building footprints.
 
 ### 2.3 `pipeline/02_build.py`
 
@@ -116,14 +125,18 @@ The script runs top to bottom, one section per `# ----` banner:
    - Each Vicmap Address point is joined to its mesh block and flagged if it falls inside `riv` or `sbo`.
    - A mesh block's `riv`, `sbo` and `any` then become the **share of its addresses** inside the overlay, not the share of its area. A mesh block with no addresses keeps its area share.
 8. **Resident-weighted SA1 shares:** `rivA`, `sboA` and `anyA` = Σ w × share. This means "share of residents", so a flooded park no longer counts as exposure. `areaA`, the old area share, is kept for comparison.
-9. **Rasters:** DEM and sand are sampled at mesh-block points and area-weighted to each SA1.
+9. **Rasters:** DEM (Vicmap 10 m if present, else Copernicus 30 m) and sand are sampled at mesh-block points and area-weighted to each SA1.
+   - **Tree canopy:** mesh blocks are rasterised onto each 10 m canopy grid, giving a zonal mean per mesh block, then an area-weighted mean per SA1.
+   - **Buildings:** footprint centroids are joined to SA1s, giving a count and roof coverage (Σ footprint area ÷ SA1 area).
+   - **SEIFA:** `Table 1` of the ABS workbook is parsed by header text, not position, taking the decile column of each of the four indexes.
 10. **Lama & Sun indices:**
     - Each indicator is z-scored, then min–max scaled, and flipped where the direction is −1.
     - The scaled indicators are AHP-weighted into Exposure, Sensitivity and Adaptive capacity.
     - FRI = AC − (S + E)
     - DMG = mm(Σ mm(flood × X))
     - IFRI = ½FRI − ½DMG
-11. **GWR/MGWR:** only when `ST["mgwr"]`; see 2.4.
+11. **GWR/MGWR** runs two models, `paper_model()` on the paper area's SA1s and `sa2_model()` on all SA2s. For the SA2 model, counts are summed, the flood share is resident-weighted and physical indicators are area-weighted. It needs at least 60 SA2s. Each model's failure is caught, so the maps still build and the analysis page says so. `stats` is a list of models. See 2.4.
+   - **Road casement:** road-reserve share per SA1, by rasterising roads and SA1s at 5 m in 10 km tiles (`polygon_share`).
 12. **Output JSON** (schema in section 3). Every polygon goes through `gj()`, which simplifies, reprojects to WGS84, rounds to 5 decimals (about 1 m) and **orients exterior rings clockwise** (see section 5).
 
 Working CRS: **EPSG:7855** (GDA2020 / MGA zone 55), so areas and distances are in metres.
@@ -178,7 +191,7 @@ This page reads `D.stats`, which is `null` for metro, and `D.sa1[].ls`. It draws
 The workflow runs on pull requests, on pushes to `main` and on manual dispatch.
 
 1. It restores the `data/raw` cache. The key is a hash of `01_fetch.py` and `config.py`, so changing either refetches everything.
-2. It fetches and builds `west`, then `metro`, then bundles both.
+2. It fetches and builds `metro`, then bundles the map, the analysis page and the `/metro/` redirects.
 3. **On a pull request:** it takes screenshots with `screenshot.py` and force-pushes them to the `ci-preview` branch for review. Nothing is deployed.
 4. **On `main`:** it uploads `dist/` and deploys it to Pages.
 
@@ -189,6 +202,7 @@ The workflow runs on pull requests, on pushes to `main` and on manual dispatch.
 ```jsonc
 {
   "meta": {
+    "presets": [{"key": "__paper", "label": "...", "lgas": [...]}],   // extra entries in the council menu
     "study": "west", "title": "...", "label": "Both councils", "n": 474,
     "lat0": -37.77,            // for the equirectangular distance used by circles
     "addr": true,              // address points were used for flood shares
@@ -206,13 +220,20 @@ The workflow runs on pull requests, on pushes to `main` and on manual dispatch.
     "riv": 0.12, "sbo": 0.03,  // share of residents in riverine / overland-flow overlays
     "fl": 0.14,                // share of residents in any overlay (not riv + sbo: they overlap)
     "fa": 0.20,                // share of AREA in any overlay (the pre-v0.5 measure)
+    "can": 12.3,               // % tree canopy (null if unavailable)
+    "bcov": 0.31, "bn": 145,   // roof coverage share, building count (null if unavailable)
+    "seifa": [3, 4, 2, 5],     // IRSD, IRSAD, IER, IEO deciles (1 = most disadvantaged); null if unavailable
+    "road": 0.23,              // share of area in road casement (null if unavailable)
+    "basin": "Maribyrnong",    // Melbourne Water river basin ("" outside all)
+    "drain": "Ascot Vale M.D. → Maribyrnong River",   // drainage chain (absent if unknown)
+    "lsp": [...],              // paper-area SA1s only: the six indices scaled within the paper's 474 SA1s
     "ls": [E, S, AC, FRI, DMG, IFRI]   // Lama & Sun indices, null where undefined
   }],
   "shapes": [GeoJSON geometry per SA1, same order as sa1],
   "mb": [[lon, lat, i, w, riv, sbo]],  // mesh-block point, SA1 index, resident share, in-overlay shares
   "riv": GeoJSON, "sbo": GeoJSON,     // overlay polygons for display
-  "lga": [{"name": "...", "g": GeoJSON}], "sal": [{"name": "...", "g": GeoJSON}],
-  "stats": null | { see lamasun_stats.run() }
+  "lga": [{"name": "...", "g": GeoJSON}], "basins": [...], "catchments": [...],   // same shape "sal": [{"name": "...", "g": GeoJSON}],
+  "stats": [ { see lamasun_stats.run(), plus "title", "unit": "SA1" | "SA2", and "idx" (SA1 indices) or "units": [{"name", "g"}] } ]
 }
 ```
 

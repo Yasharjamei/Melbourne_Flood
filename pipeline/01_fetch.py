@@ -1,16 +1,16 @@
 """Download every public input for one study area into data/raw/.
 
-    python pipeline/01_fetch.py --study west     # Maribyrnong + Moonee Valley
-    python pipeline/01_fetch.py --study metro    # all 31 Greater Melbourne councils
+    python pipeline/01_fetch.py                  # all 31 Greater Melbourne councils (the only study)
 
 Required inputs stop the run on failure. Optional ones (mesh-block counts, address
-points, DEM, soil sand) log a warning and 02_build.py falls back, saying so in its output.
+points, DEMs, soil sand, SEIFA, tree canopy, building footprints) log a warning and 02_build.py falls back, saying so in its output.
 
 Every download is cached under data/raw/: delete a file to fetch it again.
 """
 import argparse, io, json, math, os, re, sys, time, urllib.parse, urllib.request, zipfile
 sys.path.insert(0, os.path.dirname(__file__))
 from config import STUDIES, norm_lga
+import numpy as np
 
 UA = {"User-Agent": "Mozilla/5.0 (melbourne-flood pipeline)"}
 ABS_GEO = "https://geo.abs.gov.au/arcgis/rest/services/ASGS2021"
@@ -26,14 +26,29 @@ WFS_LAYER = "open-data-platform:plan_overlay"
 DEM_TILE = ("https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_{ns}{lat:02d}_00_{ew}{lon:03d}_00_DEM/"
             "Copernicus_DSM_COG_10_{ns}{lat:02d}_00_{ew}{lon:03d}_00_DEM.tif")
 SAND_WCS = "https://maps.isric.org/mapserv?map=/map/sand.map"
+SEIFA_URLS = [
+    "https://www.abs.gov.au/statistics/people/people-and-communities/socio-economic-indexes-areas-seifa-australia/2021/"
+    "Statistical%20Area%20Level%201%2C%20Indexes%2C%20SEIFA%202021.xlsx",
+]
+# Vicmap Elevation 10 m DEM as an image service (real elevation values, unlike the shaded-relief tiles).
+DEM10 = "https://tiles-ap1.arcgis.com/P744lA0wf4LlBZ84/arcgis/rest/services/Vicmap_10m_DEM/ImageServer"
+# Vicmap Vegetation tree extent, 20 cm canopy / no-canopy rasters (2020), one zip for Greater Melbourne.
+# Greater Melbourne spans four of the statewide 1:250k packages; tiles outside the study bbox are skipped.
+CANOPY_ZIPS = [f"https://cl-isd-prd-datashare-s3-delivery.s3.amazonaws.com/PrePackages/VMVEG_TREE_EXTENT/"
+               f"VMVEG_TREE_EXTENT_{n}.zip" for n in ("MELBOURNE", "WARBURTON", "PORT_PHILLIP", "WARRAGUL")]
+# Vicmap Property road casement (road reserves), a DataVic order for the Melbourne Water region.
+# Order links are temporary; when this one is gone the WFS layer is used instead.
+ROAD_ORDER_URLS = ["https://s3.ap-southeast-2.amazonaws.com/cl-isd-prd-datashare-s3-delivery/Order_5YFHYM.zip"]
+# Microsoft Global ML Building Footprints: manifest of per-country, per-quadkey files.
+MS_BUILDINGS = "https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv"
 
 
-def get(url, params=None, tries=4, binary=False):
+def get(url, params=None, tries=4, binary=False, headers=None):
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
     for i in range(tries):
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=300) as r:
+            with urllib.request.urlopen(urllib.request.Request(url, headers={**UA, **(headers or {})}), timeout=300) as r:
                 data = r.read()
             return data if binary else data.decode("utf-8")
         except Exception as e:
@@ -247,6 +262,269 @@ def wfs_points(bbox, out, pattern=r"address", prefer=(r"address_point$", r"addr.
     print(f"  address points: {len(a):,} from {layer} -> {out}")
 
 
+class HttpRange(io.RawIOBase):
+    """A seekable file over HTTP range requests, so zipfile can list and extract single members
+    of a remote archive without downloading all of it (the canopy zip is 2 GB)."""
+    def __init__(self, url):
+        r = urllib.request.urlopen(urllib.request.Request(url, method="HEAD", headers=UA), timeout=60)
+        self.url, self.n, self.p = url, int(r.headers["Content-Length"]), 0
+    def seekable(self): return True
+    def readable(self): return True
+    def tell(self): return self.p
+    def seek(self, o, w=0):
+        self.p = o if w == 0 else self.p + o if w == 1 else self.n + o
+        return self.p
+    def readinto(self, b):
+        if self.p >= self.n:
+            return 0
+        end = min(self.n, self.p + len(b)) - 1
+        d = get(self.url, binary=True, tries=4, headers={"Range": f"bytes={self.p}-{end}"})
+        b[:len(d)] = d; self.p += len(d)
+        return len(d)
+
+
+def canopy(bbox, outdir="data/raw/shared/canopy10"):
+    """Tree canopy share on a 10 m grid, from the 20 cm Vicmap tree-extent tiles that overlap bbox
+    (listing every package is cheap: only zip directories are read until a tile is needed).
+    Each 20 cm tile (about 110,000 x 70,000 pixels, 0 = no tree, 1 = tree, 2 = no data) is read
+    straight out of the remote zip and averaged 50 x 50 into a 10 m percentage grid."""
+    import rasterio
+    from rasterio.enums import Resampling
+    from rasterio.warp import transform_bounds
+    os.makedirs(outdir, exist_ok=True)
+    tifs = []
+    for url in CANOPY_ZIPS:
+        z = zipfile.ZipFile(io.BufferedReader(HttpRange(url), 1 << 20))
+        tifs += [(url, m) for m in z.namelist() if m.lower().endswith(".tif")]
+    env = rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".zip,.tif",
+                       GDAL_HTTP_MAX_RETRY="4", GDAL_HTTP_RETRY_DELAY="2")
+    used = 0
+    with env:
+        for url, m in tifs:
+            dst = os.path.join(outdir, os.path.basename(m).replace("_20cm_", "_10m_"))
+            src = f"/vsizip//vsicurl/{url}/{m}"
+            with rasterio.open(src) as r:
+                w, s_, e, n = transform_bounds(r.crs, 4326, *r.bounds)
+                if e < bbox[0] or w > bbox[2] or n < bbox[1] or s_ > bbox[3]:
+                    continue
+                used += 1
+                if os.path.exists(dst):
+                    continue
+                f = 50
+                a = r.read(1, out_shape=(r.height // f, r.width // f), resampling=Resampling.average, masked=True)
+                pct = np.where(np.ma.getmaskarray(a), 255, np.round(a.filled(0) * 100)).astype("uint8")
+                t = r.transform * r.transform.scale(r.width / pct.shape[1], r.height / pct.shape[0])
+                prof = dict(driver="GTiff", width=pct.shape[1], height=pct.shape[0], count=1, dtype="uint8",
+                            crs=r.crs, transform=t, nodata=255, compress="deflate")
+                with rasterio.open(dst, "w", **prof) as o:
+                    o.write(pct, 1)
+                print(f"  canopy: {os.path.basename(m)} -> {dst} ({pct.shape[1]}x{pct.shape[0]})")
+    if not used:
+        raise RuntimeError("no canopy tile overlaps the study area")
+    print(f"  canopy: {used} tiles cover the study area")
+
+
+def buildings(bbox, out):
+    """Microsoft Global ML Building Footprints inside bbox, reduced to one row per building:
+    lon, lat (centroid), footprint area in m2, height in m (-1 if unknown)."""
+    if os.path.exists(out):
+        print("  buildings: cached"); return
+    import csv, gzip, shapely
+    def quadkey(lon, lat, z=9):
+        x = int((lon + 180) / 360 * 2 ** z)
+        s = math.sin(math.radians(lat)); y = int((0.5 - math.log((1 + s) / (1 - s)) / (4 * math.pi)) * 2 ** z)
+        return "".join(str(((x >> i) & 1) + 2 * ((y >> i) & 1)) for i in range(z - 1, -1, -1))
+    step = 0.05
+    keys = {quadkey(bbox[0] + i * step, bbox[1] + j * step)
+            for i in range(int((bbox[2] - bbox[0]) / step) + 2) for j in range(int((bbox[3] - bbox[1]) / step) + 2)}
+    rows = [r for r in csv.DictReader(io.StringIO(get(MS_BUILDINGS)))
+            if r["Location"] == "Australia" and r["QuadKey"].zfill(9) in keys]
+    if not rows:
+        raise RuntimeError(f"no Australia building tiles for quadkeys {sorted(keys)[:5]}...")
+    print(f"  buildings: {len(rows)} tiles, uploaded {sorted({r.get('UploadDate', '?') for r in rows})}")
+    parts = []
+    for r in rows:
+        lines = gzip.decompress(get(r["Url"], binary=True)).decode("utf-8").splitlines()
+        feats = [json.loads(l) for l in lines if l.strip()]
+        g = shapely.from_geojson([json.dumps(f["geometry"]) for f in feats])
+        c = shapely.centroid(g); x, y = shapely.get_x(c), shapely.get_y(c)
+        k = (x >= bbox[0]) & (x <= bbox[2]) & (y >= bbox[1]) & (y <= bbox[3])
+        area = shapely.area(g) * (111320.0 ** 2) * np.cos(np.radians(y))     # degrees^2 -> m^2
+        h = np.array([float((f.get("properties") or {}).get("height") or -1) for f in feats])
+        parts.append(np.column_stack([x, y, area, h])[k])
+        print(f"  buildings: tile {r['QuadKey']}: {len(feats):,} footprints, {int(k.sum()):,} in the study bbox")
+    a = np.vstack(parts).astype(np.float32)
+    np.save(out, a); print(f"  buildings: {len(a):,} -> {out}")
+
+
+def roads(bbox, outdir="data/raw/shared/roads"):
+    """Vicmap Property road casement polygons (the whole road reserve, kerb to kerb and verge).
+    First the DataVic order zip (a shapefile in MGA 2020 zone 55); if that link has expired,
+    the same layer from the Vicmap WFS, paged in parallel, saved as GeoJSON."""
+    if glob_any(outdir, (".shp", ".geojson")):
+        print("  road casement: cached"); return
+    os.makedirs(outdir, exist_ok=True)
+    for u in ROAD_ORDER_URLS:
+        try:
+            z = zipfile.ZipFile(io.BufferedReader(HttpRange(u), 1 << 20))
+            parts = [m for m in z.namelist() if "ROAD_CASEMENT_POLYGON." in m.upper()]
+            if not any(m.lower().endswith(".shp") for m in parts):
+                raise RuntimeError("no ROAD_CASEMENT_POLYGON.shp in the order")
+            for m in parts:
+                open(os.path.join(outdir, os.path.basename(m)), "wb").write(z.read(m))
+            print(f"  road casement: {len(parts)} shapefile parts from the DataVic order"); return
+        except Exception as e:
+            print(f"  road casement: order link unusable ({str(e)[:120]}); trying WFS")
+    layer = wfs_layer(r"casement", (r"road_casement_polygon$", r"road_casement", r"casement"))
+    desc = get(WFS, {"service": "WFS", "version": "2.0.0", "request": "DescribeFeatureType", "typeNames": layer})
+    geom = next((t.split('name="')[1].split('"')[0] for t in desc.split("<")
+                 if 'type="gml:' in t and 'name="' in t), "geom")
+    q = lambda start: {"service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": layer,
+                       "outputFormat": "application/json", "srsName": "EPSG:4326", "propertyName": geom,
+                       "bbox": f"{bbox[1]},{bbox[0]},{bbox[3]},{bbox[2]},urn:ogc:def:crs:EPSG::4326",
+                       "count": 50000, "startIndex": start}
+    js = get_json(WFS, q(0)); first = js.get("features", [])
+    total = js.get("numberMatched"); step = len(first)
+    feats = list(first)
+    if isinstance(total, int) and step:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            for got in ex.map(lambda st: get_json(WFS, q(st)).get("features", []), range(step, total, step)):
+                feats += got
+    if not feats:
+        raise RuntimeError(f"{layer} returned no features")
+    json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {}, "geometry": f["geometry"]}
+                                                          for f in feats if f.get("geometry")]},
+              open(os.path.join(outdir, "road_casement.geojson"), "w"))
+    print(f"  road casement: {len(feats):,} polygons from {layer}")
+
+
+def subcatchments(bbox, out="data/raw/shared/subcatchments.geojson"):
+    """Melbourne Water 'Catchments - Waterways and Drains Subcatchments': the catchment of every
+    Melbourne Water drain and waterway. Found through the ArcGIS Online catalogue (the hub's own
+    export links are signed and expire within the hour), then paged from its FeatureServer."""
+    if os.path.exists(out) or os.path.exists("data/static/waterways_drains_catchments.gdb.zip"):
+        print("  subcatchments: cached or stored in data/static"); return
+    hits = get_json("https://www.arcgis.com/sharing/rest/search",
+                    {"q": 'title:"Waterways and Drains Subcatchments" AND type:"Feature Service"', "num": 20, "f": "json"})
+    items = [r for r in hits.get("results", []) if r.get("url") and "subcatchment" in r.get("title", "").lower()]
+    items.sort(key=lambda r: (("melbourne" not in (r.get("owner", "") + r.get("title", "")).lower()), -r.get("numViews", 0)))
+    if not items:
+        raise RuntimeError("no 'Waterways and Drains Subcatchments' feature service found")
+    svc = items[0]["url"].rstrip("/")
+    meta = get_json(svc, {"f": "json"})
+    lyr = svc if "/FeatureServer/" in svc else f"{svc}/{(meta.get('layers') or [{'id': 0}])[0]['id']}"
+    print(f"  subcatchments: {items[0].get('title')} (owner {items[0].get('owner')}) -> {lyr}")
+    feats, off = [], 0
+    while True:
+        js = get_json(lyr + "/query", {"where": "1=1", "outFields": "*", "returnGeometry": "true", "f": "geojson",
+                                        "outSR": 4326, "geometry": f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}",
+                                        "geometryType": "esriGeometryEnvelope", "inSR": 4326,
+                                        "spatialRel": "esriSpatialRelIntersects", "resultOffset": off, "resultRecordCount": 1000})
+        got = js.get("features", [])
+        feats += got; off += len(got)
+        if not got or not (js.get("exceededTransferLimit") or (js.get("properties") or {}).get("exceededTransferLimit")):
+            if len(got) < 1000:
+                break
+    json.dump({"type": "FeatureCollection", "features": feats}, open(out, "w"))
+    print(f"  subcatchments: {len(feats):,} polygons -> {out}")
+
+
+def glob_any(d, exts):
+    return os.path.isdir(d) and any(f.lower().endswith(exts) for f in os.listdir(d))
+
+
+def dem10(bbox, raw):
+    """Vicmap Elevation 10 m DEM from its image service. exportImage is tried first; hosted tiled
+    image services often refuse it, so the fallback reads the service's own LERC elevation tiles
+    (float values, not a picture) at the level closest to 10 m and mosaics them into one GeoTIFF."""
+    if glob_any(raw, ("dem10.tif",)) or os.path.exists(f"{raw}/dem10_000.tif"):
+        print("  Vicmap 10 m DEM: cached"); return
+    info = get_json(DEM10, {"f": "json"})
+    print(f"  DEM service: capabilities={info.get('capabilities')}, format={(info.get('tileInfo') or {}).get('format')}, "
+          f"pixelType={info.get('pixelType')}, allowExport={info.get('exportTilesAllowed')}")
+    try:
+        b = get(DEM10 + "/exportImage", {"bbox": f"{bbox[0]},{bbox[1]},{min(bbox[2], bbox[0] + 0.05)},{min(bbox[3], bbox[1] + 0.05)}",
+                                         "bboxSR": 4326, "imageSR": 4326, "size": "500,500", "format": "tiff",
+                                         "pixelType": "F32", "f": "image"}, binary=True, tries=1)
+        if b[:2] not in (b"II", b"MM"):
+            raise RuntimeError(b[:200].decode("latin1"))
+        dem10_export(bbox, raw, info)
+    except Exception as e:
+        print(f"  DEM exportImage refused ({str(e)[:160]}); trying LERC tiles")
+        dem10_tiles(bbox, raw, info)
+
+
+def dem10_export(bbox, raw, info):
+    mw, mh = int(info.get("maxImageWidth", 4000)), int(info.get("maxImageHeight", 4000))
+    res = 0.0001                                # ~9-11 m at Melbourne's latitude
+    cw, ch = min(mw, 4000) * res, min(mh, 4000) * res
+    k, x = 0, bbox[0]
+    while x < bbox[2]:
+        y = bbox[1]
+        while y < bbox[3]:
+            dst = f"{raw}/dem10_{k:03d}.tif"; k += 1
+            x2, y2 = min(x + cw, bbox[2] + res), min(y + ch, bbox[3] + res)
+            b = get(DEM10 + "/exportImage", {"bbox": f"{x},{y},{x2},{y2}", "bboxSR": 4326, "imageSR": 4326,
+                                             "size": f"{round((x2 - x) / res)},{round((y2 - y) / res)}",
+                                             "format": "tiff", "pixelType": "F32", "f": "image"}, binary=True, tries=3)
+            open(dst, "wb").write(b)
+            y = y2
+        x = x2
+    print(f"  Vicmap 10 m DEM: {k} exported chunks in {raw}/dem10_*.tif")
+
+
+def dem10_tiles(bbox, raw, info):
+    import lerc, rasterio
+    from rasterio.transform import from_origin
+    from concurrent.futures import ThreadPoolExecutor
+    ti = info.get("tileInfo") or {}
+    if str(ti.get("format", "")).upper() != "LERC":
+        raise RuntimeError(f"tiles are {ti.get('format')}, not LERC elevation")
+    wkid = (ti.get("spatialReference") or {}).get("latestWkid") or (ti.get("spatialReference") or {}).get("wkid")
+    if wkid not in (3857, 102100):
+        raise RuntimeError(f"tile grid in wkid {wkid}, expected Web Mercator")
+    ox, oy, tw, th = ti["origin"]["x"], ti["origin"]["y"], ti["cols"], ti["rows"]
+    lat = (bbox[1] + bbox[3]) / 2
+    want = 10 / math.cos(math.radians(lat))    # Web Mercator units per 10 ground metres here
+    lod = min(ti["lods"], key=lambda l: abs(l["resolution"] - want))
+    r = lod["resolution"]
+    X = lambda lon: lon * 20037508.342789244 / 180
+    Y = lambda la: math.log(math.tan((90 + la) * math.pi / 360)) * 6378137.0
+    c0, c1 = int((X(bbox[0]) - ox) / (r * tw)), int((X(bbox[2]) - ox) / (r * tw))
+    r0, r1 = int((oy - Y(bbox[3])) / (r * th)), int((oy - Y(bbox[1])) / (r * th))
+    print(f"  DEM tiles: level {lod['level']} ({r:.1f} m Web Mercator, ~{r * math.cos(math.radians(lat)):.1f} m ground), "
+          f"{(c1 - c0 + 1) * (r1 - r0 + 1)} tiles")
+    out = np.full(((r1 - r0 + 1) * th, (c1 - c0 + 1) * tw), np.nan, dtype="float32")
+    def one(rc):
+        row, col = rc
+        try:
+            b = get(f"{DEM10}/tile/{lod['level']}/{row}/{col}", binary=True, tries=3)
+        except Exception:
+            return rc, None                   # tiles over the sea may not exist
+        res = lerc.decode(b)
+        data, mask = res[1], res[2] if len(res) > 2 else None
+        a = np.asarray(data, dtype="float32").reshape(th, tw)
+        if mask is not None:
+            a = np.where(np.asarray(mask).reshape(th, tw) > 0, a, np.nan)
+        return rc, a
+    cells = [(row, col) for row in range(r0, r1 + 1) for col in range(c0, c1 + 1)]
+    got = 0
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for (row, col), a in ex.map(one, cells):
+            if a is not None:
+                out[(row - r0) * th:(row - r0 + 1) * th, (col - c0) * tw:(col - c0 + 1) * tw] = a; got += 1
+    if not got:
+        raise RuntimeError("no DEM tile could be read")
+    tr = from_origin(ox + c0 * tw * r, oy - r0 * th * r, r, r)
+    with rasterio.open(f"{raw}/dem10.tif", "w", driver="GTiff", width=out.shape[1], height=out.shape[0], count=1,
+                       dtype="float32", crs="EPSG:3857", transform=tr, nodata=np.nan, compress="deflate",
+                       predictor=3, tiled=True) as o:
+        o.write(out, 1)
+    print(f"  Vicmap 10 m DEM: {got} of {len(cells)} LERC tiles -> {raw}/dem10.tif "
+          f"(elevation {np.nanmin(out):.0f} to {np.nanmax(out):.0f} m)")
+
+
 def optional(label, fn):
     try:
         fn()
@@ -256,7 +534,7 @@ def optional(label, fn):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--study", default="west", choices=STUDIES)
+    ap.add_argument("--study", default="metro", choices=STUDIES)
     a = ap.parse_args()
     st = STUDIES[a.study]
     wanted = {norm_lga(n) for n in st["lgas"]}
@@ -264,7 +542,7 @@ def main():
     os.makedirs(raw, exist_ok=True)
     os.makedirs("data/raw/gcp", exist_ok=True)
     os.makedirs("data/raw/shared", exist_ok=True)
-    fine = 0.00002 if a.study == "west" else 0.00006
+    fine = 0.00002 if len(st["lgas"]) <= 3 else 0.00006   # ~2 m for a few councils, ~6 m for the metro
 
     print("LGAs")
     # Council boundaries decide which SA1s are in the study area: near-full detail (1 m),
@@ -335,6 +613,22 @@ def main():
             raise RuntimeError("response is not a GeoTIFF: " + b[:200].decode("latin1"))
         open(dst, "wb").write(b); print(f"  sand -> {dst}")
     print("Soil sand %, SoilGrids (optional)"); optional("sand", sand)
+
+    def seifa():
+        dst = "data/raw/shared/seifa_sa1_2021.xlsx"
+        if os.path.exists(dst):
+            return
+        for u in SEIFA_URLS:
+            b = get(u, binary=True, tries=3)
+            if b[:2] == b"PK":
+                open(dst, "wb").write(b); print(f"  SEIFA -> {dst}"); return
+        raise RuntimeError("SEIFA download is not an xlsx")
+    print("SEIFA 2021 by SA1 (optional)"); optional("SEIFA", seifa)
+    print("Vicmap Elevation 10 m DEM (optional; Copernicus 30 m is the fallback)"); optional("DEM 10 m", lambda: dem10(bbox, raw))
+    print("Tree canopy, Vicmap tree extent 2020 (optional)"); optional("canopy", lambda: canopy(bbox))
+    print("Road casement, Vicmap Property (optional)"); optional("road casement", lambda: roads(bbox))
+    print("Waterway and drain subcatchments, Melbourne Water (optional)"); optional("subcatchments", lambda: subcatchments(bbox))
+    print("Building footprints, Microsoft (optional)"); optional("buildings", lambda: buildings(bbox, f"{raw}/buildings.npy"))
     print("done")
 
 

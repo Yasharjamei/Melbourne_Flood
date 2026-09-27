@@ -97,7 +97,7 @@ td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
   <div class="mapcol">
     <div class="bar">
       <label>Show on map<select id="metric" aria-label="Variable shown on the map"></select></label>
-      <label>Council<select id="lgasel" aria-label="Filter by council"></select></label>
+      <label>Area<select id="lgasel" aria-label="Filter by study area, river basin or council"></select></label>
       <label>Suburb<select id="subsel" aria-label="Filter by suburb"></select></label>
       <span class="sp"></span>
       <a class="btn" href="analysis/">Correlation &amp; MGWR analysis →</a>
@@ -110,7 +110,10 @@ td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
         <label>Radius <input type="range" id="rad" min="300" max="2000" step="50" value="800"> <span id="radv">800 m</span></label>
         <label><input type="checkbox" id="fl" checked> Flood overlays</label>
         <label><input type="checkbox" id="sb" checked> Suburb boundaries</label>
+        <label><input type="checkbox" id="rb"> River basins</label>
+        <label><input type="checkbox" id="cc"> Creek catchments</label>
         <label><input type="checkbox" id="bm" checked> Basemap</label>
+        <label title="Vicmap Elevation 10 m DEM, shaded relief"><input type="checkbox" id="relief"> Terrain (10 m relief)</label>
         <button id="reset">Clear areas</button>
       </div>
       <div class="tip" id="tip"></div>
@@ -158,7 +161,7 @@ const DARK=css('--ground').toLowerCase()==='#141817';
 let SAVED=null;try{SAVED=JSON.parse(sessionStorage.getItem('mapstate'));sessionStorage.removeItem('mapstate');}catch(e){}
 document.getElementById('lede').textContent=`${META.title}, ${META.n.toLocaleString()} SA1s. Compare the age structure and flood-relevant needs of any two places, instead of one average for the whole area.`;
 d3.select('#notes').selectAll('li').data(META.notes).join('li').text(d=>d);
-{const o=document.getElementById('other');o.textContent='Open the '+META.other[0]+' version →';o.href=META.other[1];}
+if(META.other){const o=document.getElementById('other');o.textContent='Open the '+META.other[0]+' version →';o.href=META.other[1];}
 const BANDS=['0–4','5–9','10–14','15–19','20–24','25–29','30–34','35–39','40–44','45–49','50–54','55–59','60–64','65–69','70–74','75–79','80–84','85+'];
 S.forEach(s=>{s.ages=s.M.reduce((a,b)=>a+b,0)+s.F.reduce((a,b)=>a+b,0);
   s.o75=s.M.slice(15).reduce((a,b)=>a+b,0)+s.F.slice(15).reduce((a,b)=>a+b,0);
@@ -169,7 +172,8 @@ const pct=(n,d)=>d>0?n/d:NaN;
 // FRI and IFRI use diverging schemes split at 0.
 // Violet and orange are reserved for circles A and B, so no map ramp uses them.
 const P=v=>(v*100).toFixed(1)+'%';
-const METRICS=[
+let activeLga=null,activeSub=null,LG=null,BASIN=null;   // area/suburb filter state (see '---- council filter'); declared early because METRICS reads it
+const METRICS_ALL=[
   {g:'People',k:'dens',l:'Residents per hectare',f:s=>s.pop/(s.km2*100),fmt:v=>v.toFixed(0),r:'YlGnBu'},
   {g:'People',k:'o75',l:'Aged 75+',f:s=>pct(s.o75,s.ages),fmt:P,r:'PuBuGn'},
   {g:'People',k:'u5',l:'Aged 0–4',f:s=>pct(s.u5,s.ages),fmt:P,r:'GnBu'},
@@ -180,30 +184,47 @@ const METRICS=[
   {g:'Housing and income',k:'high',l:'Dwellings in 4+ storey blocks',f:s=>pct(s.d_flathigh,s.dwell),fmt:P,r:'BuPu',zero:true,none:'No 4+ storey dwellings'},
   {g:'Housing and income',k:'unemp',l:'Unemployment rate',f:s=>pct(s.unemp,s.lf),fmt:P,r:'YlOrBr'},
   {g:'Housing and income',k:'inc',l:'Median household income',f:s=>s.inc>0?s.inc:NaN,fmt:v=>'$'+Math.round(v).toLocaleString(),r:'Greens',unit:'Per week'},
+  {g:'Environment',k:'can',l:'Tree canopy',f:s=>s.can!=null?s.can/100:NaN,fmt:P,r:'BuGn',unit:'Share of area under tree canopy (Vicmap, 2020)'},
+  {g:'Environment',k:'road',l:'Road reserves',f:s=>s.road!=null?s.road:NaN,fmt:P,r:['#e3e7ea','#bcc6cc','#8f9ea8','#617380','#3a4a55'],unit:'Share of area in road casement (Vicmap Property)'},
+  {g:'Environment',k:'bcov',l:'Roof coverage (buildings)',f:s=>s.bcov!=null?s.bcov:NaN,fmt:P,r:['#e8ddd0','#cdb79d','#a88c6c','#7c6247','#4f3b28'],unit:'Share of area under building footprints'},
+  ...[['IRSD','Disadvantage (IRSD)','RdYlGn'],['IRSAD','Advantage and disadvantage (IRSAD)','Spectral'],['IER','Economic resources (IER)','PiYG'],['IEO','Education and occupation (IEO)','BrBG']].map(([k,l,r],j)=>({
+    g:'Socio-economic (SEIFA 2021)',k:'seifa'+j,l,f:s=>s.seifa&&s.seifa[j]!=null?s.seifa[j]:NaN,fmt:v=>'decile '+v.toFixed(0),r,
+    sub:'Decile among all Australian SA1s: 1 = lowest tenth'})),
   {g:'Flood',k:'flood',l:'Residents in flood overlay',f:s=>s.fl!=null?s.fl:Math.min(1,s.riv+s.sbo),fmt:v=>(v*100).toFixed(0)+'%',r:'Blues',zero:true,none:'Not in an overlay'},
   ...['Exposure','Sensitivity','Adaptive capacity','Flood Resilience Index (FRI)','Damage index','Integrated FRI (IFRI)'].map((l,j)=>({
-    g:'Lama & Sun (2026) indices',k:'ls'+j,l,ls:true,f:s=>s.ls&&s.ls[j]!=null?s.ls[j]:NaN,fmt:v=>v.toFixed(3),
+    // With the paper preset, show the indices scaled within the paper's 474 SA1s (lsp), which are
+    // comparable with the published figures; elsewhere, scaled across all of Greater Melbourne (ls).
+    g:'Lama & Sun (2026) indices',k:'ls'+j,l,ls:true,f:s=>{const v=activeLga==='__paper'&&s.lsp?s.lsp:s.ls;return v&&v[j]!=null?v[j]:NaN;},fmt:v=>v.toFixed(3),
     r:['OrRd','PuBu','YlGn','RdBu','YlOrRd','RdYlBu'][j],div:j===3||j===5,
     sub:['Higher = more exposed','Higher = more sensitive','Higher = more capacity to recover','Below 0 = low resilience','Higher = more potential damage','Below 0 = damage exceeds resilience'][j]}))
 ];
+// Optional inputs (SEIFA, canopy, buildings) can be missing from a build: list only variables with data.
+const METRICS=METRICS_ALL.filter(m=>S.some(s=>isFinite(m.f(s))));
 let metric=(SAVED&&METRICS.find(m=>m.k===SAVED.m))||METRICS[1];
 const msel=d3.select('#metric');
 d3.groups(METRICS,m=>m.g).forEach(([g,ms])=>{const og=msel.append('optgroup').attr('label',g);ms.forEach(m=>og.append('option').attr('value',m.k).text(m.l));});
 msel.property('value',metric.k).on('change',function(){metric=METRICS.find(m=>m.k===this.value);recolour();});
 
 // ---- council filter
-let activeLga=null,activeSub=null;
+// activeLga is the menu value: '' (all), a council name, or a preset key such as '__paper' (the
+// papers' own study area, several councils). LG is the matching set of council names.
+const PRESETS=META.presets||[];
 const lsel=d3.select('#lgasel');
 lsel.append('option').attr('value','').text(META.label);
-D.lga.map(l=>l.name).sort().forEach(n=>lsel.append('option').attr('value',n).text(n));
-const visible=i=>(!activeLga||S[i].lga===activeLga)&&(!activeSub||S[i].sub===activeSub);
-const areaLabel=()=>activeSub||activeLga||META.label;
+// Presets: study areas (a set of councils) and river basins (SA1s by basin), each in its own group.
+d3.groups(PRESETS,p=>p.group||'Areas').forEach(([g,ps])=>{const og=lsel.append('optgroup').attr('label',g);ps.forEach(p=>og.append('option').attr('value',p.key).text(p.label));});
+{const og=lsel.append('optgroup').attr('label','Councils');D.lga.map(l=>l.name).sort().forEach(n=>og.append('option').attr('value',n).text(n));}
+function setLga(v){activeLga=v||null;const p=PRESETS.find(p=>p.key===v);BASIN=p&&p.basin?p.basin:null;
+  LG=!v||BASIN?null:new Set(p?p.lgas:[v]);}
+const lgaLabel=()=>{const p=PRESETS.find(p=>p.key===activeLga);return p?p.label:activeLga;};
+const visible=i=>(!LG||LG.has(S[i].lga))&&(!BASIN||S[i].basin===BASIN)&&(!activeSub||S[i].sub===activeSub);
+const areaLabel=()=>activeSub||lgaLabel()||META.label;
 // suburb slicer: lists the suburbs of the chosen council (all suburbs when no council is chosen)
 const ssel=d3.select('#subsel');
 function fillSuburbs(){
-  const names=[...new Set(S.filter(s=>!activeLga||s.lga===activeLga).map(s=>s.sub))].sort(d3.ascending);
+  const names=[...new Set(S.filter(s=>(!LG||LG.has(s.lga))&&(!BASIN||s.basin===BASIN)).map(s=>s.sub))].sort(d3.ascending);
   ssel.selectAll('option').remove();
-  ssel.append('option').attr('value','').text(activeLga?'All suburbs in '+activeLga:'All suburbs');
+  ssel.append('option').attr('value','').text(activeLga?'All suburbs in '+lgaLabel():'All suburbs');
   names.forEach(n=>ssel.append('option').attr('value',n).text(n));
   ssel.property('value',activeSub||'');
 }
@@ -212,7 +233,7 @@ document.querySelectorAll('.alllab').forEach(e=>e.textContent=META.label);
 
 // ---- map
 const bounds=[[d3.min(C,c=>c[0]),d3.min(C,c=>c[1])],[d3.max(C,c=>c[0]),d3.max(C,c=>c[1])]];
-const fcSA={type:'FeatureCollection',features:S.map((s,i)=>({type:'Feature',id:i,geometry:D.shapes[i],properties:{i,lga:s.lga,sub:s.sub}}))};
+const fcSA={type:'FeatureCollection',features:S.map((s,i)=>({type:'Feature',id:i,geometry:D.shapes[i],properties:{i,lga:s.lga,sub:s.sub,basin:s.basin||''}}))};
 const fcLGA={type:'FeatureCollection',features:D.lga.map(l=>({type:'Feature',geometry:l.g,properties:{name:l.name}}))};
 const fcSAL={type:'FeatureCollection',features:D.sal.map(l=>({type:'Feature',geometry:l.g,properties:{name:l.name}}))};
 const fcSALpt={type:'FeatureCollection',features:D.sal.map(l=>({type:'Feature',geometry:{type:'Point',coordinates:d3.geoCentroid(l.g)},properties:{name:l.name}}))};
@@ -237,12 +258,20 @@ loadStyle().then(style=>{
     map.addSource('riv',{type:'geojson',data:{type:'Feature',geometry:D.riv,properties:{}}});
     map.addSource('sbo',{type:'geojson',data:{type:'Feature',geometry:D.sbo,properties:{}}});
     map.addSource('lga',{type:'geojson',data:fcLGA});
+    map.addSource('catch',{type:'geojson',data:{type:'FeatureCollection',features:(D.catchments||[]).map(b=>({type:'Feature',geometry:b.g,properties:{name:b.name}}))}});
+    map.addSource('catchpt',{type:'geojson',data:{type:'FeatureCollection',features:(D.catchments||[]).map(b=>({type:'Feature',geometry:{type:'Point',coordinates:d3.geoCentroid(b.g)},properties:{name:b.name}}))}});
+    map.addSource('basins',{type:'geojson',data:{type:'FeatureCollection',features:(D.basins||[]).map(b=>({type:'Feature',geometry:b.g,properties:{name:b.name}}))}});
     map.addSource('sal',{type:'geojson',data:fcSAL});
     map.addSource('salpt',{type:'geojson',data:fcSALpt});
     map.addSource('rings',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
     const fs=(k,d)=>['coalesce',['feature-state',k],d];
+    // Vicmap 10 m DEM shaded relief (DataVic tile service), off by default; drawn over the fills
+    // at low opacity so slopes and valleys show through whatever variable is mapped.
+    map.addSource('relief',{type:'raster',tileSize:256,maxzoom:16,attribution:'Vicmap Elevation © State of Victoria',
+      tiles:['https://tiles-ap1.arcgis.com/P744lA0wf4LlBZ84/arcgis/rest/services/Vicmap_10m_DEM_Shaded_Relief/MapServer/tile/{z}/{y}/{x}']});
     add({id:'sa1-fill',type:'fill',source:'sa1',paint:{'fill-color':fs('c','#000000'),'fill-opacity':['case',['==',fs('c','none'),'none'],0,DARK?.8:.74]}});
     add({id:'sa1-line',type:'line',source:'sa1',paint:{'line-color':DARK?'#000000':'#ffffff','line-width':['interpolate',['linear'],['zoom'],9,.1,14,.9],'line-opacity':.8}});
+    add({id:'relief',type:'raster',source:'relief',layout:{visibility:'none'},paint:{'raster-opacity':DARK?.35:.4}});
     add({id:'sbo-fill',type:'fill',source:'sbo',paint:{'fill-color':'#2a78d6','fill-opacity':.18}});
     add({id:'sbo-line',type:'line',source:'sbo',paint:{'line-color':'#2a78d6','line-width':1,'line-dasharray':[2,1.5]}});
     add({id:'riv-fill',type:'fill',source:'riv',paint:{'fill-color':'#2a78d6','fill-opacity':.42}});
@@ -255,12 +284,19 @@ loadStyle().then(style=>{
       'line-width':['interpolate',['linear'],['zoom'],9,1.6,12,3.2,15,5]}});
     add({id:'sal-line',type:'line',source:'sal',minzoom:9,layout:{'line-join':'round'},paint:{'line-color':css('--ink'),'line-opacity':['interpolate',['linear'],['zoom'],9,.45,12,.8],
       'line-width':['interpolate',['linear'],['zoom'],9,.6,12,1.3,15,2.2]}});
+    // River basins: off by default (toggle), always drawn for the selected basin preset.
+    // Creek (major) catchments: dashed teal, off by default, names from zoom 11.
+    add({id:'catch-line',type:'line',source:'catch',layout:{visibility:'none','line-join':'round'},paint:{'line-color':'#2b8c9e','line-width':['interpolate',['linear'],['zoom'],9,.6,13,1.6],'line-dasharray':[3,2],'line-opacity':.9}});
+    add({id:'basin-line',type:'line',source:'basins',layout:{visibility:'none','line-join':'round'},paint:{'line-color':'#1b6f8a','line-width':['interpolate',['linear'],['zoom'],8,1.4,13,3],'line-opacity':.85}});
+    add({id:'basin-sel',type:'line',source:'basins',filter:['==',['get','name'],''],paint:{'line-color':'#1b6f8a','line-width':3}});
     add({id:'sal-sel',type:'line',source:'sal',filter:['==',['get','name'],''],paint:{'line-color':css('--ink'),'line-width':2.4}});
     add({id:'lga-line',type:'line',source:'lga',paint:{'line-color':css('--ink'),'line-width':['interpolate',['linear'],['zoom'],9,1,13,2.2],'line-opacity':.85}});
     add({id:'sa1-hover',type:'line',source:'sa1',paint:{'line-color':css('--ink'),'line-width':['case',['boolean',['feature-state','hover'],false],2,0]}});
     map.addLayer({id:'rings',type:'line',source:'rings',paint:{'line-color':['get','col'],'line-width':2.4}});
     const tf=sym&&sym.layout&&sym.layout['text-font'];
     if(style.glyphs&&tf){ // suburb names, only when the basemap supplies fonts
+      map.addLayer({id:'catch-label',type:'symbol',source:'catchpt',minzoom:11,layout:{visibility:'none','text-field':['get','name'],'text-font':tf,'text-size':11.5,'text-max-width':9},
+        paint:{'text-color':'#1d6f80','text-halo-color':css('--panel'),'text-halo-width':1.6}});
       map.addLayer({id:'sal-label',type:'symbol',source:'salpt',minzoom:11,layout:{'text-field':['get','name'],'text-font':tf,'text-size':['interpolate',['linear'],['zoom'],11,11,14,13],'text-transform':'uppercase','text-letter-spacing':.06,'text-max-width':8},
         paint:{'text-color':css('--muted'),'text-halo-color':css('--panel'),'text-halo-width':1.6}});
     }
@@ -268,7 +304,7 @@ loadStyle().then(style=>{
     wire();recolour();
     if(SAVED&&SAVED.a){areas.push(...SAVED.a);R=SAVED.R||R;document.getElementById('rad').value=R;document.getElementById('radv').textContent=R+' m';}
     else areas.push({id:'a',lon:144.8635,lat:-37.7535},{id:'b',lon:144.8935,lat:-37.7960});
-    if(SAVED&&(SAVED.l||SAVED.s)){activeLga=SAVED.l||null;lsel.property('value',activeLga||'');fillSuburbs();activeSub=SAVED.s||null;ssel.property('value',activeSub||'');applyFilter();}
+    if(SAVED&&(SAVED.l||SAVED.s)){setLga(SAVED.l||'');lsel.property('value',activeLga||'');fillSuburbs();activeSub=SAVED.s||null;ssel.property('value',activeSub||'');applyFilter();}
     if(SAVED&&SAVED.v)map.jumpTo({center:SAVED.v.c,zoom:SAVED.v.z});
     areas.forEach(addMarker);
     document.getElementById('hint').textContent='Two example areas are placed. Drag the pins, or click to move the nearer one.';
@@ -285,7 +321,7 @@ function wire(){
     hoverId=i;map.setFeatureState({source:'sa1',id:i},{hover:true});
     const v=metric.f(s),r=map.getContainer().getBoundingClientRect();
     tip.style.display='block';tip.style.left=Math.min(e.point.x+14,r.width-270)+'px';tip.style.top=(e.point.y+14)+'px';
-    tip.innerHTML=`<strong>${s.sub}</strong> · ${s.lga}<br>SA1 ${s.id} · ${s.pop.toLocaleString()} residents<br>${metric.l}: ${isFinite(v)?metric.fmt(v):'n/a'}${(s.fl!=null?s.fl:s.riv+s.sbo)>0?`<br>${Math.round(Math.min(1,s.fl!=null?s.fl:s.riv+s.sbo)*100)}% of residents in a flood overlay`:''}${[['A',tintA],['B',tintB]].map(([n,w])=>share(w,i)?`<br>Counted in ${n}: ${share(w,i)} of residents`:'').join('')}`;
+    tip.innerHTML=`<strong>${s.sub}</strong> · ${s.lga}<br>SA1 ${s.id} · ${s.pop.toLocaleString()} residents${s.basin?`<br>${s.basin} river basin`:''}${s.drain?`<br><small>Drains via ${s.drain}</small>`:''}<br>${metric.l}: ${isFinite(v)?metric.fmt(v):'n/a'}${(s.fl!=null?s.fl:s.riv+s.sbo)>0?`<br>${Math.round(Math.min(1,s.fl!=null?s.fl:s.riv+s.sbo)*100)}% of residents in a flood overlay`:''}${[['A',tintA],['B',tintB]].map(([n,w])=>share(w,i)?`<br>Counted in ${n}: ${share(w,i)} of residents`:'').join('')}`;
   });
   map.on('mouseleave','sa1-fill',()=>{tip.style.display='none';if(hoverId!==null)map.setFeatureState({source:'sa1',id:hoverId},{hover:false});hoverId=null;});
   map.on('click',e=>{
@@ -298,20 +334,24 @@ function wire(){
   });
   const vis=(ids,on)=>ids.forEach(id=>map.getLayer(id)&&map.setLayoutProperty(id,'visibility',on?'visible':'none'));
   document.getElementById('fl').addEventListener('change',e=>{vis(['riv-fill','riv-line','sbo-fill','sbo-line'],e.target.checked);drawLegend();});
+  document.getElementById('rb').addEventListener('change',e=>vis(['basin-line'],e.target.checked));
+  document.getElementById('cc').addEventListener('change',e=>vis(['catch-line','catch-label'],e.target.checked));
   document.getElementById('sb').addEventListener('change',e=>vis(['sal-halo','sal-line','sal-label'],e.target.checked));
   document.getElementById('bm').addEventListener('change',e=>vis(baseLayers,e.target.checked));
+  document.getElementById('relief').addEventListener('change',e=>vis(['relief'],e.target.checked));
   document.getElementById('rad').addEventListener('input',e=>{R=+e.target.value;document.getElementById('radv').textContent=R+' m';drawRings();schedule();});
   document.getElementById('reset').addEventListener('click',()=>{areas.forEach(a=>a.marker.remove());areas.length=0;const h=document.getElementById('hint');h.style.display=null;h.textContent='Click the map to place area A, then area B. Drag either pin to move it.';drawRings();update();});
-  lsel.on('change',function(){activeLga=this.value||null;activeSub=null;fillSuburbs();applyFilter();});
+  lsel.on('change',function(){setLga(this.value);activeSub=null;fillSuburbs();applyFilter();});
   ssel.on('change',function(){activeSub=this.value||null;applyFilter();});
 }
 // Apply the council/suburb filter to every SA1 layer, zoom to what is left, and recompute
 // the comparison column, the colour classes and the panel for the visible area only.
 function applyFilter(){
-  const conds=[];if(activeLga)conds.push(['==',['get','lga'],activeLga]);if(activeSub)conds.push(['==',['get','sub'],activeSub]);
+  const conds=[];if(LG)conds.push(['in',['get','lga'],['literal',[...LG]]]);if(BASIN)conds.push(['==',['get','basin'],BASIN]);if(activeSub)conds.push(['==',['get','sub'],activeSub]);
   const f=conds.length?['all',...conds]:null;
   ['sa1-fill','sa1-line','tint-a','tint-b','sa1-hover'].forEach(id=>map.setFilter(id,f));
-  map.setFilter('lga-line',activeLga?['==',['get','name'],activeLga]:null);
+  map.setFilter('lga-line',LG?['in',['get','name'],['literal',[...LG]]]:BASIN?['==',['get','name'],'']:null);
+  if(map.getLayer('basin-sel'))map.setFilter('basin-sel',['==',['get','name'],BASIN||'']);
   map.setFilter('sal-sel',['==',['get','name'],activeSub||'']);
   let b=bounds;
   if(activeSub||activeLga){const feats=S.map((s,i)=>i).filter(visible).map(i=>({type:'Feature',geometry:D.shapes[i]}));
@@ -360,7 +400,7 @@ function recolour(){
     const neg=vals.filter(v=>v<0),pos=vals.filter(v=>v>=0);
     breaks=[d3.quantile(neg,1/3),d3.quantile(neg,2/3),0,d3.quantile(pos,1/3),d3.quantile(pos,2/3)];
     cols=d3['scheme'+metric.r][6];
-  }else{breaks=[.2,.4,.6,.8].map(p=>d3.quantile(vals,p));cols=d3['scheme'+metric.r][6].slice(1);} // drop the near-white step so a low class never reads as "no data"
+  }else{breaks=[.2,.4,.6,.8].map(p=>d3.quantile(vals,p));cols=Array.isArray(metric.r)?metric.r:d3['scheme'+metric.r][6].slice(1);} // drop the near-white step so a low class never reads as "no data"
   const cls=v=>{let k=0;while(k<breaks.length&&v>=breaks[k])k++;return cols[k];};
   S.forEach((s,i)=>{const v=metric.f(s);const ok=visible(i)&&isFinite(v)&&(metric.ls||s.pop>=10)&&!(metric.zero&&v<=0);
     map.setFeatureState({source:'sa1',id:i},{c:ok?cls(v):'none'});});
@@ -369,7 +409,7 @@ function recolour(){
 function drawLegend(){
   const L=d3.select('#legend').html('');
   L.append('h3').text(metric.l);
-  L.append('p').attr('class','sub').text([metric.sub,metric.unit,metric.div?'Three classes each side of 0':'Quintile classes',(activeLga||activeSub)?'within '+areaLabel():null].filter(Boolean).join(' · '));
+  L.append('p').attr('class','sub').text([metric.sub,metric.unit,metric.ls?(activeLga==='__paper'?'Scaled within the paper study area, as in Lama & Sun':'Scaled across all of Greater Melbourne'):null,metric.div?'Three classes each side of 0':'Quintile classes',(activeLga||activeSub)?'within '+areaLabel():null].filter(Boolean).join(' · '));
   const f=metric.fmt,b=breaks,rows=[];
   if(metric.div)rows.push([cols[0],'below '+f(b[0])],[cols[1],f(b[0])+' to '+f(b[1])],[cols[2],f(b[1])+' to 0'],[cols[3],'0 to '+f(b[3])],[cols[4],f(b[3])+' to '+f(b[4])],[cols[5],f(b[4])+' and over']);
   else for(let k=0;k<cols.length;k++)rows.push([cols[k],k===0?(metric.zero?'over 0 – ':'under ')+f(b[0]):k===cols.length-1?f(b[k-1])+' and over':f(b[k-1])+' – '+f(b[k])]);
@@ -395,19 +435,24 @@ function agg(a){
 // inside riverine / overland-flow overlays. Indices are resident-weighted means.
 function sumW(w,wr,ws){
   const o={M:new Float64Array(NB),F:new Float64Array(NB)};const keys=['pop','ages','o75','u5','nfa','nfa_d','ltc','ltc_d','emp','unemp','lf','eng','eng_d','car0','car_d','d_house','d_semi','d_flatlow','d_flathigh','d_other','dwell'];
-  keys.forEach(k=>o[k]=0);o.popRiv=0;o.popSbo=0;o.o75Fl=0;o.nfaFl=0;o.km2=0;let incN=0,incW=0;o.ls=new Float64Array(6);o.lsW=0;
+  keys.forEach(k=>o[k]=0);o.popRiv=0;o.popSbo=0;o.o75Fl=0;o.nfaFl=0;o.km2=0;let incN=0,incW=0,irN=0,irW=0,caN=0,caW=0,bcN=0,bcW=0,rdN=0,rdW=0;o.ls=new Float64Array(6);o.lsW=0;
   S.forEach((s,i)=>{const f=w[i];if(!f)return;keys.forEach(k=>o[k]+=s[k]*f);for(let b=0;b<NB;b++){o.M[b]+=s.M[b]*f;o.F[b]+=s.F[b]*f;}
     o.km2+=s.km2*f;
     const fl=Math.min(f,(wr?wr[i]:0)+(ws?ws[i]:0));o.popRiv+=s.pop*(wr?wr[i]:0);o.popSbo+=s.pop*(ws?ws[i]:0);
     o.o75Fl+=s.o75*fl;o.nfaFl+=s.nfa*fl;
     if(s.inc>0){incN+=s.inc*s.pop*f;incW+=s.pop*f;}
+    if(s.seifa&&s.seifa[0]!=null&&s.pop>0){irN+=s.seifa[0]*s.pop*f;irW+=s.pop*f;}
+    if(s.can!=null){caN+=s.can/100*s.km2*f;caW+=s.km2*f;}
+    if(s.bcov!=null){bcN+=s.bcov*s.km2*f;bcW+=s.km2*f;}
+    if(s.road!=null){rdN+=s.road*s.km2*f;rdW+=s.km2*f;}
     if(s.ls&&s.ls[3]!=null&&s.pop>0){for(let j=0;j<6;j++)o.ls[j]+=s.ls[j]*s.pop*f;o.lsW+=s.pop*f;}});
   for(let j=0;j<6;j++)o.ls[j]=o.lsW?o.ls[j]/o.lsW:NaN;
-  o.inc=incW?incN/incW:NaN;return o;
+  o.inc=incW?incN/incW:NaN;o.irsd=irW?irN/irW:NaN;o.can=caW?caN/caW:NaN;o.bcov=bcW?bcN/bcW:NaN;o.road=rdW?rdN/rdW:NaN;return o;
 }
 function allAgg(){const w=new Float64Array(S.length),wr=new Float64Array(S.length),ws=new Float64Array(S.length);
   S.forEach((s,i)=>{if(visible(i))w[i]=1;});C.forEach(c=>{if(visible(c[2])){wr[c[2]]+=c[3]*c[4];ws[c[2]]+=c[3]*c[5];}});return sumW(w,wr,ws);}
 let ALL=allAgg();
+const ALL_STUDY=ALL;   // whole study area: decides which optional rows (SEIFA, canopy, roofs) this build can show
 
 // ---- tint: every SA1 a circle touches, opacity = share of its residents counted
 let tintA=null,tintB=null;
@@ -428,9 +473,11 @@ const ROWS=[
   ['Median household income',o=>o.inc,'$','Population-weighted SA1 medians'],
   ['Residents in riverine overlay',o=>o.popRiv,'n','LSIO and Floodway'],['Residents in overland-flow overlay',o=>o.popSbo,'n','Special Building Overlay'],
   ['Residents 75+ in any overlay',o=>o.o75Fl,'n'],
+  ['SEIFA disadvantage (IRSD) decile',o=>o.irsd,'d','Resident-weighted; 1 = most disadvantaged tenth of Australia'],
+  ['Tree canopy',o=>o.can,'p','Share of land under canopy'],['Roof coverage',o=>o.bcov,'p','Share of land under building footprints'],['Road reserves',o=>o.road,'p','Share of land in road casement'],
   ['FRI, Lama & Sun',o=>o.ls[3],'i','Resident-weighted mean; higher is more resilient'],['Damage index, Lama & Sun',o=>o.ls[4],'i'],['IFRI, Lama & Sun',o=>o.ls[5],'i','Negative: damage exceeds resilience'],
 ];
-const fmt=(v,t)=>!isFinite(v)?'–':t==='i'?v.toFixed(3):t==='p'?(v*100).toFixed(1)+'%':t==='$'?'$'+Math.round(v).toLocaleString():Math.round(v).toLocaleString();
+const fmt=(v,t)=>!isFinite(v)?'–':t==='d'?v.toFixed(1):t==='i'?v.toFixed(3):t==='p'?(v*100).toFixed(1)+'%':t==='$'?'$'+Math.round(v).toLocaleString():Math.round(v).toLocaleString();
 const tb=d3.select('#tbl tbody');
 // Redraw the side panel: headline counts, comparison table and pyramid for A, B and the area.
 function update(){
@@ -442,7 +489,7 @@ function update(){
   document.getElementById('popB').textContent=ob?Math.round(ob.pop).toLocaleString():'–';
   document.getElementById('subA').textContent=outA||(oa?'residents, '+near(A):'Click the map');
   document.getElementById('subB').textContent=outB||(ob?'residents, '+near(B):(oa?'Click to place':'then click again'));
-  tb.selectAll('tr').data(ROWS).join('tr').html(r=>{const va=oa?r[1](oa):NaN,vb=ob?r[1](ob):NaN,vall=r[1](ALL);
+  tb.selectAll('tr').data(ROWS.filter(r=>isFinite(r[1](ALL_STUDY)))).join('tr').html(r=>{const va=oa?r[1](oa):NaN,vb=ob?r[1](ob):NaN,vall=r[1](ALL);
     return `<td>${r[0]}${r[3]?`<small>${r[3]}</small>`:''}</td><td class="a">${oa?fmt(va,r[2]):'–'}</td><td class="b">${ob?fmt(vb,r[2]):'–'}</td><td>${fmt(vall,r[2])}</td>`;})
     .attr('class',r=>r[0].startsWith('"')?'hi':null);
   if(map){paintTint(oa?oa.w:null,tintA,'ta');paintTint(ob?ob.w:null,tintB,'tb');}

@@ -37,7 +37,10 @@ def run(ind, coords):
     unstable = []
     while True:
         gsel = Sel_BW(coords, y, X, kernel="bisquare", fixed=False)
-        gbw = gsel.search()
+        # mgwr's default search floor is 40 + 2 x (variables + 1), i.e. 62 here, which exceeds the
+        # number of units in small sets; cap it (unchanged for the 474-SA1 model) and the ceiling.
+        lo = min(40 + 2 * (X.shape[1] + 1), max(X.shape[1] + 3, len(y) // 4))
+        gbw = gsel.search(bw_min=lo, bw_max=len(y) - 2)
         g = GWR(coords, y, X, gbw, kernel="bisquare", fixed=False).fit()
         big = np.abs(g.params[:, 1:]).max(axis=0)
         if np.isfinite(g.params).all() and np.abs(g.params).max() < 1e3 or X.shape[1] <= 2:
@@ -57,7 +60,10 @@ def run(ind, coords):
     # Bandwidth floor: with 11 collinear covariates, local fits on ~10 neighbours are singular
     # (the first real run chose 10-16 and diverged to R2 = -3.7e20). 50 is about 10% of the SA1s.
     msel = Sel_BW(coords, y, X, multi=True, kernel="bisquare", fixed=False)
-    mbws = msel.search(multi_bw_min=[BW_MIN])
+    bw_min = min(BW_MIN, max(10, len(y) // 5))     # small unit sets (e.g. SA2s) get a proportionate floor
+    # Start the back-fitting from the GWR bandwidth (standard practice, and it skips mgwr's own
+    # initial search, which has the same too-high default floor).
+    mbws = msel.search(multi_bw_min=[bw_min], multi_bw_max=[len(y) - 2], init_multi=gbw)
     m = MGWR(coords, y, X, msel, kernel="bisquare", fixed=False).fit()
     ok = bool(np.isfinite(m.R2) and -0.05 <= m.R2 <= 1 and np.isfinite(m.params).all() and np.abs(m.params).max() < 1e3)
     res = m if ok else g                      # never publish a diverged model's coefficients
@@ -73,11 +79,11 @@ def run(ind, coords):
     print(f"GWR  bw={int(gbw)} R2={g.R2:.3f} adjR2={g.adj_R2:.3f} AICc={g.aicc:.1f}")
     print(f"MGWR bws={[int(b) for b in mbws]} R2={m.R2:.3f} adjR2={m.adj_R2:.3f} AICc={m.aicc:.1f}  ({time.time() - t0:.0f}s)")
     return dict(
-        y="Flood depth (proxy: share of SA1 in LSIO/FO/SBO overlays)",
+        y="Flood depth (proxy: share of residents inside LSIO/FO/SBO overlays)",
         vars=["Intercept"] + [l for _, l in use], dropped=dropped, unstable=unstable,
         gwr=dict(R2=r3(g.R2), adjR2=r3(g.adj_R2), AICc=r3(g.aicc), bw=int(gbw)),
         mgwr=dict(ok=ok, R2=r3(m.R2) if ok else None, adjR2=r3(m.adj_R2) if ok else None, AICc=r3(m.aicc) if ok else None,
-                  bws=[int(b) for b in mbws], bw_min=BW_MIN),
+                  bws=[int(b) for b in mbws], bw_min=bw_min),
         coef_model="MGWR" if ok else "GWR", gwr_bw=int(gbw),
         paper=PAPER_TABLE5, localR2_model=mlocal_src,
         coef=[[r3(v) for v in row] for row in res.params],
