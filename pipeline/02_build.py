@@ -247,6 +247,9 @@ def sample(paths, scale=1.0):
         with rasterio.open(pth) as r:
             b = r.bounds
             xs, ys = mbp.x.values, mbp.y.values
+            if r.crs and r.crs.to_epsg() != 4326:        # e.g. the statewide Vicmap DEM is in VicGrid (EPSG:3111)
+                from rasterio.warp import transform as _tf
+                xs, ys = map(np.asarray, _tf("EPSG:4326", r.crs, xs, ys))
             m = (xs >= b.left) & (xs < b.right) & (ys > b.bottom) & (ys <= b.top) & np.isnan(v)
             if m.any():
                 vals = np.array([x[0] for x in r.sample(zip(xs[m], ys[m]))], float)
@@ -257,7 +260,9 @@ def sample(paths, scale=1.0):
         return None
     ok = ~np.isnan(v); w = mb["area"].where(ok, 0)
     return (pd.Series(np.nan_to_num(v) * w).groupby(mb["i"]).sum() / w.groupby(mb["i"]).sum()).reindex(range(len(sa)))
-elev = sample(sorted(glob.glob(f"{RAW}/dem10_*.tif")))            # Vicmap 10 m DEM, as the paper used
+# Vicmap 10 m DEM, as the paper used: a statewide GeoTIFF placed by hand (the 12 GB DataVic download
+# is Deflate64-zipped, so it can't be read remotely; see README), else chunks from the image service.
+elev = sample(sorted(glob.glob("data/raw/shared/vmelev_dem10m*.tif")) + sorted(glob.glob(f"{RAW}/dem10_*.tif")))
 if elev is not None:
     NOTES.append("Elevation: Vicmap Elevation 10 m DEM (as in the paper), sampled at mesh-block points.")
 else:

@@ -8,7 +8,7 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 - **SEIFA 2021 by SA1**, downloaded from the ABS: four map variables (IRSD, IRSAD, IER, IEO deciles), a resident-weighted IRSD row in the comparison panel, and IRSD as a seventh variable in the correlation matrix.
 - **Tree canopy** from Vicmap Vegetation tree extent 2020, a 20 cm canopy mask. Only the tiles overlapping the study area are read out of the 2 GB archive and reduced to 10 m canopy-percentage grids, then averaged per mesh block and SA1. It appears as a map variable and a panel row.
 - **Building footprints** (Microsoft Global ML Building Footprints, current release): building count and roof coverage per SA1, shown as a map variable and a panel row.
-- **Vicmap Elevation 10 m DEM**, the paper's own elevation source, from the Vicmap image service. Copernicus 30 m is the fallback. A **"Terrain (10 m relief)" toggle** overlays the Vicmap shaded relief.
+- **Vicmap Elevation 10 m DEM**, the paper's own elevation source, from the Vicmap image service. Copernicus 30 m is the fallback. A **"Terrain (10 m relief)" toggle** overlays the Vicmap shaded relief. A hand-placed copy of the statewide DEM file (`data/raw/shared/vmelev_dem10m*.tif`, VicGrid) takes priority when present. The raster sampler now reprojects points to any raster CRS.
 - **GWR and MGWR for Greater Melbourne,** fitted on SA2s. MGWR on 11,293 SA1s would take days. The analysis page draws SA2 coefficient maps and says which unit was used.
 - **README:** Lama & Sun's indices in plain language (what each measures, its range, how to read it, and four cautions), plus "Keeping the data current".
 

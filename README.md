@@ -529,7 +529,16 @@ The Census is the anchor, and it is five-yearly. Everything else can be refreshe
 | Address points (Vicmap Address) | **live** | weekly | Automatic |
 | Building footprints (Microsoft) | the release listed in `dataset-links.csv` (2026-08 at the time of writing) | periodic | Automatic: the manifest points at the newest tiles. Overture Maps buildings, which merge Microsoft, OpenStreetMap and others and are released monthly, are an alternative. |
 | Tree canopy | 2020 | the next statewide tree-extent capture | Change `CANOPY_ZIP` |
-| Elevation | Vicmap 10 m DEM (service) | LiDAR-derived 1–5 m DEMs via ELVIS for parts of Melbourne | A different fetch function; the build only needs GeoTIFFs |
+| Elevation | Vicmap 10 m DEM (image service) | LiDAR-derived 1–5 m DEMs via ELVIS for parts of Melbourne | A different fetch function; the build only needs GeoTIFFs |
+
+**Using the statewide Vicmap 10 m DEM file on your own computer.** DataVic also publishes the whole DEM as one file: [`vmelev_dem10m_Geotiff_GDA94_VicGrid.zip`](https://cl-isd-prd-datashare-s3-delivery.s3.amazonaws.com/PrePackages/vmelev_dem10m_Geotiff_GDA94_VicGrid.zip).
+- **Size:** 11.9 GB zipped, 12.5 GB unzipped, one float32 GeoTIFF in VicGrid (EPSG:3111).
+- **Why CI doesn't use it:** the zip uses **Deflate64**, so no tool can read part of it remotely. The whole file would have to be downloaded on every uncached run, and it is larger than GitHub's cache.
+- **Locally it is the best source:**
+  1. Download it once.
+  2. Extract it with Windows Explorer or 7-Zip; both handle Deflate64.
+  3. Put `vmelev_dem10m_Geotiff_GDA94_Vicgrid.tif` in `data/raw/shared/`.
+  4. Run `02_build.py`. It prefers this file over the image service and over Copernicus. The TIFF is internally tiled, so only the study area is read.
 | Flood hazard | planning overlays | Melbourne Water flood mapping and Victorian Flood Database extents | Swap the `riv`/`sbo` polygons (see ARCHITECTURE §4) |
 
 **To refresh everything that is live,** re-run the GitHub Action (Actions → *Build and deploy* → *Run workflow*). Delete the cache first if you want to force fresh downloads. A scheduled monthly run would keep the live inputs current; add a `schedule:` trigger to `pages.yml` if you want that.
