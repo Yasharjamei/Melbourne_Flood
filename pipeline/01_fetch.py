@@ -403,8 +403,8 @@ def subcatchments(bbox, out="data/raw/shared/subcatchments.geojson"):
     """Melbourne Water 'Catchments - Waterways and Drains Subcatchments': the catchment of every
     Melbourne Water drain and waterway. Found through the ArcGIS Online catalogue (the hub's own
     export links are signed and expire within the hour), then paged from its FeatureServer."""
-    if os.path.exists(out):
-        print("  subcatchments: cached"); return
+    if os.path.exists(out) or os.path.exists("data/static/waterways_drains_catchments.gdb.zip"):
+        print("  subcatchments: cached or stored in data/static"); return
     hits = get_json("https://www.arcgis.com/sharing/rest/search",
                     {"q": 'title:"Waterways and Drains Subcatchments" AND type:"Feature Service"', "num": 20, "f": "json"})
     items = [r for r in hits.get("results", []) if r.get("url") and "subcatchment" in r.get("title", "").lower()]

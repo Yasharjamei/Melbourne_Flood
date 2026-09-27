@@ -129,19 +129,42 @@ if os.path.exists("data/static/river_basins_melbourne.geojson"):
     NOTES.append("River basins: Melbourne Water major river basins; each SA1 is assigned by its representative point.")
 else:
     sa["basin"] = ""
-sa["drain"] = ""
-if os.path.exists("data/raw/shared/subcatchments.geojson"):
-    try:
-        sc = gpd.read_file("data/raw/shared/subcatchments.geojson").to_crs(CRS)
-        name_col = next((c for c in sc.columns if re.search(r"waterway|drain|receiv|name", c, re.I) and sc[c].dtype == object), None)
-        js2 = gpd.sjoin(pt, sc[[name_col, "geometry"]] if name_col else sc[["geometry"]], predicate="within")
-        js2 = js2[~js2.index.duplicated()]
-        if name_col:
-            sa["drain"] = js2[name_col].reindex(sa.index).fillna("").astype(str).str.strip().values
-        print(f"subcatchments: {len(sc):,} polygons, name field {name_col!r}, {int((sa['drain'] != '').sum())} SA1s labelled")
-        NOTES.append("Receiving waterway: Melbourne Water waterways and drains subcatchments, by SA1 representative point.")
-    except Exception as e:
-        print("WARNING could not use subcatchments:", e)
+# Waterways and drains subcatchments (Melbourne Water, 3,409 polygons, data/static as a zipped
+# file geodatabase). Each carries its drainage chain: subcatchment -> major (creek) catchment ->
+# primary catchment -> river basin. Falls back to the copy fetched from ArcGIS Online, if any.
+sa["drain"] = ""; catch = None
+def read_catchments():
+    import zipfile
+    z = "data/static/waterways_drains_catchments.gdb.zip"
+    if os.path.exists(z):
+        gdb = next(n.split("/")[0] for n in zipfile.ZipFile(z).namelist() if ".gdb/" in n)
+        return gpd.read_file(f"/vsizip/{z}/{gdb}")
+    if os.path.exists("data/raw/shared/subcatchments.geojson"):
+        return gpd.read_file("data/raw/shared/subcatchments.geojson")
+    return None
+try:
+    sc = read_catchments()
+    if sc is not None:
+        sc = sc.to_crs(CRS)
+        f = {k: col(sc, *pats, required=False) for k, pats in
+             {"sub": (r"sub_catchment_name",), "major": (r"major_catchment_name",), "primary": (r"primary_catchment_name",)}.items()}
+        keep = [c for c in f.values() if c]
+        j2 = gpd.sjoin(pt, sc[keep + ["geometry"]], predicate="within")
+        j2 = j2[~j2.index.duplicated()].reindex(sa.index)
+        tc = lambda v: "" if not isinstance(v, str) or not v.strip() else v.strip().title()
+        chain = lambda r: " → ".join(dict.fromkeys(x for x in (tc(r.get(f["sub"])), tc(r.get(f["major"])), tc(r.get(f["primary"])))
+                                                     if x))
+        sa["drain"] = [chain(r) for r in j2.to_dict("records")]
+        if f["major"]:
+            catch = sc.dissolve(f["major"]).reset_index()[[f["major"], "geometry"]].rename(columns={f["major"]: "name"})
+            catch = catch[catch.intersects(study_poly)].reset_index(drop=True)
+            catch["name"] = catch["name"].map(tc)
+        print(f"catchments: {len(sc):,} subcatchments, {0 if catch is None else len(catch)} creek catchments in the study area, "
+              f"{int((sa['drain'] != '').sum())} SA1s labelled")
+        NOTES.append("Drainage: Melbourne Water waterways and drains subcatchments (subcatchment → creek → primary catchment), "
+                     "by SA1 representative point.")
+except Exception as e:
+    print("WARNING could not use catchments:", e)
 
 # ---------------- flood overlays
 fl = read(f"{RAW}/flood.geojson")
@@ -592,6 +615,8 @@ out = dict(
     mb=[[r.x, r.y, int(r.i), round(float(r.w), 4), round(float(r.riv), 2), round(float(r.sbo), 2)] for r in mbo.itertuples()],
     riv=gj(riv, tol * 1.5), sbo=gj(sbo, tol * 1.5),
     lga=[{"name": r.name, "g": gj(r.geometry, tol * 3)} for r in lga.itertuples()],
+    catchments=[] if catch is None else [{"name": r.name, "g": gj(r.geometry.intersection(study_poly.buffer(1000)), tol * 3)}
+                                         for r in catch.itertuples()],
     basins=[] if basins is None else [{"name": r.name, "g": gj(r.geometry.intersection(study_poly.buffer(2000)), tol * 4)}
                                       for r in basins.itertuples()],
     sal=[{"name": r.name, "g": gj(r.geometry, tol * 2)} for r in sal.itertuples()])

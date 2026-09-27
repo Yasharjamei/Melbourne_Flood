@@ -14,7 +14,10 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 - **GWR and MGWR for Greater Melbourne,** fitted on SA2s. MGWR on 11,293 SA1s would take days. The analysis page draws SA2 coefficient maps and says which unit was used.
 - **README:** Lama & Sun's indices in plain language (what each measures, its range, how to read it, and four cautions), plus "Keeping the data current".
 
-- **River basins** (Melbourne Water, stored in `data/static/`): each SA1 is tagged with its basin, each basin is an area preset (the Maribyrnong basin is Lee et al.'s study area), and there is a "River basins" outline toggle. The receiving waterway from Melbourne Water's waterways and drains subcatchments appears in the tooltip; that layer is found through the ArcGIS Online catalogue, because the hub's own export links expire within the hour.
+- **River basins** (Melbourne Water, stored in `data/static/`): each SA1 is tagged with its basin, each basin is an area preset (the Maribyrnong basin is Lee et al.'s study area), and there is a "River basins" outline toggle. **Drainage chains** come from Melbourne Water's *Catchments of all Waterways and Drains*: 3,409 subcatchments, stored in `data/static/` as a zipped geodatabase.
+  - Each SA1's tooltip shows its chain from subcatchment to creek to primary catchment.
+  - A "Creek catchments" toggle outlines and labels the creek-level catchments.
+  - If the file is missing, the pipeline falls back to finding the layer through the ArcGIS Online catalogue.
 - **Road reserves** from Vicmap Property road casement: the share of each SA1 that is road reserve (Lee et al.'s transport density), by 5 m rasterisation in 10 km tiles. The source is a DataVic order; because order links expire, the Vicmap WFS layer is the automatic fallback.
 
 ### Changed

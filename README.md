@@ -3,7 +3,7 @@
 An interactive web map of **Greater Melbourne**: all 31 metropolitan councils, 11,293 SA1s and 543 suburbs, with an analysis page.
 
 - **The papers' own study area is built in.** Maribyrnong + Moonee Valley, the 474 SA1s both papers studied, is a one-click preset in the council menu: *Paper study area (Lama & Sun)*. With the preset on, Lama & Sun's indices are scaled within those 474 SA1s, as in the paper, so they can be checked against its figures.
-- **River basins.** Melbourne Water's major river basins (Maribyrnong, Yarra, Werribee, Dandenong, Western Port) are area presets and a toggleable outline layer. The Maribyrnong basin is the study area of Lee, Sun & Wachowicz. Each SA1's tooltip also names its receiving waterway, from Melbourne Water's waterways and drains subcatchments, when that layer is available.
+- **River basins.** Melbourne Water's major river basins (Maribyrnong, Yarra, Werribee, Dandenong, Western Port) are area presets and a toggleable outline layer. The Maribyrnong basin is the study area of Lee, Sun & Wachowicz. Melbourne Water's 3,409 waterways and drains subcatchments (also in `data/static/`) give each SA1 its drainage chain, shown in the tooltip, for example *Ascot Vale Main Drain → Maribyrnong River*. The 108 creek-level catchments are a second outline toggle, with names from zoom 11.
 - **The analysis page fits two models:** GWR/MGWR on the paper's 474 SA1s (the direct reproduction of their Table 5), and on all ~300 Greater Melbourne SA2s.
 - Until v0.6 the two councils had a separate page. The old `/metro/` address now redirects to the root.
 
@@ -559,6 +559,6 @@ The Census is the anchor, and it is five-yearly. Everything else can be refreshe
 - **SoilGrids 2.0 (ISRIC):** CC BY 4.0.
 - **ABS SEIFA 2021** (SA1): CC BY 4.0.
 - **Vicmap Elevation 10 m DEM**, **Vicmap Vegetation tree extent 2020** and **Vicmap Property road casement**, via DataVic: CC BY 4.0, © State of Victoria.
-- **Melbourne Water** major river basins (in `data/static/`) and waterways and drains subcatchments: Melbourne Water open data, CC BY 4.0.
+- **Melbourne Water** major river basins and *Catchments of all Waterways and Drains* (both in `data/static/`, supplied by the owner from Melbourne Water's open data hub): CC BY 4.0.
 - **Microsoft Global ML Building Footprints:** ODbL.
 - **Lama & Sun (2026):** CC BY 4.0. The methodology and weights are cited and credited. None of the authors' data is redistributed here.

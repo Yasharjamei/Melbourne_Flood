@@ -272,3 +272,5 @@ Both were tested against a simulated capped server and a truncated file.
 
 **Supplied "DEM Hydro Conditioning Guide v3": reviewed, not adopted as written.** Despite its title, it is an evacuation-routing spec. Its routing needs modelled depth and velocity, which aren't public, and its hazard thresholds understate ADR guideline 7-3: it removes roads only at H5 and routes civilians through H4. A reduced, honest version (static isolation analysis on the road network with flood overlays) is on the roadmap as item 7b.
 
+**Waterways and drains catchments, supplied as a file.** The owner then attached the full layer: a 3.2 MB zipped file geodatabase, 3,409 subcatchments, in EPSG:28355. It is committed to `data/static/` and read straight from the zip (`/vsizip/`), so the ArcGIS Online lookup is only a fallback now. Each record carries its drainage chain: subcatchment → major (creek) catchment → primary catchment → basin. In the paper councils the creek catchments are Kororoit Creek, Maribyrnong River, Moonee Ponds Creek, Stony Creek and Yarra River Main Stream. That explains the 83 SA1s in the Werribee basin: Kororoit Creek belongs to it.
+

@@ -71,6 +71,8 @@ docs/
   ARCHITECTURE.md    this file
   PROJECT_LOG.md     decisions and history
 papers/              the two source papers (PDF)
+data/static/         inputs with no stable download link, committed: Melbourne Water river basins and
+                     waterways/drains catchments (zipped geodatabase, read in place)
 snapshots/           the first prototype, frozen
 ```
 
@@ -222,13 +224,15 @@ The workflow runs on pull requests, on pushes to `main` and on manual dispatch.
     "bcov": 0.31, "bn": 145,   // roof coverage share, building count (null if unavailable)
     "seifa": [3, 4, 2, 5],     // IRSD, IRSAD, IER, IEO deciles (1 = most disadvantaged); null if unavailable
     "road": 0.23,              // share of area in road casement (null if unavailable)
+    "basin": "Maribyrnong",    // Melbourne Water river basin ("" outside all)
+    "drain": "Ascot Vale M.D. → Maribyrnong River",   // drainage chain (absent if unknown)
     "lsp": [...],              // paper-area SA1s only: the six indices scaled within the paper's 474 SA1s
     "ls": [E, S, AC, FRI, DMG, IFRI]   // Lama & Sun indices, null where undefined
   }],
   "shapes": [GeoJSON geometry per SA1, same order as sa1],
   "mb": [[lon, lat, i, w, riv, sbo]],  // mesh-block point, SA1 index, resident share, in-overlay shares
   "riv": GeoJSON, "sbo": GeoJSON,     // overlay polygons for display
-  "lga": [{"name": "...", "g": GeoJSON}], "sal": [{"name": "...", "g": GeoJSON}],
+  "lga": [{"name": "...", "g": GeoJSON}], "basins": [...], "catchments": [...],   // same shape "sal": [{"name": "...", "g": GeoJSON}],
   "stats": [ { see lamasun_stats.run(), plus "title", "unit": "SA1" | "SA2", and "idx" (SA1 indices) or "units": [{"name", "g"}] } ]
 }
 ```
