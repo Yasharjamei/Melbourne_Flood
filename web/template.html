@@ -109,6 +109,7 @@ td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
       <div class="card ctrl">
         <label>Radius <input type="range" id="rad" min="300" max="2000" step="50" value="800"> <span id="radv">800 m</span></label>
         <label><input type="checkbox" id="fl" checked> Flood overlays</label>
+        <label id="aepwrap"><input type="checkbox" id="aept"> 1% AEP extent (modelled)</label>
         <label><input type="checkbox" id="sb" checked> Suburb boundaries</label>
         <label><input type="checkbox" id="rb"> River basins</label>
         <label><input type="checkbox" id="cc"> Creek catchments</label>
@@ -190,6 +191,7 @@ const METRICS_ALL=[
   ...[['IRSD','Disadvantage (IRSD)','RdYlGn'],['IRSAD','Advantage and disadvantage (IRSAD)','Spectral'],['IER','Economic resources (IER)','PiYG'],['IEO','Education and occupation (IEO)','BrBG']].map(([k,l,r],j)=>({
     g:'Socio-economic (SEIFA 2021)',k:'seifa'+j,l,f:s=>s.seifa&&s.seifa[j]!=null?s.seifa[j]:NaN,fmt:v=>'decile '+v.toFixed(0),r,
     sub:'Decile among all Australian SA1s: 1 = lowest tenth'})),
+  {g:'Flood',k:'aep',l:'Residents in 1% AEP flood extent',f:s=>s.aep!=null?s.aep:NaN,fmt:v=>(v*100).toFixed(0)+'%',r:['#d9f0f3','#a6dbe3','#5bb3c6','#2a7f9e','#0f4c6b'],zero:true,none:'Outside the modelled extent',unit:'Modelled 1-in-100-year flood (DEECA, CMAs and Melbourne Water)'},
   {g:'Flood',k:'flood',l:'Residents in flood overlay',f:s=>s.fl!=null?s.fl:Math.min(1,s.riv+s.sbo),fmt:v=>(v*100).toFixed(0)+'%',r:'Blues',zero:true,none:'Not in an overlay'},
   ...['Exposure','Sensitivity','Adaptive capacity','Flood Resilience Index (FRI)','Damage index','Integrated FRI (IFRI)'].map((l,j)=>({
     // With the paper preset, show the indices scaled within the paper's 474 SA1s (lsp), which are
@@ -256,6 +258,7 @@ loadStyle().then(style=>{
     const before=sym?sym.id:undefined, add=l=>map.addLayer(l,before);
     map.addSource('sa1',{type:'geojson',data:fcSA});
     map.addSource('riv',{type:'geojson',data:{type:'Feature',geometry:D.riv,properties:{}}});
+    if(D.aep)map.addSource('aep',{type:'geojson',data:{type:'Feature',geometry:D.aep,properties:{}}});
     map.addSource('sbo',{type:'geojson',data:{type:'Feature',geometry:D.sbo,properties:{}}});
     map.addSource('lga',{type:'geojson',data:fcLGA});
     map.addSource('catch',{type:'geojson',data:{type:'FeatureCollection',features:(D.catchments||[]).map(b=>({type:'Feature',geometry:b.g,properties:{name:b.name}}))}});
@@ -272,6 +275,8 @@ loadStyle().then(style=>{
     add({id:'sa1-fill',type:'fill',source:'sa1',paint:{'fill-color':fs('c','#000000'),'fill-opacity':['case',['==',fs('c','none'),'none'],0,DARK?.8:.74]}});
     add({id:'sa1-line',type:'line',source:'sa1',paint:{'line-color':DARK?'#000000':'#ffffff','line-width':['interpolate',['linear'],['zoom'],9,.1,14,.9],'line-opacity':.8}});
     add({id:'relief',type:'raster',source:'relief',layout:{visibility:'none'},paint:{'raster-opacity':DARK?.35:.4}});
+    if(D.aep){add({id:'aep-fill',type:'fill',source:'aep',layout:{visibility:'none'},paint:{'fill-color':'#0b3d78','fill-opacity':.22}});
+      add({id:'aep-line',type:'line',source:'aep',layout:{visibility:'none'},paint:{'line-color':'#0b3d78','line-width':1.1}});}
     add({id:'sbo-fill',type:'fill',source:'sbo',paint:{'fill-color':'#2a78d6','fill-opacity':.18}});
     add({id:'sbo-line',type:'line',source:'sbo',paint:{'line-color':'#2a78d6','line-width':1,'line-dasharray':[2,1.5]}});
     add({id:'riv-fill',type:'fill',source:'riv',paint:{'fill-color':'#2a78d6','fill-opacity':.42}});
@@ -334,6 +339,8 @@ function wire(){
   });
   const vis=(ids,on)=>ids.forEach(id=>map.getLayer(id)&&map.setLayoutProperty(id,'visibility',on?'visible':'none'));
   document.getElementById('fl').addEventListener('change',e=>{vis(['riv-fill','riv-line','sbo-fill','sbo-line'],e.target.checked);drawLegend();});
+  if(D.aep)document.getElementById('aept').addEventListener('change',e=>{vis(['aep-fill','aep-line'],e.target.checked);drawLegend();});
+  else document.getElementById('aepwrap').style.display='none';
   document.getElementById('rb').addEventListener('change',e=>vis(['basin-line'],e.target.checked));
   document.getElementById('cc').addEventListener('change',e=>vis(['catch-line','catch-label'],e.target.checked));
   document.getElementById('sb').addEventListener('change',e=>vis(['sal-halo','sal-line','sal-label'],e.target.checked));
@@ -418,6 +425,7 @@ function drawLegend(){
   if(document.getElementById('fl').checked){L.append('div').attr('class','sep');
     L.append('div').attr('class','row').call(r=>{r.append('span').attr('class','sw riv');r.append('span').text('Riverine overlay (LSIO, FO)');});
     L.append('div').attr('class','row').call(r=>{r.append('span').attr('class','sw sbo');r.append('span').text('Overland flow (SBO)');});}
+  if(D.aep&&document.getElementById('aept').checked)L.append('div').attr('class','row').call(r=>{r.append('span').attr('class','sw').style('background','rgba(11,61,120,.22)').style('border','1px solid #0b3d78');r.append('span').text('1% AEP extent (modelled)');});
 }
 
 // ---- aggregation
@@ -425,20 +433,20 @@ const COS=Math.cos(META.lat0*Math.PI/180);
 // What circle a counts: each mesh-block point within R metres adds its resident share w to
 // its SA1 (and w x in-overlay share to the flood tallies). Returns sumW() of those weights.
 function agg(a){
-  const w=new Float64Array(S.length), wr=new Float64Array(S.length), ws=new Float64Array(S.length);
+  const w=new Float64Array(S.length), wr=new Float64Array(S.length), ws=new Float64Array(S.length), wa=new Float64Array(S.length);
   const r2=R*R;
   for(const c of C){if((activeLga||activeSub)&&!visible(c[2]))continue;const dx=(c[0]-a.lon)*111195*COS, dy=(c[1]-a.lat)*111195;
-    if(dx*dx+dy*dy<=r2){const f=c[3];w[c[2]]+=f;wr[c[2]]+=f*c[4];ws[c[2]]+=f*c[5];}}
-  const o=sumW(w,wr,ws);o.w=w;return o;
+    if(dx*dx+dy*dy<=r2){const f=c[3];w[c[2]]+=f;wr[c[2]]+=f*c[4];ws[c[2]]+=f*c[5];if(c.length>6)wa[c[2]]+=f*c[6];}}
+  const o=sumW(w,wr,ws,wa);o.w=w;return o;
 }
 // Sum SA1 records weighted by w (share of each SA1 counted); wr/ws are the shares counted
 // inside riverine / overland-flow overlays. Indices are resident-weighted means.
-function sumW(w,wr,ws){
+function sumW(w,wr,ws,wa){
   const o={M:new Float64Array(NB),F:new Float64Array(NB)};const keys=['pop','ages','o75','u5','nfa','nfa_d','ltc','ltc_d','emp','unemp','lf','eng','eng_d','car0','car_d','d_house','d_semi','d_flatlow','d_flathigh','d_other','dwell'];
-  keys.forEach(k=>o[k]=0);o.popRiv=0;o.popSbo=0;o.o75Fl=0;o.nfaFl=0;o.km2=0;let incN=0,incW=0,irN=0,irW=0,caN=0,caW=0,bcN=0,bcW=0,rdN=0,rdW=0;o.ls=new Float64Array(6);o.lsW=0;
+  keys.forEach(k=>o[k]=0);o.popRiv=0;o.popSbo=0;o.popAep=D.aep?0:NaN;o.o75Fl=0;o.nfaFl=0;o.km2=0;let incN=0,incW=0,irN=0,irW=0,caN=0,caW=0,bcN=0,bcW=0,rdN=0,rdW=0;o.ls=new Float64Array(6);o.lsW=0;
   S.forEach((s,i)=>{const f=w[i];if(!f)return;keys.forEach(k=>o[k]+=s[k]*f);for(let b=0;b<NB;b++){o.M[b]+=s.M[b]*f;o.F[b]+=s.F[b]*f;}
     o.km2+=s.km2*f;
-    const fl=Math.min(f,(wr?wr[i]:0)+(ws?ws[i]:0));o.popRiv+=s.pop*(wr?wr[i]:0);o.popSbo+=s.pop*(ws?ws[i]:0);
+    const fl=Math.min(f,(wr?wr[i]:0)+(ws?ws[i]:0));o.popRiv+=s.pop*(wr?wr[i]:0);o.popSbo+=s.pop*(ws?ws[i]:0);if(wa&&D.aep)o.popAep+=s.pop*wa[i];
     o.o75Fl+=s.o75*fl;o.nfaFl+=s.nfa*fl;
     if(s.inc>0){incN+=s.inc*s.pop*f;incW+=s.pop*f;}
     if(s.seifa&&s.seifa[0]!=null&&s.pop>0){irN+=s.seifa[0]*s.pop*f;irW+=s.pop*f;}
@@ -449,8 +457,8 @@ function sumW(w,wr,ws){
   for(let j=0;j<6;j++)o.ls[j]=o.lsW?o.ls[j]/o.lsW:NaN;
   o.inc=incW?incN/incW:NaN;o.irsd=irW?irN/irW:NaN;o.can=caW?caN/caW:NaN;o.bcov=bcW?bcN/bcW:NaN;o.road=rdW?rdN/rdW:NaN;return o;
 }
-function allAgg(){const w=new Float64Array(S.length),wr=new Float64Array(S.length),ws=new Float64Array(S.length);
-  S.forEach((s,i)=>{if(visible(i))w[i]=1;});C.forEach(c=>{if(visible(c[2])){wr[c[2]]+=c[3]*c[4];ws[c[2]]+=c[3]*c[5];}});return sumW(w,wr,ws);}
+function allAgg(){const w=new Float64Array(S.length),wr=new Float64Array(S.length),ws=new Float64Array(S.length),wa=new Float64Array(S.length);
+  S.forEach((s,i)=>{if(visible(i))w[i]=1;});C.forEach(c=>{if(visible(c[2])){wr[c[2]]+=c[3]*c[4];ws[c[2]]+=c[3]*c[5];if(c.length>6)wa[c[2]]+=c[3]*c[6];}});return sumW(w,wr,ws,wa);}
 let ALL=allAgg();
 const ALL_STUDY=ALL;   // whole study area: decides which optional rows (SEIFA, canopy, roofs) this build can show
 
@@ -471,7 +479,7 @@ const ROWS=[
   ['Households with no car',o=>pct(o.car0,o.car_d),'p','Cannot self-evacuate by car'],['Limited spoken English',o=>pct(o.eng,o.eng_d),'p','Harder to act on warnings'],
   ['Unemployment rate',o=>pct(o.unemp,o.lf),'p'],['Dwellings in 4+ storey blocks',o=>pct(o.d_flathigh,o.dwell),'p','Most residents above ground floor'],
   ['Median household income',o=>o.inc,'$','Population-weighted SA1 medians'],
-  ['Residents in riverine overlay',o=>o.popRiv,'n','LSIO and Floodway'],['Residents in overland-flow overlay',o=>o.popSbo,'n','Special Building Overlay'],
+  ['Residents in riverine overlay',o=>o.popRiv,'n','LSIO and Floodway'],['Residents in overland-flow overlay',o=>o.popSbo,'n','Special Building Overlay'],['Residents in 1% AEP extent',o=>o.popAep,'n','Modelled 1-in-100-year flood'],
   ['Residents 75+ in any overlay',o=>o.o75Fl,'n'],
   ['SEIFA disadvantage (IRSD) decile',o=>o.irsd,'d','Resident-weighted; 1 = most disadvantaged tenth of Australia'],
   ['Tree canopy',o=>o.can,'p','Share of land under canopy'],['Roof coverage',o=>o.bcov,'p','Share of land under building footprints'],['Road reserves',o=>o.road,'p','Share of land in road casement'],

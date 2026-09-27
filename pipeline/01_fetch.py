@@ -376,6 +376,11 @@ def roads(bbox, outdir="data/raw/shared/roads"):
         except Exception as e:
             print(f"  road casement: order link unusable ({str(e)[:120]}); trying WFS")
     layer = wfs_layer(r"casement", (r"road_casement_polygon$", r"road_casement", r"casement"))
+    wfs_polygons(layer, bbox, os.path.join(outdir, "road_casement.geojson"))
+
+
+def wfs_polygons(layer, bbox, out, label="features"):
+    """Every polygon of a Vicmap WFS layer inside bbox (geometry only), paged 8 at a time."""
     desc = get(WFS, {"service": "WFS", "version": "2.0.0", "request": "DescribeFeatureType", "typeNames": layer})
     geom = next((t.split('name="')[1].split('"')[0] for t in desc.split("<")
                  if 'type="gml:' in t and 'name="' in t), "geom")
@@ -394,9 +399,56 @@ def roads(bbox, outdir="data/raw/shared/roads"):
     if not feats:
         raise RuntimeError(f"{layer} returned no features")
     json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {}, "geometry": f["geometry"]}
-                                                          for f in feats if f.get("geometry")]},
-              open(os.path.join(outdir, "road_casement.geojson"), "w"))
-    print(f"  road casement: {len(feats):,} polygons from {layer}")
+                                                          for f in feats if f.get("geometry")]}, open(out, "w"))
+    print(f"  {label}: {len(feats):,} polygons from {layer} -> {out}")
+
+
+# Victorian Flood Database (DEECA) map service: the fallback source for the 1% AEP extent.
+VFD = "https://emap2.ffm.vic.gov.au/arcgis/rest/services/Victorian_Flood_Database/MapServer"
+AEP_RE = r"(1\s*%|1pc|1in100|1_in_100|1 in 100|100\s*y|aep)"
+
+
+def aep1(bbox, out="data/raw/shared/aep1.geojson"):
+    """Modelled 1% AEP (1-in-100-year) flood extent, compiled statewide from the CMAs and Melbourne
+    Water. Looked up by name on the Vicmap WFS first, then in the Victorian Flood Database
+    map service, because neither publishes a fixed layer name for it."""
+    if os.path.exists(out):
+        print("  1% AEP extent: cached"); return
+    import re
+    try:
+        caps = get(WFS, {"service": "WFS", "version": "2.0.0", "request": "GetCapabilities"})
+        names = re.findall(r"<(?:wfs:)?Name>([^<]+)</(?:wfs:)?Name>", caps)
+        hits = [n for n in names if re.search(r"flood", n, re.I) and re.search(AEP_RE + r"|extent", n, re.I)]
+        print(f"  WFS flood layers: {hits[:10]}")
+        if hits:
+            hits.sort(key=lambda n: (not re.search(AEP_RE, n, re.I), len(n)))
+            wfs_polygons(hits[0], bbox, out, "1% AEP extent"); return
+    except Exception as e:
+        print(f"  WFS lookup failed: {str(e)[:150]}")
+    info = get_json(VFD, {"f": "json"})
+    layers = info.get("layers", [])
+    print("  VFD layers:", [(l["id"], l["name"]) for l in layers][:25])
+    cand = [l for l in layers if re.search(AEP_RE, l["name"], re.I) and not l.get("subLayerIds")]
+    cand.sort(key=lambda l: (not re.search(r"extent", l["name"], re.I), len(l["name"])))
+    if not cand:
+        raise RuntimeError("no 1% AEP / 1-in-100 layer found in the Victorian Flood Database service")
+    lyr = f"{VFD}/{cand[0]['id']}"
+    print(f"  1% AEP extent: using VFD layer {cand[0]['id']} '{cand[0]['name']}'")
+    feats, off = [], 0
+    while True:
+        js = get_json(lyr + "/query", {"where": "1=1", "outFields": "", "returnGeometry": "true", "f": "geojson",
+                                        "outSR": 4326, "geometry": f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}",
+                                        "geometryType": "esriGeometryEnvelope", "inSR": 4326,
+                                        "spatialRel": "esriSpatialRelIntersects", "resultOffset": off, "resultRecordCount": 1000})
+        got = js.get("features", [])
+        feats += got; off += len(got)
+        if len(got) < 1000:
+            break
+    if not feats:
+        raise RuntimeError("the 1% AEP layer returned no polygons in the study area")
+    json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {}, "geometry": f["geometry"]}
+                                                          for f in feats if f.get("geometry")]}, open(out, "w"))
+    print(f"  1% AEP extent: {len(feats):,} polygons -> {out}")
 
 
 def subcatchments(bbox, out="data/raw/shared/subcatchments.geojson"):
@@ -626,6 +678,7 @@ def main():
     print("SEIFA 2021 by SA1 (optional)"); optional("SEIFA", seifa)
     print("Vicmap Elevation 10 m DEM (optional; Copernicus 30 m is the fallback)"); optional("DEM 10 m", lambda: dem10(bbox, raw))
     print("Tree canopy, Vicmap tree extent 2020 (optional)"); optional("canopy", lambda: canopy(bbox))
+    print("1% AEP flood extent, statewide modelled (optional)"); optional("1% AEP extent", lambda: aep1(bbox))
     print("Road casement, Vicmap Property (optional)"); optional("road casement", lambda: roads(bbox))
     print("Waterway and drain subcatchments, Melbourne Water (optional)"); optional("subcatchments", lambda: subcatchments(bbox))
     print("Building footprints, Microsoft (optional)"); optional("buildings", lambda: buildings(bbox, f"{raw}/buildings.npy"))

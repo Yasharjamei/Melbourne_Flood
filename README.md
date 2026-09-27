@@ -520,7 +520,13 @@ The cloud environment's network policy blocks the data hosts by default. To run 
 | ~~Vicmap road casement~~ | **Added in v0.6**: road-reserve share per SA1 (Lee et al.'s transport density), from a DataVic order with the Vicmap WFS as fallback | DataVic | Yes |
 | Maribyrnong catchment boundary | The 412-SA1 study area of Lee et al. | Melbourne Water / DEM watershed | Probably |
 | HEC-RAS October 2022 depth raster | Real hazard (depth, spread ≥ 0.15 m) instead of overlays | Chayn Sun (RMIT), on request | No |
-| Melbourne Water 1% AEP flood extent | Better proxy than planning overlays | Melbourne Water / Jacobs | Licensed |
+
+**About modelled depth.**
+- **What the tools do:** [rashdf](https://github.com/fema-ffrd/rashdf) (FEMA) reads HEC-RAS result files (`.p##.hdf`: 2D mesh, maximum depth and water level). [ras2fim](https://github.com/NOAA-OWP/ras2fim) (NOAA) turns US HEC-RAS 1D models into flood-map libraries; it runs on Windows with HEC-RAS 6.3 only.
+- **What they don't do:** neither contains a model or data for Melbourne.
+- **What is needed:** a finished HEC-RAS run for the October 2022 event, which rashdf could then bring into this pipeline as depth per SA1.
+- **Building a model here is not an option:** a hydraulic model built without calibration data would produce convincing-looking but unvalidated depths.
+| ~~Melbourne Water 1% AEP flood extent~~ | **Added**: the statewide 1% AEP extent (DEECA, from the CMAs and Melbourne Water) as a separate map variable and layer beside the overlays | DataVic / DEECA | Yes |
 
 ### Keeping the data current
 

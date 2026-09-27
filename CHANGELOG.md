@@ -2,6 +2,15 @@
 
 Notable changes to the explorer and its pipeline. Dates are when a change landed on `main`.
 
+## [Unreleased]
+
+### Added
+- **1% AEP flood extent**, the modelled 1-in-100-year extent compiled statewide by DEECA from the catchment management authorities and Melbourne Water.
+  - The pipeline finds it on the Vicmap WFS or, failing that, in the Victorian Flood Database map service.
+  - Residents inside it are counted with the same address-point method as the planning overlays.
+  - The map gets a "Residents in 1% AEP flood extent" variable, a "1% AEP extent (modelled)" outline toggle, and a comparison-panel row. Circles count it too.
+  - It sits beside the planning overlays rather than replacing them, so the legal control and the modelled hazard can be compared.
+
 ## [0.6.0] - 2026-09-27
 
 **One Greater Melbourne map, and more open data.**

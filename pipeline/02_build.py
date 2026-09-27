@@ -175,6 +175,17 @@ def polys(g):
     return unary_union(parts) if parts else MultiPolygon()
 riv = polys(unary_union(fl[fl.scheme_code.isin(["LSIO", "FO"])].geometry).intersection(study_poly))
 sbo = polys(unary_union(fl[fl.scheme_code == "SBO"].geometry).intersection(study_poly))
+# Modelled 1% AEP (1-in-100-year) flood extent, statewide compilation (CMAs + Melbourne Water).
+# Kept separate from the planning overlays: overlays are legal controls, this is modelled hazard.
+aep = None
+if os.path.exists("data/raw/shared/aep1.geojson"):
+    try:
+        _a = read("data/raw/shared/aep1.geojson")
+        aep = polys(unary_union(_a.geometry.values).intersection(study_poly))
+        print(f"1% AEP extent: {len(_a):,} polygons, {aep.area / 1e6:.1f} km2 inside the study area")
+        NOTES.append("1% AEP flood extent: statewide modelled 1-in-100-year extent (DEECA, from the CMAs and Melbourne Water).")
+    except Exception as e:
+        print("WARNING could not use the 1% AEP extent:", e); aep = None
 
 def share_in(g, zone):
     """Area share of each geometry inside zone, using overlay's spatial index."""
@@ -237,6 +248,7 @@ if pop is None:
 # of a mesh block's addresses inside an overlay is a closer estimate of its residents'.
 mb["riv"] = share_in(mb, riv); mb["sbo"] = share_in(mb, sbo)
 mb["any"] = np.minimum(1, mb["riv"] + mb["sbo"])
+mb["aep"] = share_in(mb, aep) if aep is not None else np.nan
 mb["naddr"] = 0
 ADDR = f"{RAW}/addr.npy"
 if os.path.exists(ADDR):
@@ -253,6 +265,7 @@ if os.path.exists(ADDR):
             hit = gpd.sjoin(pts, parts, predicate="within", how="inner").index.unique()
             return pts.index.isin(hit)
         pts["riv"] = inside(riv); pts["sbo"] = inside(sbo); pts["any"] = pts["riv"] | pts["sbo"]
+        pts["aep"] = inside(aep) if aep is not None else False
         g = pts.groupby("m")
         n = g.size().reindex(mb.index).fillna(0)
         has = n > 0
@@ -261,7 +274,7 @@ if os.path.exists(ADDR):
         cover = float(has[mb["pop"] > 0].mean()) if (mb["pop"] > 0).any() else 0.0
         if cover < 0.8:
             raise RuntimeError(f"only {cover:.0%} of populated mesh blocks have an address point")
-        for k in ("riv", "sbo", "any"):
+        for k in ("riv", "sbo", "any") + (("aep",) if aep is not None else ()):
             mb.loc[has, k] = (g[k].sum().reindex(mb.index)[has] / n[has]).values
         mb["naddr"] = n.astype(int).values
         print(f"address points: {len(a):,} read, {len(pts):,} in study mesh blocks, "
@@ -283,6 +296,7 @@ urban = ((mb["area"] * ~nonurban).groupby(mb["i"]).sum() / area_i).reindex(range
 # Resident-weighted shares per SA1: w is each mesh block's share of the SA1's residents.
 rw = lambda k: (mb["w"] * mb[k]).groupby(mb["i"]).sum().reindex(range(len(sa))).fillna(0)
 rivA, sboA, anyA = rw("riv"), rw("sbo"), rw("any")
+aepA = rw("aep") if aep is not None else None
 areaA = ((mb["area"] * mb["any"]).groupby(mb["i"]).sum() / area_i).reindex(range(len(sa))).fillna(0)
 print(f"mesh blocks: {len(mb)}; categories: {mb['cat'].value_counts().head(8).to_dict()}")
 
@@ -573,6 +587,7 @@ for i, c in enumerate(codes):
         d_other=int(g36.loc[c, "OPDs_Other_dwelling_Tot_Dwgs"]), inc=int(g2.loc[c, "Median_tot_hhd_inc_weekly"]),
         riv=round(float(rivA[i]), 4), sbo=round(float(sboA[i]), 4),
         fl=round(float(anyA[i]), 4), fa=round(float(areaA[i]), 4),
+        **({"aep": round(float(aepA[i]), 4)} if aepA is not None else {}),
         can=None if canopy is None or not np.isfinite(canopy.iloc[i]) else round(float(canopy.iloc[i]), 1),
         road=None if road is None or not np.isfinite(road.iloc[i]) else round(float(road.iloc[i]), 4),
         bcov=None if bcov is None else round(float(bcov.iloc[i]), 4), bn=None if bcount is None else int(bcount.iloc[i]),
@@ -602,7 +617,7 @@ for m in stats:
         u["g"] = gj(g, tol * 3)
 p4 = mb.representative_point().to_crs(4326)
 mbo = mb.assign(x=p4.x.round(5), y=p4.y.round(5))
-mbo = mbo[(mbo["w"] > 0) | (mbo["riv"] + mbo["sbo"] > 0)]
+mbo = mbo[(mbo["w"] > 0) | (mbo["riv"] + mbo["sbo"] > 0) | (mbo["aep"].fillna(0) > 0)]
 out = dict(
     meta=dict(study=STUDY, title=ST["title"], label=ST["label"], n=len(sa), lat0=round(float(p4.y.mean()), 3),
               addr=bool(mb["naddr"].any()),
@@ -612,8 +627,9 @@ out = dict(
               + [{"key": "basin:" + b, "label": f"{b} river basin", "group": "River basins (Melbourne Water)", "basin": b}
                  for b, n in sa["basin"].value_counts().items() if b and n >= 20]),
     sa1=recs, shapes=[gj(g) for g in sa.geometry], stats=stats,
-    mb=[[r.x, r.y, int(r.i), round(float(r.w), 4), round(float(r.riv), 2), round(float(r.sbo), 2)] for r in mbo.itertuples()],
-    riv=gj(riv, tol * 1.5), sbo=gj(sbo, tol * 1.5),
+    mb=[[r.x, r.y, int(r.i), round(float(r.w), 4), round(float(r.riv), 2), round(float(r.sbo), 2)]
+        + ([round(float(r.aep), 2)] if aep is not None else []) for r in mbo.itertuples()],
+    riv=gj(riv, tol * 1.5), sbo=gj(sbo, tol * 1.5), aep=None if aep is None else gj(aep, tol * 1.5),
     lga=[{"name": r.name, "g": gj(r.geometry, tol * 3)} for r in lga.itertuples()],
     catchments=[] if catch is None else [{"name": r.name, "g": gj(r.geometry.intersection(study_poly.buffer(1000)), tol * 3)}
                                          for r in catch.itertuples()],
