@@ -293,3 +293,9 @@ Both were tested against a simulated capped server and a truncated file.
 
 **The committer was "Claude" on cherry-picks.** The checkout's git config named Claude, so a cherry-pick recorded Claude as committer. Earlier commits had set both identities explicitly. The repository's local config now names the owner.
 
+**First main-only run (6f47eee):** green and deployed.
+- **Vicmap 10 m DEM:** all 5,265 LERC tiles, elevation −13 to 1,475 m. The page now credits the Vicmap DEM, as the paper used.
+- **1% AEP extent:** no WFS layer matched, so the build took Victorian Flood Database layer 14, "Flood extent – 1 in 100 year recurrence <250K". It is the only 1-in-100 extent in that service; layer 12 is just its group. That gave 308 polygons, 191.5 km² in the study area.
+- **Paper model:** MGWR R² 0.452 (GWR 0.232). **Metro model:** MGWR 0.409 (GWR 0.339).
+- **A race was avoided:** the v0.6 merge run (#28, old workflow) was still building when the newer run deployed, and it would have overwritten the site with the older build. It was cancelled. With a single `concurrency: pages` group and `cancel-in-progress`, this can't recur.
+

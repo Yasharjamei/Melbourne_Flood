@@ -297,6 +297,10 @@ urban = ((mb["area"] * ~nonurban).groupby(mb["i"]).sum() / area_i).reindex(range
 rw = lambda k: (mb["w"] * mb[k]).groupby(mb["i"]).sum().reindex(range(len(sa))).fillna(0)
 rivA, sboA, anyA = rw("riv"), rw("sbo"), rw("any")
 aepA = rw("aep") if aep is not None else None
+_pop = pd.Series(g1["Tot_P_P"].values, dtype=float)
+print(f"residents in planning overlays: {(_pop * anyA).sum():,.0f}"
+      + ("" if aepA is None else f" | in the 1% AEP extent: {(_pop * aepA).sum():,.0f}"
+         f" | in both: {(_pop * np.minimum(anyA, aepA)).sum():,.0f} (upper bound, per SA1)") + f" | of {_pop.sum():,.0f}")
 areaA = ((mb["area"] * mb["any"]).groupby(mb["i"]).sum() / area_i).reindex(range(len(sa))).fillna(0)
 print(f"mesh blocks: {len(mb)}; categories: {mb['cat'].value_counts().head(8).to_dict()}")
 

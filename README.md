@@ -532,7 +532,8 @@ The cloud environment's network policy blocks the data hosts by default. To run 
 - **What they don't do:** neither contains a model or data for Melbourne.
 - **What is needed:** a finished HEC-RAS run for the October 2022 event, which rashdf could then bring into this pipeline as depth per SA1.
 - **Building a model here is not an option:** a hydraulic model built without calibration data would produce convincing-looking but unvalidated depths.
-| ~~Melbourne Water 1% AEP flood extent~~ | **Added**: the statewide 1% AEP extent (DEECA, from the CMAs and Melbourne Water) as a separate map variable and layer beside the overlays | DataVic / DEECA | Yes |
+| ~~Melbourne Water 1% AEP flood extent~~ | **Added**, from the Victorian Flood Database map service, layer *"Flood extent – 1 in 100 year recurrence <250K"*: 308 polygons, 191.5 km² inside Greater Melbourne. It is a separate map variable and layer beside the overlays. **Caveat:** this is the VFD's compilation, which may be older and more generalised ("<250K") than DEECA's quarterly-updated 1% AEP layer. That newer layer is published only as vector tiles. | DEECA (VFD) | Yes |
+| 1% AEP flood *depth* (next step) | Real depth instead of extent: the VFD also publishes **"Flood height contours – 1 in 100 year recurrence"** (layer 13), water-surface levels that can be interpolated and subtracted from the Vicmap 10 m DEM (now working) | DEECA (VFD) + Vicmap | Yes |
 
 ### Keeping the data current
 
@@ -548,7 +549,7 @@ The Census is the anchor, and it is five-yearly. Everything else can be refreshe
 | Building footprints (Microsoft) | the release listed in `dataset-links.csv` (2026-08 at the time of writing) | periodic | Automatic: the manifest points at the newest tiles. Overture Maps buildings, which merge Microsoft, OpenStreetMap and others and are released monthly, are an alternative. |
 | Tree canopy | 2020 | the next statewide tree-extent capture | Change `CANOPY_ZIPS` (four 1:250k packages cover Greater Melbourne) |
 | Road casement | the DataVic order date | live on the Vicmap WFS | Order links expire, so the pipeline falls back to the WFS layer automatically; to pin a new snapshot, order it on DataVic and put the link in `ROAD_ORDER_URLS` |
-| Elevation | Vicmap 10 m DEM (image service, LERC tiles) | LiDAR-derived 1–5 m DEMs via ELVIS for parts of Melbourne | A different fetch function; the build only needs GeoTIFFs |
+| Elevation | Vicmap 10 m DEM (image service, LERC tiles; working since the 257-pixel fix: 5,265 tiles, −13 to 1,475 m) | LiDAR-derived 1–5 m DEMs via ELVIS for parts of Melbourne | A different fetch function; the build only needs GeoTIFFs |
 
 **Using the statewide Vicmap 10 m DEM file on your own computer.** DataVic also publishes the whole DEM as one file: [`vmelev_dem10m_Geotiff_GDA94_VicGrid.zip`](https://cl-isd-prd-datashare-s3-delivery.s3.amazonaws.com/PrePackages/vmelev_dem10m_Geotiff_GDA94_VicGrid.zip).
 - **Size:** 11.9 GB zipped, 12.5 GB unzipped, one float32 GeoTIFF in VicGrid (EPSG:3111).
