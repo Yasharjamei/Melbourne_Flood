@@ -26,7 +26,7 @@ For *why* the project exists and how it maps onto the papers, see the [README](.
  Copernicus DEM, SoilGrids ───┘   02_build.py ──► data/processed/<study>.json
                                        │   └─ lamasun_stats.py (GWR / MGWR: SA1s west, SA2s metro)
                                        ▼
-                                  03_bundle.py ──► dist/index.html, dist/metro/index.html      ◄── web/template.html
+                                  03_bundle.py ──► dist/index.html (+ /metro/ redirect)          ◄── web/template.html
                                                    dist/**/analysis/index.html                 ◄── web/analysis.html
                                        │
                                        ▼
@@ -41,14 +41,14 @@ There is **no server and no database**. Each page is one self-contained HTML fil
 
 If the basemap is unreachable, the page falls back to a plain background.
 
-There are two **study areas**, defined in `pipeline/config.py`:
+There is one **study area**, `metro`, defined in `pipeline/config.py`. The papers' own area is a *preset* inside it:
 
 | key | councils | output | notes |
 |---|---|---|---|
-| `west` | Maribyrnong, Moonee Valley (474 SA1s) | `dist/index.html` | the papers' own study area; GWR/MGWR on SA1s |
-| `metro` | all 31 Greater Melbourne councils (11,293 SA1s) | `dist/metro/index.html` | GWR/MGWR on ~300 SA2s (cost grows with n²) |
+| `metro` | all 31 Greater Melbourne councils (11,293 SA1s) | `dist/index.html` | GWR/MGWR on ~300 SA2s (cost grows with n²) |
+| `metro.paper` (preset) | Maribyrnong, Moonee Valley (474 SA1s) | same page, council menu | GWR/MGWR on its SA1s (the paper's Table 5); Lama & Sun indices also scaled within it (`lsp`) |
 
-Every pipeline step takes `--study <key>`.
+Every pipeline step takes `--study <key>` (default `metro`). Adding a small study to `STUDIES` is the quickest way to iterate. `03_bundle.py` also writes redirects from the retired `/metro/` addresses.
 
 ---
 
@@ -81,7 +81,8 @@ snapshots/           the first prototype, frozen
   - `lgas`: ASGS 2021 council names
   - `out`: output path under `dist/`
   - `simplify_m`: polygon simplification tolerance in metres; this trades page size against edge accuracy
-  - `mgwr`: `"SA1"`, `"SA2"` or absent, meaning the unit to fit GWR/MGWR on
+  - `mgwr`: `"SA2"` fits the study-wide model on SA2s
+  - `paper`: `{label, lgas}`, the papers' study area, which becomes the map preset `__paper`, a second GWR/MGWR model on its SA1s, and the paper-scaled indices `lsp`
 - `norm_lga()` lowercases a name, strips " (Vic.)" and maps Merri-bek to its ASGS 2021 name, Moreland.
 - `LAMA_SUN` holds Table 2 of the paper: for each dimension, a list of `(indicator, AHP weight, direction)`. Direction −1 flips the normalised value, so for example lower elevation means higher exposure.
 - `DAMAGE_INDICATORS` lists the X terms of the damage index D = Σ flood × X.
@@ -132,7 +133,8 @@ The script runs top to bottom, one section per `# ----` banner:
     - FRI = AC − (S + E)
     - DMG = mm(Σ mm(flood × X))
     - IFRI = ½FRI − ½DMG
-11. **GWR/MGWR** (`regressions()`): on SA1s for `west`. For `metro`, it runs on SA2s, where counts are summed, the flood share is resident-weighted and physical indicators are area-weighted. A failure is caught, so the maps still build and the analysis page says so. See 2.4.
+11. **GWR/MGWR** runs two models, `paper_model()` on the paper area's SA1s and `sa2_model()` on all SA2s. For the SA2 model, counts are summed, the flood share is resident-weighted and physical indicators are area-weighted. It needs at least 60 SA2s. Each model's failure is caught, so the maps still build and the analysis page says so. `stats` is a list of models. See 2.4.
+   - **Road casement:** road-reserve share per SA1, by rasterising roads and SA1s at 5 m in 10 km tiles (`polygon_share`).
 12. **Output JSON** (schema in section 3). Every polygon goes through `gj()`, which simplifies, reprojects to WGS84, rounds to 5 decimals (about 1 m) and **orients exterior rings clockwise** (see section 5).
 
 Working CRS: **EPSG:7855** (GDA2020 / MGA zone 55), so areas and distances are in metres.
@@ -187,7 +189,7 @@ This page reads `D.stats`, which is `null` for metro, and `D.sa1[].ls`. It draws
 The workflow runs on pull requests, on pushes to `main` and on manual dispatch.
 
 1. It restores the `data/raw` cache. The key is a hash of `01_fetch.py` and `config.py`, so changing either refetches everything.
-2. It fetches and builds `west`, then `metro`, then bundles both.
+2. It fetches and builds `metro`, then bundles the map, the analysis page and the `/metro/` redirects.
 3. **On a pull request:** it takes screenshots with `screenshot.py` and force-pushes them to the `ci-preview` branch for review. Nothing is deployed.
 4. **On `main`:** it uploads `dist/` and deploys it to Pages.
 
@@ -198,6 +200,7 @@ The workflow runs on pull requests, on pushes to `main` and on manual dispatch.
 ```jsonc
 {
   "meta": {
+    "presets": [{"key": "__paper", "label": "...", "lgas": [...]}],   // extra entries in the council menu
     "study": "west", "title": "...", "label": "Both councils", "n": 474,
     "lat0": -37.77,            // for the equirectangular distance used by circles
     "addr": true,              // address points were used for flood shares
@@ -218,13 +221,15 @@ The workflow runs on pull requests, on pushes to `main` and on manual dispatch.
     "can": 12.3,               // % tree canopy (null if unavailable)
     "bcov": 0.31, "bn": 145,   // roof coverage share, building count (null if unavailable)
     "seifa": [3, 4, 2, 5],     // IRSD, IRSAD, IER, IEO deciles (1 = most disadvantaged); null if unavailable
+    "road": 0.23,              // share of area in road casement (null if unavailable)
+    "lsp": [...],              // paper-area SA1s only: the six indices scaled within the paper's 474 SA1s
     "ls": [E, S, AC, FRI, DMG, IFRI]   // Lama & Sun indices, null where undefined
   }],
   "shapes": [GeoJSON geometry per SA1, same order as sa1],
   "mb": [[lon, lat, i, w, riv, sbo]],  // mesh-block point, SA1 index, resident share, in-overlay shares
   "riv": GeoJSON, "sbo": GeoJSON,     // overlay polygons for display
   "lga": [{"name": "...", "g": GeoJSON}], "sal": [{"name": "...", "g": GeoJSON}],
-  "stats": null | { see lamasun_stats.run(), plus "unit": "SA1" | "SA2" and, for SA2, "units": [{"name", "g"}] }
+  "stats": [ { see lamasun_stats.run(), plus "title", "unit": "SA1" | "SA2", and "idx" (SA1 indices) or "units": [{"name", "g"}] } ]
 }
 ```
 

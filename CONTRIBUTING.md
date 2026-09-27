@@ -17,12 +17,14 @@ pip install -r requirements.txt
 ## 2. Build the pages locally
 
 ```bash
-python pipeline/01_fetch.py  --study west    # about 1 minute; downloads into data/raw/ (git-ignored)
-python pipeline/02_build.py  --study west    # about 10 minutes, mostly GWR/MGWR
-python pipeline/03_bundle.py                 # writes dist/index.html and dist/analysis/index.html
+python pipeline/01_fetch.py     # Greater Melbourne; the first run takes ~30 minutes (3 M address points, canopy tiles)
+python pipeline/02_build.py     # ~20 minutes, mostly the two GWR/MGWR models
+python pipeline/03_bundle.py    # writes dist/index.html and dist/analysis/index.html
 ```
 
-Open `dist/index.html` in a browser; no server is needed. For all 31 councils, run the first two steps with `--study metro`. That takes about 10 minutes and several hundred MB of downloads the first time.
+Open `dist/index.html` in a browser; no server is needed. The first fetch downloads about 1 GB, which is cached in `data/raw/`; later runs reuse it.
+
+**Faster iteration on a small area:** add a study to `STUDIES` in `pipeline/config.py` with just a few councils, and pass `--study <key>` to steps 1 and 2.
 
 The fetch step needs these hosts:
 
@@ -31,6 +33,9 @@ The fetch step needs these hosts:
 - `opendata.maps.vic.gov.au`
 - `copernicus-dem-30m.s3.amazonaws.com`
 - `maps.isric.org`
+- `tiles-ap1.arcgis.com` (Vicmap 10 m DEM)
+- `cl-isd-prd-datashare-s3-delivery.s3.amazonaws.com` and `s3.ap-southeast-2.amazonaws.com` (tree canopy, road casement)
+- `minedbuildings.z5.web.core.windows.net` (building footprints)
 
 **Front-end only?** If you're only editing `web/*.html`, re-run `03_bundle.py` on the existing `data/processed/*.json`. It takes seconds.
 
@@ -48,7 +53,7 @@ There's no unit-test suite yet. The checks are:
    - choosing a council, then a suburb
    - dragging both circles
    - switching between dark and light mode
-3. **CI is green on your pull request.** CI rebuilds everything from live data and pushes screenshots of both pages and both analysis pages to the `ci-preview` branch. Look at them before asking for review.
+3. **CI is green on your pull request.** CI rebuilds everything from live data and pushes screenshots of the map (all councils, the paper preset with terrain relief, and Casey) and the analysis page to the `ci-preview` branch. Look at them before asking for review.
 
 ## 4. Conventions
 

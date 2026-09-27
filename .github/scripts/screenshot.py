@@ -2,8 +2,7 @@
 import os, sys
 from playwright.sync_api import sync_playwright
 
-pages = [("dist/index.html", "shots/west.png"), ("dist/metro/index.html", "shots/metro.png"),
-         ("dist/analysis/index.html", "shots/west_analysis.png"), ("dist/metro/analysis/index.html", "shots/metro_analysis.png")]
+pages = [("dist/index.html", "shots/metro.png"), ("dist/analysis/index.html", "shots/analysis.png")]
 os.makedirs("shots", exist_ok=True)
 errors = []
 with sync_playwright() as p:
@@ -20,16 +19,16 @@ with sync_playwright() as p:
             pg.screenshot(path=out, full_page=True); print(out); continue
         pg.screenshot(path=out)
         print(out, "residents in A:", pg.inner_text("#popA"), "| legend:", pg.inner_text("#legend").replace("\n", " | ")[:200])
-        if "metro" not in src:  # a second view: SEIFA disadvantage with the 10 m terrain relief on
-            if pg.query_selector('#metric option[value="seifa0"]'):   # SEIFA is optional
-                pg.select_option("#metric", "seifa0")
-            pg.check("#relief"); pg.select_option("#lgasel", "Maribyrnong")
-            pg.wait_for_timeout(6000); pg.screenshot(path=out.replace(".png", "_seifa_relief.png"))
-            print("  variables:", pg.eval_on_selector_all("#metric option", "o => o.length"),
-                  "| legend:", pg.inner_text("#legend").replace("\n", " | ")[:160])
-        if "metro" in src:  # a second view: IFRI, zoomed to one council
-            pg.select_option("#metric", "ls5"); pg.select_option("#lgasel", "Casey")
-            pg.wait_for_timeout(5000); pg.screenshot(path=out.replace(".png", "_casey_ifri.png"))
+        # Second view: the papers' study area preset, SEIFA disadvantage, 10 m terrain relief on.
+        if pg.query_selector('#metric option[value="seifa0"]'):   # SEIFA is optional
+            pg.select_option("#metric", "seifa0")
+        pg.check("#relief"); pg.select_option("#lgasel", "__paper")
+        pg.wait_for_timeout(6000); pg.screenshot(path="shots/paper_seifa_relief.png")
+        print("  paper preset:", pg.inner_text("#popA"), "| variables:", pg.eval_on_selector_all("#metric option", "o => o.length"),
+              "| legend:", pg.inner_text("#legend").replace("\n", " | ")[:160])
+        # Third view: IFRI, zoomed to one council.
+        pg.uncheck("#relief"); pg.select_option("#metric", "ls5"); pg.select_option("#lgasel", "Casey")
+        pg.wait_for_timeout(5000); pg.screenshot(path="shots/casey_ifri.png")
     b.close()
 if errors:
     sys.exit("page errors:\n" + "\n".join(errors))

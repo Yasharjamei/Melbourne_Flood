@@ -256,3 +256,12 @@ Both were tested against a simulated capped server and a truncated file.
 
 **Statewide.** Possible, but not built. The tree-extent index covers all of Victoria (17 archives). An all-Victoria SA1 page would be about twice the metro page, around 30 MB, so it needs vector tiles first. The regression would run on SA2s (~520) or per region.
 
+**Single map (owner's request).** The two-council page was dropped in favour of one Greater Melbourne map. The paper comparison was kept, because it is the only place the reproduction can be checked:
+- a council-menu preset for the papers' 474 SA1s
+- the Lama & Sun indices re-scaled within those SA1s (`lsp`), because min–max scaling is area-relative
+- a second GWR/MGWR model on those SA1s
+
+**Bug found while doing this:** the index variables read the filter state before it was declared, a JavaScript temporal dead zone. The page never became ready. It was caught by the local browser test and would also have failed the CI screenshot step.
+
+**Road casement.** The owner supplied a DataVic *order* link: an 84 MB shapefile for the Melbourne Water region, in MGA 2020 zone 55. Order links are temporary, so `roads()` falls back to the same layer on the Vicmap WFS. The fixture test gave 5,138 polygons and a mean road-reserve share of 23.5% in the two paper councils.
+

@@ -1,7 +1,6 @@
 """Download every public input for one study area into data/raw/.
 
-    python pipeline/01_fetch.py --study west     # Maribyrnong + Moonee Valley
-    python pipeline/01_fetch.py --study metro    # all 31 Greater Melbourne councils
+    python pipeline/01_fetch.py                  # all 31 Greater Melbourne councils (the only study)
 
 Required inputs stop the run on failure. Optional ones (mesh-block counts, address
 points, DEMs, soil sand, SEIFA, tree canopy, building footprints) log a warning and 02_build.py falls back, saying so in its output.
@@ -36,6 +35,9 @@ DEM10 = "https://tiles-ap1.arcgis.com/P744lA0wf4LlBZ84/arcgis/rest/services/Vicm
 # Vicmap Vegetation tree extent, 20 cm canopy / no-canopy rasters (2020), one zip for Greater Melbourne.
 CANOPY_ZIP = ("https://cl-isd-prd-datashare-s3-delivery.s3.amazonaws.com/PrePackages/VMVEG_TREE_EXTENT/"
               "VMVEG_TREE_EXTENT_MELBOURNE.zip")
+# Vicmap Property road casement (road reserves), a DataVic order for the Melbourne Water region.
+# Order links are temporary; when this one is gone the WFS layer is used instead.
+ROAD_ORDER_URLS = ["https://s3.ap-southeast-2.amazonaws.com/cl-isd-prd-datashare-s3-delivery/Order_5YFHYM.zip"]
 # Microsoft Global ML Building Footprints: manifest of per-country, per-quadkey files.
 MS_BUILDINGS = "https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv"
 
@@ -351,6 +353,52 @@ def buildings(bbox, out):
     np.save(out, a); print(f"  buildings: {len(a):,} -> {out}")
 
 
+def roads(bbox, outdir="data/raw/shared/roads"):
+    """Vicmap Property road casement polygons (the whole road reserve, kerb to kerb and verge).
+    First the DataVic order zip (a shapefile in MGA 2020 zone 55); if that link has expired,
+    the same layer from the Vicmap WFS, paged in parallel, saved as GeoJSON."""
+    if glob_any(outdir, (".shp", ".geojson")):
+        print("  road casement: cached"); return
+    os.makedirs(outdir, exist_ok=True)
+    for u in ROAD_ORDER_URLS:
+        try:
+            z = zipfile.ZipFile(io.BufferedReader(HttpRange(u), 1 << 20))
+            parts = [m for m in z.namelist() if "ROAD_CASEMENT_POLYGON." in m.upper()]
+            if not any(m.lower().endswith(".shp") for m in parts):
+                raise RuntimeError("no ROAD_CASEMENT_POLYGON.shp in the order")
+            for m in parts:
+                open(os.path.join(outdir, os.path.basename(m)), "wb").write(z.read(m))
+            print(f"  road casement: {len(parts)} shapefile parts from the DataVic order"); return
+        except Exception as e:
+            print(f"  road casement: order link unusable ({str(e)[:120]}); trying WFS")
+    layer = wfs_layer(r"casement", (r"road_casement_polygon$", r"road_casement", r"casement"))
+    desc = get(WFS, {"service": "WFS", "version": "2.0.0", "request": "DescribeFeatureType", "typeNames": layer})
+    geom = next((t.split('name="')[1].split('"')[0] for t in desc.split("<")
+                 if 'type="gml:' in t and 'name="' in t), "geom")
+    q = lambda start: {"service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": layer,
+                       "outputFormat": "application/json", "srsName": "EPSG:4326", "propertyName": geom,
+                       "bbox": f"{bbox[1]},{bbox[0]},{bbox[3]},{bbox[2]},urn:ogc:def:crs:EPSG::4326",
+                       "count": 50000, "startIndex": start}
+    js = get_json(WFS, q(0)); first = js.get("features", [])
+    total = js.get("numberMatched"); step = len(first)
+    feats = list(first)
+    if isinstance(total, int) and step:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=8) as ex:
+            for got in ex.map(lambda st: get_json(WFS, q(st)).get("features", []), range(step, total, step)):
+                feats += got
+    if not feats:
+        raise RuntimeError(f"{layer} returned no features")
+    json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {}, "geometry": f["geometry"]}
+                                                          for f in feats if f.get("geometry")]},
+              open(os.path.join(outdir, "road_casement.geojson"), "w"))
+    print(f"  road casement: {len(feats):,} polygons from {layer}")
+
+
+def glob_any(d, exts):
+    return os.path.isdir(d) and any(f.lower().endswith(exts) for f in os.listdir(d))
+
+
 def dem10(bbox, raw):
     """Vicmap Elevation 10 m DEM from its image service, in chunks the service will export."""
     info = get_json(DEM10, {"f": "json"})
@@ -386,7 +434,7 @@ def optional(label, fn):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--study", default="west", choices=STUDIES)
+    ap.add_argument("--study", default="metro", choices=STUDIES)
     a = ap.parse_args()
     st = STUDIES[a.study]
     wanted = {norm_lga(n) for n in st["lgas"]}
@@ -394,7 +442,7 @@ def main():
     os.makedirs(raw, exist_ok=True)
     os.makedirs("data/raw/gcp", exist_ok=True)
     os.makedirs("data/raw/shared", exist_ok=True)
-    fine = 0.00002 if a.study == "west" else 0.00006
+    fine = 0.00002 if len(st["lgas"]) <= 3 else 0.00006   # ~2 m for a few councils, ~6 m for the metro
 
     print("LGAs")
     # Council boundaries decide which SA1s are in the study area: near-full detail (1 m),
@@ -478,6 +526,7 @@ def main():
     print("SEIFA 2021 by SA1 (optional)"); optional("SEIFA", seifa)
     print("Vicmap Elevation 10 m DEM (optional; Copernicus 30 m is the fallback)"); optional("DEM 10 m", lambda: dem10(bbox, raw))
     print("Tree canopy, Vicmap tree extent 2020 (optional)"); optional("canopy", lambda: canopy(bbox))
+    print("Road casement, Vicmap Property (optional)"); optional("road casement", lambda: roads(bbox))
     print("Building footprints, Microsoft (optional)"); optional("buildings", lambda: buildings(bbox, f"{raw}/buildings.npy"))
     print("done")
 

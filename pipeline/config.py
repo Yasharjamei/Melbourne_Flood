@@ -11,23 +11,20 @@ GREATER_MELBOURNE = [
 ]
 
 STUDIES = {
-    # The two papers' study area. Built to dist/index.html.
-    "west": {
-        "title": "Maribyrnong and Moonee Valley",
-        "label": "Both councils",
-        "lgas": ["Maribyrnong", "Moonee Valley"],
-        "out": "index.html",
-        "simplify_m": 4,
-        "mgwr": "SA1",  # the paper's GWR/MGWR (Table 5, Fig. 4) on its own 474 SA1s
-    },
-    # All 31 Greater Melbourne councils. Built to dist/metro/index.html.
+    # One page for all 31 Greater Melbourne councils, built to dist/index.html. The papers' own
+    # study area (Maribyrnong + Moonee Valley, 474 SA1s) lives inside it as a preset filter and
+    # as a second regression model, so the reproduction of Lama & Sun's Table 5 is kept.
     "metro": {
         "title": "Greater Melbourne",
         "label": "All 31 councils",
         "lgas": GREATER_MELBOURNE,
-        "out": "metro/index.html",
+        "out": "index.html",
         "simplify_m": 12,
-        "mgwr": "SA2",  # too many SA1s for MGWR (cost ~ n^2), so it is fitted on ~300 SA2s
+        "mgwr": "SA2",  # too many SA1s for MGWR (cost ~ n^2), so the metro model is fitted on ~300 SA2s
+        "paper": {      # the paper's own units, fitted on SA1s like Lama & Sun
+            "label": "Paper study area (Lama & Sun)",
+            "lgas": ["Maribyrnong", "Moonee Valley"],
+        },
     },
 }
 

@@ -1,6 +1,6 @@
 """Build one study area's dataset from data/raw/<study>/ -> data/processed/<study>.json
 
-    python pipeline/02_build.py --study west
+    python pipeline/02_build.py              # Greater Melbourne (the only study)
 
 Per SA1: Census 2021 counts, flood-overlay shares, suburb, and the Lama & Sun (2026)
 Exposure / Sensitivity / Adaptive capacity / FRI / Damage / IFRI indices.
@@ -12,7 +12,7 @@ from shapely.ops import unary_union
 sys.path.insert(0, os.path.dirname(__file__))
 from config import STUDIES, LAMA_SUN, DAMAGE_INDICATORS, norm_lga
 
-ap = argparse.ArgumentParser(); ap.add_argument("--study", default="west", choices=STUDIES)
+ap = argparse.ArgumentParser(); ap.add_argument("--study", default="metro", choices=STUDIES)
 STUDY = ap.parse_args().study
 ST = STUDIES[STUDY]; RAW = f"data/raw/{STUDY}"; CRS = 7855
 os.makedirs("data/processed", exist_ok=True)
@@ -310,6 +310,45 @@ except Exception as e:
 if canopy is not None:
     NOTES.append("Tree canopy: Vicmap Vegetation tree extent (2020, 20 cm), as % of each SA1's area.")
 
+# ---------------- road casement: share of each SA1 that is road reserve (Lee et al.'s transport density)
+def polygon_share(polys, res=5.0, tile=10000.0):
+    """Share of each SA1's area covered by polys, by rasterising both at res metres in
+    tile x tile metre blocks (memory stays flat for the whole metro area)."""
+    from rasterio.features import rasterize
+    from rasterio.transform import from_origin
+    tree = shapely.STRtree(polys)
+    sgeom = sa.geometry.values; stree = shapely.STRtree(sgeom)
+    hit, tot = np.zeros(len(sa)), np.zeros(len(sa))
+    x0, y0, x1, y1 = sa.total_bounds
+    n = int(tile / res)
+    for tx in np.arange(x0, x1, tile):
+        for ty in np.arange(y0, y1, tile):
+            box = shapely.box(tx, ty, tx + tile, ty + tile)
+            si = stree.query(box)
+            if not len(si):
+                continue
+            tr = from_origin(tx, ty + tile, res, res)
+            ids = rasterize(((sgeom[i], i + 1) for i in si), out_shape=(n, n), transform=tr, fill=0, dtype="int32")
+            pi = tree.query(box)
+            r = (rasterize(((polys[i], 1) for i in pi), out_shape=(n, n), transform=tr, fill=0, dtype="uint8")
+                 if len(pi) else np.zeros((n, n), "uint8"))
+            k = ids > 0
+            tot += np.bincount(ids[k] - 1, minlength=len(sa))
+            hit += np.bincount(ids[k] - 1, weights=r[k], minlength=len(sa))
+    return pd.Series(np.where(tot > 0, hit / np.maximum(tot, 1), np.nan))
+road = None
+_rf = sorted(glob.glob("data/raw/shared/roads/*.shp")) or sorted(glob.glob("data/raw/shared/roads/*.geojson"))
+if _rf:
+    try:
+        rd = gpd.read_file(_rf[0]).to_crs(CRS)
+        rd = rd[rd.geometry.notna() & ~rd.geometry.is_empty]
+        rd = rd[rd.intersects(study_poly)]
+        road = polygon_share(np.asarray(shapely.make_valid(rd.geometry.values)))
+        print(f"road casement: {len(rd):,} polygons in the study area, mean road-reserve share {np.nanmean(road):.1%}")
+        NOTES.append("Road reserves: Vicmap Property road casement, as % of each SA1's area (5 m raster).")
+    except Exception as e:
+        print("WARNING could not use road casement:", e); road = None
+
 # ---------------- building footprints: count and roof coverage per SA1
 bcov = bcount = None
 BLD = f"{RAW}/buildings.npy"
@@ -372,62 +411,83 @@ def mm(x):
     z = (x - x.mean()) / x.std()
     return ((z - z.min()) / (z.max() - z.min())).fillna(0)
 
-dim = {}
-for d, items in LAMA_SUN.items():
-    s = np.zeros(len(sa))
-    for k, w, sgn in items:
-        if ind[k].isna().all():
-            continue
-        n = mm(ind[k]).values
-        s += w * (1 - n if sgn < 0 else n)
-    dim[d] = s
-FRI = dim["adaptive"] - (dim["sensitivity"] + dim["exposure"])
-DMG = mm(sum(mm(flood * ind[k].values) for k in DAMAGE_INDICATORS)).values
-IFRI = 0.5 * FRI - 0.5 * DMG
+def lama_sun(x):
+    """The six indices for the SA1s in indicator table x, scaled within x (Lama & Sun section 2.2)."""
+    dim = {}
+    for d, items in LAMA_SUN.items():
+        v = np.zeros(len(x))
+        for k, w, sgn in items:
+            if x[k].isna().all():
+                continue
+            n = mm(x[k]).values
+            v += w * (1 - n if sgn < 0 else n)
+        dim[d] = v
+    fri = dim["adaptive"] - (dim["sensitivity"] + dim["exposure"])
+    dmg = mm(sum(mm(x["flood"].values * x[k].values) for k in DAMAGE_INDICATORS)).values
+    return dim, fri, dmg, 0.5 * fri - 0.5 * dmg
+
+dim, FRI, DMG, IFRI = lama_sun(ind)
+# The same indices scaled within the papers' own study area only, so they can be checked against
+# the published ranges (min-max scaling makes every score relative to the SA1s it is computed over).
+paper_ls = {}
+if ST.get("paper"):
+    _k = np.flatnonzero(sa["lga"].map(norm_lga).isin({norm_lga(x) for x in ST["paper"]["lgas"]}).values)
+    if len(_k):
+        _d, _f, _g, _i = lama_sun(ind.iloc[_k].reset_index(drop=True))
+        for j, i in enumerate(_k):
+            paper_ls[i] = [_d["exposure"][j], _d["sensitivity"][j], _d["adaptive"][j], _f[j], _g[j], _i[j]]
+        print(f"Paper study area ({len(_k)} SA1s), scaled within it: Exposure max {_d['exposure'].max():.3f} | "
+              f"FRI {_f.min():.3f} to {_f.max():.3f} | IFRI {_i.min():.3f} to {_i.max():.3f}")
 print(f"Exposure max {dim['exposure'].max():.3f} | FRI {FRI.min():.3f} to {FRI.max():.3f} | IFRI {IFRI.min():.3f} to {IFRI.max():.3f}")
 
 # ---------------- Lama & Sun GWR / MGWR (Table 5, Fig. 4), two-council study area only
-stats = None
-def regressions():
-    """GWR/MGWR for this study (None when the study doesn't run them)."""
-    stats = None
-    if ST.get("mgwr") == "SA1":
-        from lamasun_stats import run as run_mgwr
-        rp = sa.representative_point()
-        stats = run_mgwr(ind, np.column_stack([rp.x.values, rp.y.values]))
-        stats["unit"] = "SA1"
-    elif ST.get("mgwr") == "SA2":
-        # MGWR's cost grows with n^2 (474 SA1s: ~7 min; 11,293 would take days), so the metro model
-        # is fitted on SA2s (~300 suburbs-sized units). Counts are summed, the flood share is
-        # resident-weighted, and the physical indicators (elevation, sand, land use) are area-weighted.
-        from lamasun_stats import run as run_mgwr
-        key = sa["sa2_name_2021"].values
-        w_area, w_pop = sa["area"].values, ind["pop"].values.astype(float)
-        agg = {}
-        for c in ind.columns:
-            v = ind[c].values.astype(float)
-            if c == "flood":
-                agg[c] = pd.Series(v * w_pop).groupby(key).sum() / pd.Series(w_pop).groupby(key).sum()
-            elif c in ("elev", "sand", "urban"):
-                ok = np.isfinite(v)
-                agg[c] = pd.Series(np.where(ok, v, 0) * w_area * ok).groupby(key).sum() / pd.Series(w_area * ok).groupby(key).sum()
-            else:
-                agg[c] = pd.Series(v).groupby(key).sum()
-        ind2 = pd.DataFrame(agg)
-        ind2 = ind2[ind2["pop"] > 0]
-        sa2 = sa.assign(k=key).dissolve("k").loc[ind2.index]
-        rp2 = sa2.representative_point()
-        print(f"MGWR on {len(ind2)} SA2s (from {len(sa)} SA1s)")
-        stats = run_mgwr(ind2.reset_index(drop=True), np.column_stack([rp2.x.values, rp2.y.values]))
-        stats["unit"] = "SA2"
-        stats["units"] = [{"name": n} for n in ind2.index]
-        stats["_geoms"] = list(sa2.geometry.values)          # simplified and exported below
-    return stats
-try:
-    stats = regressions()
-except Exception as e:                        # a failed model must not take the maps down with it
-    print("WARNING GWR/MGWR failed, analysis page will say so:", repr(e)[:300]); stats = None
-    NOTES.append("GWR/MGWR could not be fitted for this build.")
+# Two models, each a dict from lamasun_stats.run() plus "title", "unit" and where it applies:
+#   1. the paper's own study area on SA1s (Lama & Sun Table 5 / Fig. 4, directly comparable);
+#   2. all of Greater Melbourne on SA2s (MGWR's cost grows with n^2: 474 SA1s take ~7 min,
+#      11,293 would take days). SA1 counts are summed, the flood share is resident-weighted and
+#      elevation, sand and land use are area-weighted.
+from lamasun_stats import run as run_mgwr
+def paper_model():
+    names = {norm_lga(x) for x in ST["paper"]["lgas"]}
+    k = np.flatnonzero(sa["lga"].map(norm_lga).isin(names).values)
+    rp = sa.iloc[k].representative_point()
+    print(f"MGWR, paper study area: {len(k)} SA1s")
+    m = run_mgwr(ind.iloc[k].reset_index(drop=True), np.column_stack([rp.x.values, rp.y.values]))
+    return dict(m, title=f"{ST['paper']['label']}: {' + '.join(ST['paper']['lgas'])}", unit="SA1", idx=k.tolist(), paper_units=True)
+
+def sa2_model():
+    key = sa["sa2_name_2021"].values
+    w_area, w_pop = sa["area"].values, ind["pop"].values.astype(float)
+    agg = {}
+    for c in ind.columns:
+        v = ind[c].values.astype(float)
+        if c == "flood":
+            agg[c] = pd.Series(v * w_pop).groupby(key).sum() / pd.Series(w_pop).groupby(key).sum()
+        elif c in ("elev", "sand", "urban"):
+            ok = np.isfinite(v)
+            agg[c] = pd.Series(np.where(ok, v, 0) * w_area * ok).groupby(key).sum() / pd.Series(w_area * ok).groupby(key).sum()
+        else:
+            agg[c] = pd.Series(v).groupby(key).sum()
+    ind2 = pd.DataFrame(agg)
+    ind2 = ind2[ind2["pop"] > 0]
+    if len(ind2) < 60:                        # 11 coefficients per local fit need far more units than this
+        raise ValueError(f"only {len(ind2)} SA2s: too few for GWR/MGWR")
+    sa2 = sa.assign(k=key).dissolve("k").loc[ind2.index]
+    rp2 = sa2.representative_point()
+    print(f"MGWR, {ST['title']}: {len(ind2)} SA2s (from {len(sa)} SA1s)")
+    m = run_mgwr(ind2.reset_index(drop=True), np.column_stack([rp2.x.values, rp2.y.values]))
+    return dict(m, title=f"{ST['title']}, all {len(lga)} councils", unit="SA2",
+                units=[{"name": n} for n in ind2.index], _geoms=list(sa2.geometry.values))
+
+stats = []
+for want, fn in ((ST.get("paper"), paper_model), (ST.get("mgwr") == "SA2", sa2_model)):
+    if not want:
+        continue
+    try:
+        stats.append(fn())
+    except Exception as e:                    # a failed model must not take the maps down with it
+        print(f"WARNING {fn.__name__} failed:", repr(e)[:300])
+        NOTES.append(f"The {'paper-area' if fn is paper_model else 'metro-wide'} GWR/MGWR could not be fitted for this build.")
 
 r4 = lambda v: None if not np.isfinite(v) else round(float(v), 4)
 recs = []
@@ -447,10 +507,12 @@ for i, c in enumerate(codes):
         riv=round(float(rivA[i]), 4), sbo=round(float(sboA[i]), 4),
         fl=round(float(anyA[i]), 4), fa=round(float(areaA[i]), 4),
         can=None if canopy is None or not np.isfinite(canopy.iloc[i]) else round(float(canopy.iloc[i]), 1),
+        road=None if road is None or not np.isfinite(road.iloc[i]) else round(float(road.iloc[i]), 4),
         bcov=None if bcov is None else round(float(bcov.iloc[i]), 4), bn=None if bcount is None else int(bcount.iloc[i]),
         seifa=None if seifa is None else [None if k not in seifa or pd.isna(seifa[k].get(c)) else int(seifa[k].get(c))
                                           for k, _ in SEIFA_NAMES],
-        ls=[r4(dim["exposure"][i]), r4(dim["sensitivity"][i]), r4(dim["adaptive"][i]), r4(FRI[i]), r4(DMG[i]), r4(IFRI[i])]))
+        ls=[r4(dim["exposure"][i]), r4(dim["sensitivity"][i]), r4(dim["adaptive"][i]), r4(FRI[i]), r4(DMG[i]), r4(IFRI[i])],
+        **({"lsp": [r4(v) for v in paper_ls[i]]} if i in paper_ls else {})))
 
 # ---------------- geometry for the browser
 tol = ST["simplify_m"]
@@ -468,8 +530,8 @@ def gj(geom, t=tol):
     rnd = lambda o: [rnd(x) for x in o] if isinstance(o, (list, tuple)) else round(o, 5)
     m = g.__geo_interface__
     return {"type": m["type"], "coordinates": rnd(m["coordinates"])}
-if stats and "_geoms" in stats:
-    for u, g in zip(stats["units"], stats.pop("_geoms")):
+for m in stats:
+    for u, g in zip(m.get("units", []), m.pop("_geoms", [])):
         u["g"] = gj(g, tol * 3)
 p4 = mb.representative_point().to_crs(4326)
 mbo = mb.assign(x=p4.x.round(5), y=p4.y.round(5))
@@ -477,7 +539,9 @@ mbo = mbo[(mbo["w"] > 0) | (mbo["riv"] + mbo["sbo"] > 0)]
 out = dict(
     meta=dict(study=STUDY, title=ST["title"], label=ST["label"], n=len(sa), lat0=round(float(p4.y.mean()), 3),
               addr=bool(mb["naddr"].any()),
-              notes=NOTES, other={"west": ["All of Melbourne", "metro/"], "metro": ["Maribyrnong & Moonee Valley", "../"]}[STUDY]),
+              notes=NOTES, presets=[{"key": "__paper", "label": ST["paper"]["label"],
+                                     "lgas": [l for l in lga["name"] if norm_lga(l) in {norm_lga(x) for x in ST["paper"]["lgas"]}]}]
+              if ST.get("paper") else []),
     sa1=recs, shapes=[gj(g) for g in sa.geometry], stats=stats,
     mb=[[r.x, r.y, int(r.i), round(float(r.w), 4), round(float(r.riv), 2), round(float(r.sbo), 2)] for r in mbo.itertuples()],
     riv=gj(riv, tol * 1.5), sbo=gj(sbo, tol * 1.5),
