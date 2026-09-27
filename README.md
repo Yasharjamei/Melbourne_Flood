@@ -14,7 +14,7 @@ The project applies two flood-resilience papers to the same 474 SA1 "urban units
 > **Status (v0.5):**
 > - Live at **https://yasharjamei.github.io/Melbourne_Flood/** (analysis at `/analysis/`).
 > - Flood exposure is measured on **residents**: each dwelling is placed at its Vicmap Address point, so a flooded park no longer counts as exposure (see [Method](#method), step 3).
-> - **Working on the code?** Start with [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (how it fits together, data contract, gotchas) and [`CONTRIBUTING.md`](CONTRIBUTING.md) (setup, checks, pull requests).
+> - **Working on the code?** Start with [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (how it fits together, data contract, gotchas) and [`CONTRIBUTING.md`](CONTRIBUTING.md) (setup, checks, how changes reach `main`).
 > - The first prototype, which used even spreading, is kept at [`snapshots/2026-09-25-prototype.html`](snapshots/2026-09-25-prototype.html).
 > - Changes are listed in [`CHANGELOG.md`](CHANGELOG.md), and the history and decisions in [`docs/PROJECT_LOG.md`](docs/PROJECT_LOG.md).
 
@@ -31,7 +31,13 @@ The project applies two flood-resilience papers to the same 474 SA1 "urban units
 | Populated mesh blocks with at least one address | 100% | 100% |
 | **Residents in a flood overlay: by area share → by address** | **10,721 → 7,170** (area overstated by 50%) | **239,650 → 185,538** (by 29%) |
 | Max Exposure (paper: 0.043 of a possible 0.047) | 0.047 | 0.047 |
-| Page size (compressed on the wire) | 0.6 MB | 14.3 MB (about 3 MB) |
+| Tree canopy (Vicmap 2020, 20 cm → 10 m) | | 76 tiles, all 58,563 mesh blocks covered, mean 10.9% |
+| Road reserves (Vicmap road casement) | | 119,123 polygons, mean 22.3% of SA1 area |
+| Building footprints (Microsoft, 2026-02 release) | | 1.62 M in study SA1s, mean roof coverage 20.3% |
+| SEIFA 2021 deciles matched | | 10,948 of 11,293 SA1s (ABS doesn't publish SEIFA for SA1s with very few usual residents or mostly non-private dwellings) |
+| River basins / creek catchments | | 5 basins / 84 creek catchments; 11,277 SA1s with a drainage chain |
+| GWR / MGWR R² | 0.232 / 0.451 (474 SA1s) | 0.338 / 0.408 (353 SA2s) |
+| Page size (one page since v0.6) | | 18.3 MB (about 4 MB compressed) |
 
 The residents placed by mesh-block counts match the Census SA1 totals to within 0.02%; the small gap is ABS perturbation between the two releases. The FRI range lands close to the paper's, even with the substituted depth, elevation and sand inputs.
 
@@ -161,8 +167,8 @@ Run every command from the repository root.
 ### Live site (GitHub Pages)
 
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) fetches, builds and bundles the map and analysis pages on a GitHub runner:
-- **On every pull request** it builds only, to prove the pipeline works on live data.
-- **On every push to `main`** it also publishes the pages:
+- **Changes go straight to `main`.** There are no pull requests or other branches. Each push builds everything and runs a headless-browser check of both pages. **Only if all of that passes is the site deployed**, so a broken change never replaces the live version. The screenshots are attached to each run under *Artifacts*.
+- **Published pages:**
   - **https://yasharjamei.github.io/Melbourne_Flood/** (map)
   - **https://yasharjamei.github.io/Melbourne_Flood/analysis/** (correlations, GWR, MGWR)
 
@@ -241,7 +247,7 @@ Each check below runs on every build unless marked otherwise. Anything not teste
 | Number of SA1s in Maribyrnong + Moonee Valley | 474 | 474 |
 | FRI range | −0.148 to 0.228 | −0.168 to 0.272 |
 | Maximum Exposure (of a possible 0.047) | 0.043 | 0.047 |
-| MGWR better than GWR? | yes (R² 0.767 vs 0.755) | yes (R² 0.444 vs 0.218; lower because the response is now residents, not land) |
+| MGWR better than GWR? | yes (R² 0.767 vs 0.755) | yes (R² 0.451 vs 0.232; lower because the response is now residents, not land) |
 
 The ranges agree closely, even though three inputs are public substitutes:
 
@@ -253,7 +259,7 @@ Lower R² is expected: the response variable is a stand-in for their flood depth
 
 ### Checks run during development (not automated)
 
-- **Screenshots of every page on every pull request** (CI → `ci-preview` branch). They were reviewed before merging and caught:
+- **Screenshots of every page on every build**, reviewed during development (then on a `ci-preview` branch, now attached to each run). They caught:
   - the council filter zooming out to the world map
   - blank coefficient maps
   - circles left outside a filtered council
@@ -358,8 +364,8 @@ This build follows 2.2.3, for two reasons:
 **The results aren't comparable with the paper's,** because the response is the overlay-share proxy, which is zero for most SA1s, instead of HEC-RAS depth. The page says so beside the table.
 
 **Result on real data (two councils, 474 SA1s, v0.5: response = share of residents in an overlay):**
-- **GWR:** R² 0.218, adjusted R² 0.152, AICc 1310.7, bandwidth 291 SA1s. The paper reports 0.755, 0.684, 916.1 and 62.
-- **MGWR:** R² 0.444, adjusted R² 0.364, AICc 1206.3. The paper reports 0.767, 0.724 and 831.6.
+- **GWR:** R² 0.232, adjusted R² 0.166, AICc 1303.5, bandwidth 292 SA1s. The paper reports 0.755, 0.684, 916.1 and 62.
+- **MGWR:** R² 0.451, adjusted R² 0.372, AICc 1200.9. The paper reports 0.767, 0.724 and 831.6.
   - Only the intercept and land use vary locally (bandwidth 51 SA1s).
   - Elevation is regional (327).
   - The other eight are global (473 SA1s).

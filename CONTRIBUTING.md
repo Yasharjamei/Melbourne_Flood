@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for helping. This guide covers setting up, running the pipeline, checking a change and opening a pull request. For how the code fits together, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first: it has a section-by-section tour and the data contract between the pipeline and the pages.
+Thanks for helping. This guide covers setting up, running the pipeline, checking a change and getting it onto `main`. For how the code fits together, read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first: it has a section-by-section tour and the data contract between the pipeline and the pages.
 
 ## 1. Set up
 
@@ -53,7 +53,7 @@ There's no unit-test suite yet. The checks are:
    - choosing a council, then a suburb
    - dragging both circles
    - switching between dark and light mode
-3. **CI is green on your pull request.** CI rebuilds everything from live data and pushes screenshots of the map (all councils, the paper preset with terrain relief, and Casey) and the analysis page to the `ci-preview` branch. Look at them before asking for review.
+3. **CI is green after you push.** CI rebuilds everything from live data and opens both pages in a headless browser. The screenshots are attached to the run under *Artifacts*: the map for all councils, the paper preset with terrain relief, Casey, and the analysis page. A failing run is not deployed.
 
 ## 4. Conventions
 
@@ -68,11 +68,15 @@ There's no unit-test suite yet. The checks are:
   - A decision worth remembering goes in `docs/PROJECT_LOG.md`.
 - **Commits:** imperative subject of 72 characters or less. The body explains why.
 
-## 5. Pull requests
+## 5. Getting a change onto `main`
 
-1. Branch from `main` with a short descriptive name, such as `address-points` or `fix-legend-dark-mode`.
-2. Push, then open a pull request against `main`. Say what changed, why, and how you checked it.
-3. Wait for CI, review the `ci-preview` screenshots, then merge. Merging to `main` deploys to https://yasharjamei.github.io/Melbourne_Flood/.
+The repository keeps **one branch, `main`**, and doesn't use pull requests.
+1. Run the checks in section 3 locally.
+2. Commit to `main` with a clear message, and push.
+3. Watch the run under **Actions**. If it fails, nothing is deployed and the live site keeps its last good version. Fix the problem and push again.
+4. A green run deploys to https://yasharjamei.github.io/Melbourne_Flood/.
+
+**External contributors:** fork the repository and send a patch or open an issue describing the change. The owner applies it to `main`.
 
 ## 6. Where to start
 

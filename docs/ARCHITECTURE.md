@@ -66,7 +66,7 @@ web/
   analysis.html      the analysis page: Table 5, Fig. 4 small multiples, Fig. 7 scatter matrix
 .github/
   workflows/pages.yml   CI: fetch -> build -> bundle -> (PR) screenshots / (main) deploy
-  scripts/screenshot.py headless-Chromium screenshots of the built pages, for PR review
+  scripts/screenshot.py headless-Chromium check and screenshots of the built pages (a page error fails the run)
 docs/
   ARCHITECTURE.md    this file
   PROJECT_LOG.md     decisions and history
@@ -188,12 +188,12 @@ This page reads `D.stats`, which is `null` for metro, and `D.sa1[].ls`. It draws
 
 ### 2.8 CI: `.github/workflows/pages.yml`
 
-The workflow runs on pull requests, on pushes to `main` and on manual dispatch.
+The workflow runs on every push to `main` and on manual dispatch. The repository has one branch and no pull requests.
 
-1. It restores the `data/raw` cache. The key is a hash of `01_fetch.py` and `config.py`, so changing either refetches everything.
+1. It restores the `data/raw` cache. The key is a hash of `01_fetch.py` and `config.py`, so changing either refetches everything. The first full fetch takes about 70 minutes.
 2. It fetches and builds `metro`, then bundles the map, the analysis page and the `/metro/` redirects.
-3. **On a pull request:** it takes screenshots with `screenshot.py` and force-pushes them to the `ci-preview` branch for review. Nothing is deployed.
-4. **On `main`:** it uploads `dist/` and deploys it to Pages.
+3. It opens both pages in headless Chromium with `screenshot.py`. A page error fails the run. The screenshots are uploaded as the run's `screenshots` artifact.
+4. **Only if every step passed**, it uploads `dist/` and deploys it to Pages. A failed run leaves the live site on its last good version.
 
 ---
 

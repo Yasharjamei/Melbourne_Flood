@@ -274,3 +274,22 @@ Both were tested against a simulated capped server and a truncated file.
 
 **Waterways and drains catchments, supplied as a file.** The owner then attached the full layer: a 3.2 MB zipped file geodatabase, 3,409 subcatchments, in EPSG:28355. It is committed to `data/static/` and read straight from the zip (`/vsizip/`), so the ArcGIS Online lookup is only a fallback now. Each record carries its drainage chain: subcatchment → major (creek) catchment → primary catchment → basin. In the paper councils the creek catchments are Kororoit Creek, Maribyrnong River, Moonee Ponds Creek, Stony Creek and Yarra River Main Stream. That explains the 83 SA1s in the Werribee basin: Kororoit Creek belongs to it.
 
+## 15. v0.6 on real data; one branch from here on (2026-09-27)
+
+**CI result for pull request #6** (8231d4a, full refetch, 70 min fetch + 17 min build):
+
+| Input | Result |
+|---|---|
+| Tree canopy | 76 tiles from four packages; all 58,563 mesh blocks covered; mean 10.9% |
+| SEIFA | parsed (header row 5); 10,948 SA1s matched |
+| Road casement | 119,123 polygons; mean road-reserve share 22.3% |
+| Buildings | 1.76 M footprints read, 1.62 M in study SA1s; mean roof coverage 20.3% |
+| Basins / catchments | Yarra 4,824, Dandenong 3,305, Werribee 1,673, Western Port 873, Maribyrnong 601 SA1s; 84 creek catchments |
+| Paper-area model (474 SA1s) | GWR R² 0.232, MGWR 0.451; paper-scaled FRI −0.168 to 0.272 (unchanged) |
+| Metro model (353 SA2s) | GWR R² 0.338, MGWR 0.408 |
+| Vicmap 10 m DEM | failed: LERC tiles are 257 × 257; fixed on `main` |
+
+**Pull request #6 was the last.** At the owner's request, the workflow no longer runs on pull requests and no longer pushes a `ci-preview` branch.
+
+**The committer was "Claude" on cherry-picks.** The checkout's git config named Claude, so a cherry-pick recorded Claude as committer. Earlier commits had set both identities explicitly. The repository's local config now names the owner.
+

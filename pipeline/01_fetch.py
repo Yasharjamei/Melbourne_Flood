@@ -555,10 +555,14 @@ def dem10_tiles(bbox, raw, info):
         except Exception:
             return rc, None                   # tiles over the sea may not exist
         res = lerc.decode(b)
-        data, mask = res[1], res[2] if len(res) > 2 else None
-        a = np.asarray(data, dtype="float32").reshape(th, tw)
-        if mask is not None:
-            a = np.where(np.asarray(mask).reshape(th, tw) > 0, a, np.nan)
+        a = np.asarray(res[1], dtype="float32")
+        # Esri elevation tiles carry one extra row and column (257 x 257 for 256 x 256 tiles) that
+        # overlaps the next tile; read the real size, then keep the tile's own cells.
+        n = int(round(math.sqrt(a.size)))
+        a = a.reshape(n, n)[:th, :tw]
+        if len(res) > 2 and res[2] is not None:
+            m = np.asarray(res[2]).reshape(n, n)[:th, :tw]
+            a = np.where(m > 0, a, np.nan)
         return rc, a
     cells = [(row, col) for row in range(r0, r1 + 1) for col in range(c0, c1 + 1)]
     got = 0

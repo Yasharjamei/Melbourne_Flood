@@ -1,22 +1,23 @@
 name: Build and deploy to GitHub Pages
 
-# Pull requests: fetch -> build -> bundle the Greater Melbourne page, to prove the pipeline (no deploy).
-# Pushes to main: the same, then publish dist/ to GitHub Pages.
+# Work lands directly on main (no pull requests, no other branches). Every push to main:
+# fetch -> build -> bundle -> screenshot check -> publish dist/ to GitHub Pages.
+# If any step fails (including a page error in the screenshot check), nothing is deployed and
+# the live site keeps its last good version.
 # Needs Settings -> Pages -> Source: "GitHub Actions".
 on:
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
-  contents: write   # lets PR builds push screenshots to the ci-preview branch
+  contents: read
   pages: write
   id-token: write
 
 concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: pages
+  cancel-in-progress: true   # a newer push supersedes a build still running
 
 jobs:
   build:
@@ -52,24 +53,25 @@ jobs:
           touch dist/.nojekyll
           ls -la dist dist/metro
 
-      # Pull requests only: screenshot both pages and publish them, with the built
-      # pages, to the ci-preview branch so changes can be checked without deploying.
-      - name: Preview screenshots
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+      # Open both pages in headless Chromium: a page error fails the run, so a broken page is
+      # never deployed. The screenshots are attached to the run (Actions -> run -> Artifacts).
+      - name: Screenshot check
         run: |
           pip install playwright && python -m playwright install --with-deps chromium
           python .github/scripts/screenshot.py
-          mkdir -p /tmp/preview && cp -r dist shots /tmp/preview/
-          cd /tmp/preview && git init -q && git checkout -q -b ci-preview && git add -A
-          git -c user.name=ci -c user.email=ci@users.noreply.github.com commit -qm "Preview of ${{ github.event.pull_request.head.sha }}"
-          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}" ci-preview
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots
+          path: shots/
+          if-no-files-found: ignore
 
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
 
   deploy:
-    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
     environment:

@@ -4,6 +4,13 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 
 ## [Unreleased]
 
+### Changed
+- **One branch, no pull requests.** Work lands directly on `main`. Every push builds, runs a headless-browser check of both pages, and deploys only if everything passed. Screenshots are attached to each run as an artifact instead of being pushed to a `ci-preview` branch.
+- This repository's git identity is set to the owner, so every commit, including cherry-picks, is authored and committed by the owner.
+
+### Fixed
+- **Vicmap 10 m DEM tiles** are 257 × 257 pixels, with one overlapping row and column, not 256 × 256. The first real run therefore fell back to Copernicus 30 m. Tiles are now read at their real size and cropped.
+
 ### Added
 - **1% AEP flood extent**, the modelled 1-in-100-year extent compiled statewide by DEECA from the catchment management authorities and Melbourne Water.
   - The pipeline finds it on the Vicmap WFS or, failing that, in the Victorian Flood Database map service.
