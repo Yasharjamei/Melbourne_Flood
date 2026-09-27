@@ -115,6 +115,34 @@ dwell_cols = ["OPDs_Separate_house_Dwellings", "OPDs_SD_r_t_h_th_Tot_Dwgs", "OPD
               "OPDs_F_ap_I_3_sty_blk_Dwgs", "OPDs_Flt_apt_Att_house_Ds", "OPDs_F_ap_I_4to8_sty_blk_Ds",
               "OPDs_F_ap_I_9_m_sty_blk_Ds", "OPDs_Other_dwelling_Tot_Dwgs"]
 
+# ---------------- river basins (Melbourne Water, data/static) and waterway/drain subcatchments
+basins = None
+if os.path.exists("data/static/river_basins_melbourne.geojson"):
+    basins = gpd.read_file("data/static/river_basins_melbourne.geojson").to_crs(CRS)
+    basins["name"] = basins[col(basins, r"river_basin_catchment_name", r".*name.*")].astype(str)
+    basins = basins.dissolve("name").reset_index()[["name", "geometry"]]   # e.g. the three Western Port islands stay separate names
+    jb = gpd.sjoin(pt, basins, predicate="within")
+    jb = jb[~jb.index.duplicated()]
+    sa["basin"] = jb["name"].reindex(sa.index).fillna("").values
+    basins = basins[basins["name"].isin(set(sa["basin"]))].reset_index(drop=True)
+    print("river basins:", sa["basin"].value_counts().to_dict())
+    NOTES.append("River basins: Melbourne Water major river basins; each SA1 is assigned by its representative point.")
+else:
+    sa["basin"] = ""
+sa["drain"] = ""
+if os.path.exists("data/raw/shared/subcatchments.geojson"):
+    try:
+        sc = gpd.read_file("data/raw/shared/subcatchments.geojson").to_crs(CRS)
+        name_col = next((c for c in sc.columns if re.search(r"waterway|drain|receiv|name", c, re.I) and sc[c].dtype == object), None)
+        js2 = gpd.sjoin(pt, sc[[name_col, "geometry"]] if name_col else sc[["geometry"]], predicate="within")
+        js2 = js2[~js2.index.duplicated()]
+        if name_col:
+            sa["drain"] = js2[name_col].reindex(sa.index).fillna("").astype(str).str.strip().values
+        print(f"subcatchments: {len(sc):,} polygons, name field {name_col!r}, {int((sa['drain'] != '').sum())} SA1s labelled")
+        NOTES.append("Receiving waterway: Melbourne Water waterways and drains subcatchments, by SA1 representative point.")
+    except Exception as e:
+        print("WARNING could not use subcatchments:", e)
+
 # ---------------- flood overlays
 fl = read(f"{RAW}/flood.geojson")
 def polys(g):
@@ -508,7 +536,8 @@ r4 = lambda v: None if not np.isfinite(v) else round(float(v), 4)
 recs = []
 for i, c in enumerate(codes):
     recs.append(dict(
-        id=c, sa2=sa.sa2_name_2021.iloc[i], sub=sa["sub"].iloc[i], lga=sa.lga.iloc[i], km2=round(sa.area.iloc[i] / 1e6, 4),
+        id=c, sa2=sa.sa2_name_2021.iloc[i], sub=sa["sub"].iloc[i], lga=sa.lga.iloc[i], basin=sa["basin"].iloc[i],
+        **({"drain": sa["drain"].iloc[i]} if sa["drain"].iloc[i] else {}), km2=round(sa.area.iloc[i] / 1e6, 4),
         M=M[i].tolist(), F=F[i].tolist(), pop=int(g1.loc[c, "Tot_P_P"]),
         nfa=int(g18.loc[c, "P_Tot_Need_for_assistance"]), nfa_d=int(g18.loc[c, "P_Tot_Tot"] - g18.loc[c, "P_Tot_Need_for_assistance_ns"]),
         ltc=int(g20.loc[c, "P_1m_cond_Tot_Tot"]), ltc_d=int(g20.loc[c, "P_Tot_Tot"] - g20.loc[c, "P_cond_NS_Tot"]),
@@ -554,13 +583,17 @@ mbo = mbo[(mbo["w"] > 0) | (mbo["riv"] + mbo["sbo"] > 0)]
 out = dict(
     meta=dict(study=STUDY, title=ST["title"], label=ST["label"], n=len(sa), lat0=round(float(p4.y.mean()), 3),
               addr=bool(mb["naddr"].any()),
-              notes=NOTES, presets=[{"key": "__paper", "label": ST["paper"]["label"],
-                                     "lgas": [l for l in lga["name"] if norm_lga(l) in {norm_lga(x) for x in ST["paper"]["lgas"]}]}]
-              if ST.get("paper") else []),
+              notes=NOTES, presets=([{"key": "__paper", "label": ST["paper"]["label"], "group": "Study areas",
+                                      "lgas": [l for l in lga["name"] if norm_lga(l) in {norm_lga(x) for x in ST["paper"]["lgas"]}]}]
+                                    if ST.get("paper") else [])
+              + [{"key": "basin:" + b, "label": f"{b} river basin", "group": "River basins (Melbourne Water)", "basin": b}
+                 for b, n in sa["basin"].value_counts().items() if b and n >= 20]),
     sa1=recs, shapes=[gj(g) for g in sa.geometry], stats=stats,
     mb=[[r.x, r.y, int(r.i), round(float(r.w), 4), round(float(r.riv), 2), round(float(r.sbo), 2)] for r in mbo.itertuples()],
     riv=gj(riv, tol * 1.5), sbo=gj(sbo, tol * 1.5),
     lga=[{"name": r.name, "g": gj(r.geometry, tol * 3)} for r in lga.itertuples()],
+    basins=[] if basins is None else [{"name": r.name, "g": gj(r.geometry.intersection(study_poly.buffer(2000)), tol * 4)}
+                                      for r in basins.itertuples()],
     sal=[{"name": r.name, "g": gj(r.geometry, tol * 2)} for r in sal.itertuples()])
 s = json.dumps(out, separators=(",", ":"), allow_nan=False)
 open(f"data/processed/{STUDY}.json", "w").write(s)

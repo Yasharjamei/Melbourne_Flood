@@ -265,3 +265,10 @@ Both were tested against a simulated capped server and a truncated file.
 
 **Road casement.** The owner supplied a DataVic *order* link: an 84 MB shapefile for the Melbourne Water region, in MGA 2020 zone 55. Order links are temporary, so `roads()` falls back to the same layer on the Vicmap WFS. The fixture test gave 5,138 polygons and a mean road-reserve share of 23.5% in the two paper councils.
 
+**River basins and subcatchments.**
+- The owner attached Melbourne Water's major river basins: 8 polygons, 3 MB. They are committed as static data, since there is no stable download link and they change rarely.
+- The owner also sent an ArcGIS export link for *Catchments of all Waterways and Drains*. It was signed to expire within 65 minutes, so the pipeline finds the same Melbourne Water layer through the ArcGIS Online catalogue search instead.
+- Fixture check: the two paper councils split into Maribyrnong (303 SA1s), Yarra (88) and Werribee (83). Werribee is plausible, since Melbourne Water's Werribee basin takes in the Kororoit and Laverton creek catchments.
+
+**Supplied "DEM Hydro Conditioning Guide v3": reviewed, not adopted as written.** Despite its title, it is an evacuation-routing spec. Its routing needs modelled depth and velocity, which aren't public, and its hazard thresholds understate ADR guideline 7-3: it removes roads only at H5 and routes civilians through H4. A reduced, honest version (static isolation analysis on the road network with flood overlays) is on the roadmap as item 7b.
+

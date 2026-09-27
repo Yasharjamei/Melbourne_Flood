@@ -14,10 +14,12 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 - **GWR and MGWR for Greater Melbourne,** fitted on SA2s. MGWR on 11,293 SA1s would take days. The analysis page draws SA2 coefficient maps and says which unit was used.
 - **README:** Lama & Sun's indices in plain language (what each measures, its range, how to read it, and four cautions), plus "Keeping the data current".
 
+- **River basins** (Melbourne Water, stored in `data/static/`): each SA1 is tagged with its basin, each basin is an area preset (the Maribyrnong basin is Lee et al.'s study area), and there is a "River basins" outline toggle. The receiving waterway from Melbourne Water's waterways and drains subcatchments appears in the tooltip; that layer is found through the ArcGIS Online catalogue, because the hub's own export links expire within the hour.
 - **Road reserves** from Vicmap Property road casement: the share of each SA1 that is road reserve (Lee et al.'s transport density), by 5 m rasterisation in 10 km tiles. The source is a DataVic order; because order links expire, the Vicmap WFS layer is the automatic fallback.
 
 ### Changed
 - **One map for all of Greater Melbourne**, at the site's root. The papers' study area (Maribyrnong + Moonee Valley, 474 SA1s) is now a preset in the council menu, *Paper study area (Lama & Sun)*. With the preset on, Lama & Sun's indices are scaled within those 474 SA1s, as in the paper, and the legend says which scaling is shown. The analysis page fits both models: the paper's 474 SA1s, directly comparable with its Table 5, and all SA2s. `/metro/` redirects to the root.
+- The "Council" menu is now "Area", grouped into study areas, river basins and councils.
 - The map's variable menu and panel list only the variables a given build has data for.
 - **Fixed after the first CI run on real data:**
   - SEIFA parsing now finds the Score/Decile header row instead of the first row mentioning "Disadvantage". The ABS title row also mentions it.

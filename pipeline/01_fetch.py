@@ -399,6 +399,37 @@ def roads(bbox, outdir="data/raw/shared/roads"):
     print(f"  road casement: {len(feats):,} polygons from {layer}")
 
 
+def subcatchments(bbox, out="data/raw/shared/subcatchments.geojson"):
+    """Melbourne Water 'Catchments - Waterways and Drains Subcatchments': the catchment of every
+    Melbourne Water drain and waterway. Found through the ArcGIS Online catalogue (the hub's own
+    export links are signed and expire within the hour), then paged from its FeatureServer."""
+    if os.path.exists(out):
+        print("  subcatchments: cached"); return
+    hits = get_json("https://www.arcgis.com/sharing/rest/search",
+                    {"q": 'title:"Waterways and Drains Subcatchments" AND type:"Feature Service"', "num": 20, "f": "json"})
+    items = [r for r in hits.get("results", []) if r.get("url") and "subcatchment" in r.get("title", "").lower()]
+    items.sort(key=lambda r: (("melbourne" not in (r.get("owner", "") + r.get("title", "")).lower()), -r.get("numViews", 0)))
+    if not items:
+        raise RuntimeError("no 'Waterways and Drains Subcatchments' feature service found")
+    svc = items[0]["url"].rstrip("/")
+    meta = get_json(svc, {"f": "json"})
+    lyr = svc if "/FeatureServer/" in svc else f"{svc}/{(meta.get('layers') or [{'id': 0}])[0]['id']}"
+    print(f"  subcatchments: {items[0].get('title')} (owner {items[0].get('owner')}) -> {lyr}")
+    feats, off = [], 0
+    while True:
+        js = get_json(lyr + "/query", {"where": "1=1", "outFields": "*", "returnGeometry": "true", "f": "geojson",
+                                        "outSR": 4326, "geometry": f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}",
+                                        "geometryType": "esriGeometryEnvelope", "inSR": 4326,
+                                        "spatialRel": "esriSpatialRelIntersects", "resultOffset": off, "resultRecordCount": 1000})
+        got = js.get("features", [])
+        feats += got; off += len(got)
+        if not got or not (js.get("exceededTransferLimit") or (js.get("properties") or {}).get("exceededTransferLimit")):
+            if len(got) < 1000:
+                break
+    json.dump({"type": "FeatureCollection", "features": feats}, open(out, "w"))
+    print(f"  subcatchments: {len(feats):,} polygons -> {out}")
+
+
 def glob_any(d, exts):
     return os.path.isdir(d) and any(f.lower().endswith(exts) for f in os.listdir(d))
 
@@ -596,6 +627,7 @@ def main():
     print("Vicmap Elevation 10 m DEM (optional; Copernicus 30 m is the fallback)"); optional("DEM 10 m", lambda: dem10(bbox, raw))
     print("Tree canopy, Vicmap tree extent 2020 (optional)"); optional("canopy", lambda: canopy(bbox))
     print("Road casement, Vicmap Property (optional)"); optional("road casement", lambda: roads(bbox))
+    print("Waterway and drain subcatchments, Melbourne Water (optional)"); optional("subcatchments", lambda: subcatchments(bbox))
     print("Building footprints, Microsoft (optional)"); optional("buildings", lambda: buildings(bbox, f"{raw}/buildings.npy"))
     print("done")
 

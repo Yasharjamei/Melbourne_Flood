@@ -97,7 +97,7 @@ td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
   <div class="mapcol">
     <div class="bar">
       <label>Show on map<select id="metric" aria-label="Variable shown on the map"></select></label>
-      <label>Council<select id="lgasel" aria-label="Filter by council"></select></label>
+      <label>Area<select id="lgasel" aria-label="Filter by study area, river basin or council"></select></label>
       <label>Suburb<select id="subsel" aria-label="Filter by suburb"></select></label>
       <span class="sp"></span>
       <a class="btn" href="analysis/">Correlation &amp; MGWR analysis →</a>
@@ -110,6 +110,7 @@ td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
         <label>Radius <input type="range" id="rad" min="300" max="2000" step="50" value="800"> <span id="radv">800 m</span></label>
         <label><input type="checkbox" id="fl" checked> Flood overlays</label>
         <label><input type="checkbox" id="sb" checked> Suburb boundaries</label>
+        <label><input type="checkbox" id="rb"> River basins</label>
         <label><input type="checkbox" id="bm" checked> Basemap</label>
         <label title="Vicmap Elevation 10 m DEM, shaded relief"><input type="checkbox" id="relief"> Terrain (10 m relief)</label>
         <button id="reset">Clear areas</button>
@@ -170,7 +171,7 @@ const pct=(n,d)=>d>0?n/d:NaN;
 // FRI and IFRI use diverging schemes split at 0.
 // Violet and orange are reserved for circles A and B, so no map ramp uses them.
 const P=v=>(v*100).toFixed(1)+'%';
-let activeLga=null,activeSub=null,LG=null;   // council/suburb filter state (see '---- council filter'); declared early because METRICS reads it
+let activeLga=null,activeSub=null,LG=null,BASIN=null;   // area/suburb filter state (see '---- council filter'); declared early because METRICS reads it
 const METRICS_ALL=[
   {g:'People',k:'dens',l:'Residents per hectare',f:s=>s.pop/(s.km2*100),fmt:v=>v.toFixed(0),r:'YlGnBu'},
   {g:'People',k:'o75',l:'Aged 75+',f:s=>pct(s.o75,s.ages),fmt:P,r:'PuBuGn'},
@@ -209,16 +210,18 @@ msel.property('value',metric.k).on('change',function(){metric=METRICS.find(m=>m.
 const PRESETS=META.presets||[];
 const lsel=d3.select('#lgasel');
 lsel.append('option').attr('value','').text(META.label);
-PRESETS.forEach(p=>lsel.append('option').attr('value',p.key).text(p.label));
-D.lga.map(l=>l.name).sort().forEach(n=>lsel.append('option').attr('value',n).text(n));
-function setLga(v){activeLga=v||null;const p=PRESETS.find(p=>p.key===v);LG=!v?null:new Set(p?p.lgas:[v]);}
+// Presets: study areas (a set of councils) and river basins (SA1s by basin), each in its own group.
+d3.groups(PRESETS,p=>p.group||'Areas').forEach(([g,ps])=>{const og=lsel.append('optgroup').attr('label',g);ps.forEach(p=>og.append('option').attr('value',p.key).text(p.label));});
+{const og=lsel.append('optgroup').attr('label','Councils');D.lga.map(l=>l.name).sort().forEach(n=>og.append('option').attr('value',n).text(n));}
+function setLga(v){activeLga=v||null;const p=PRESETS.find(p=>p.key===v);BASIN=p&&p.basin?p.basin:null;
+  LG=!v||BASIN?null:new Set(p?p.lgas:[v]);}
 const lgaLabel=()=>{const p=PRESETS.find(p=>p.key===activeLga);return p?p.label:activeLga;};
-const visible=i=>(!LG||LG.has(S[i].lga))&&(!activeSub||S[i].sub===activeSub);
+const visible=i=>(!LG||LG.has(S[i].lga))&&(!BASIN||S[i].basin===BASIN)&&(!activeSub||S[i].sub===activeSub);
 const areaLabel=()=>activeSub||lgaLabel()||META.label;
 // suburb slicer: lists the suburbs of the chosen council (all suburbs when no council is chosen)
 const ssel=d3.select('#subsel');
 function fillSuburbs(){
-  const names=[...new Set(S.filter(s=>!LG||LG.has(s.lga)).map(s=>s.sub))].sort(d3.ascending);
+  const names=[...new Set(S.filter(s=>(!LG||LG.has(s.lga))&&(!BASIN||s.basin===BASIN)).map(s=>s.sub))].sort(d3.ascending);
   ssel.selectAll('option').remove();
   ssel.append('option').attr('value','').text(activeLga?'All suburbs in '+lgaLabel():'All suburbs');
   names.forEach(n=>ssel.append('option').attr('value',n).text(n));
@@ -229,7 +232,7 @@ document.querySelectorAll('.alllab').forEach(e=>e.textContent=META.label);
 
 // ---- map
 const bounds=[[d3.min(C,c=>c[0]),d3.min(C,c=>c[1])],[d3.max(C,c=>c[0]),d3.max(C,c=>c[1])]];
-const fcSA={type:'FeatureCollection',features:S.map((s,i)=>({type:'Feature',id:i,geometry:D.shapes[i],properties:{i,lga:s.lga,sub:s.sub}}))};
+const fcSA={type:'FeatureCollection',features:S.map((s,i)=>({type:'Feature',id:i,geometry:D.shapes[i],properties:{i,lga:s.lga,sub:s.sub,basin:s.basin||''}}))};
 const fcLGA={type:'FeatureCollection',features:D.lga.map(l=>({type:'Feature',geometry:l.g,properties:{name:l.name}}))};
 const fcSAL={type:'FeatureCollection',features:D.sal.map(l=>({type:'Feature',geometry:l.g,properties:{name:l.name}}))};
 const fcSALpt={type:'FeatureCollection',features:D.sal.map(l=>({type:'Feature',geometry:{type:'Point',coordinates:d3.geoCentroid(l.g)},properties:{name:l.name}}))};
@@ -254,6 +257,7 @@ loadStyle().then(style=>{
     map.addSource('riv',{type:'geojson',data:{type:'Feature',geometry:D.riv,properties:{}}});
     map.addSource('sbo',{type:'geojson',data:{type:'Feature',geometry:D.sbo,properties:{}}});
     map.addSource('lga',{type:'geojson',data:fcLGA});
+    map.addSource('basins',{type:'geojson',data:{type:'FeatureCollection',features:(D.basins||[]).map(b=>({type:'Feature',geometry:b.g,properties:{name:b.name}}))}});
     map.addSource('sal',{type:'geojson',data:fcSAL});
     map.addSource('salpt',{type:'geojson',data:fcSALpt});
     map.addSource('rings',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
@@ -277,6 +281,9 @@ loadStyle().then(style=>{
       'line-width':['interpolate',['linear'],['zoom'],9,1.6,12,3.2,15,5]}});
     add({id:'sal-line',type:'line',source:'sal',minzoom:9,layout:{'line-join':'round'},paint:{'line-color':css('--ink'),'line-opacity':['interpolate',['linear'],['zoom'],9,.45,12,.8],
       'line-width':['interpolate',['linear'],['zoom'],9,.6,12,1.3,15,2.2]}});
+    // River basins: off by default (toggle), always drawn for the selected basin preset.
+    add({id:'basin-line',type:'line',source:'basins',layout:{visibility:'none','line-join':'round'},paint:{'line-color':'#1b6f8a','line-width':['interpolate',['linear'],['zoom'],8,1.4,13,3],'line-opacity':.85}});
+    add({id:'basin-sel',type:'line',source:'basins',filter:['==',['get','name'],''],paint:{'line-color':'#1b6f8a','line-width':3}});
     add({id:'sal-sel',type:'line',source:'sal',filter:['==',['get','name'],''],paint:{'line-color':css('--ink'),'line-width':2.4}});
     add({id:'lga-line',type:'line',source:'lga',paint:{'line-color':css('--ink'),'line-width':['interpolate',['linear'],['zoom'],9,1,13,2.2],'line-opacity':.85}});
     add({id:'sa1-hover',type:'line',source:'sa1',paint:{'line-color':css('--ink'),'line-width':['case',['boolean',['feature-state','hover'],false],2,0]}});
@@ -307,7 +314,7 @@ function wire(){
     hoverId=i;map.setFeatureState({source:'sa1',id:i},{hover:true});
     const v=metric.f(s),r=map.getContainer().getBoundingClientRect();
     tip.style.display='block';tip.style.left=Math.min(e.point.x+14,r.width-270)+'px';tip.style.top=(e.point.y+14)+'px';
-    tip.innerHTML=`<strong>${s.sub}</strong> · ${s.lga}<br>SA1 ${s.id} · ${s.pop.toLocaleString()} residents<br>${metric.l}: ${isFinite(v)?metric.fmt(v):'n/a'}${(s.fl!=null?s.fl:s.riv+s.sbo)>0?`<br>${Math.round(Math.min(1,s.fl!=null?s.fl:s.riv+s.sbo)*100)}% of residents in a flood overlay`:''}${[['A',tintA],['B',tintB]].map(([n,w])=>share(w,i)?`<br>Counted in ${n}: ${share(w,i)} of residents`:'').join('')}`;
+    tip.innerHTML=`<strong>${s.sub}</strong> · ${s.lga}<br>SA1 ${s.id} · ${s.pop.toLocaleString()} residents${s.basin?`<br>${s.basin} river basin${s.drain?' · drains to '+s.drain:''}`:''}<br>${metric.l}: ${isFinite(v)?metric.fmt(v):'n/a'}${(s.fl!=null?s.fl:s.riv+s.sbo)>0?`<br>${Math.round(Math.min(1,s.fl!=null?s.fl:s.riv+s.sbo)*100)}% of residents in a flood overlay`:''}${[['A',tintA],['B',tintB]].map(([n,w])=>share(w,i)?`<br>Counted in ${n}: ${share(w,i)} of residents`:'').join('')}`;
   });
   map.on('mouseleave','sa1-fill',()=>{tip.style.display='none';if(hoverId!==null)map.setFeatureState({source:'sa1',id:hoverId},{hover:false});hoverId=null;});
   map.on('click',e=>{
@@ -320,6 +327,7 @@ function wire(){
   });
   const vis=(ids,on)=>ids.forEach(id=>map.getLayer(id)&&map.setLayoutProperty(id,'visibility',on?'visible':'none'));
   document.getElementById('fl').addEventListener('change',e=>{vis(['riv-fill','riv-line','sbo-fill','sbo-line'],e.target.checked);drawLegend();});
+  document.getElementById('rb').addEventListener('change',e=>vis(['basin-line'],e.target.checked));
   document.getElementById('sb').addEventListener('change',e=>vis(['sal-halo','sal-line','sal-label'],e.target.checked));
   document.getElementById('bm').addEventListener('change',e=>vis(baseLayers,e.target.checked));
   document.getElementById('relief').addEventListener('change',e=>vis(['relief'],e.target.checked));
@@ -331,10 +339,11 @@ function wire(){
 // Apply the council/suburb filter to every SA1 layer, zoom to what is left, and recompute
 // the comparison column, the colour classes and the panel for the visible area only.
 function applyFilter(){
-  const conds=[];if(LG)conds.push(['in',['get','lga'],['literal',[...LG]]]);if(activeSub)conds.push(['==',['get','sub'],activeSub]);
+  const conds=[];if(LG)conds.push(['in',['get','lga'],['literal',[...LG]]]);if(BASIN)conds.push(['==',['get','basin'],BASIN]);if(activeSub)conds.push(['==',['get','sub'],activeSub]);
   const f=conds.length?['all',...conds]:null;
   ['sa1-fill','sa1-line','tint-a','tint-b','sa1-hover'].forEach(id=>map.setFilter(id,f));
-  map.setFilter('lga-line',LG?['in',['get','name'],['literal',[...LG]]]:null);
+  map.setFilter('lga-line',LG?['in',['get','name'],['literal',[...LG]]]:BASIN?['==',['get','name'],'']:null);
+  if(map.getLayer('basin-sel'))map.setFilter('basin-sel',['==',['get','name'],BASIN||'']);
   map.setFilter('sal-sel',['==',['get','name'],activeSub||'']);
   let b=bounds;
   if(activeSub||activeLga){const feats=S.map((s,i)=>i).filter(visible).map(i=>({type:'Feature',geometry:D.shapes[i]}));
