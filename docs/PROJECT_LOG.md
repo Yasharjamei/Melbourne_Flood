@@ -299,3 +299,9 @@ Both were tested against a simulated capped server and a truncated file.
 - **Paper model:** MGWR R² 0.452 (GWR 0.232). **Metro model:** MGWR 0.409 (GWR 0.339).
 - **A race was avoided:** the v0.6 merge run (#28, old workflow) was still building when the newer run deployed, and it would have overwritten the site with the older build. It was cancelled. With a single `concurrency: pages` group and `cancel-in-progress`, this can't recur.
 
+**Residents in the 1% AEP extent (e539ef8, cached rebuild in 19 minutes).** 14,563 residents live inside the VFD 1-in-100 extent, against 185,536 inside the planning overlays; at most 6,419 are in both. The likely reasons:
+- the VFD layer covers mainly the major rivers and is generalised
+- the overlays include the Special Building Overlay (overland flow), where most exposed residents live
+
+It is documented as riverine 1% AEP. The newer DEECA statewide layer, which is vector tiles only, may close the gap.
+

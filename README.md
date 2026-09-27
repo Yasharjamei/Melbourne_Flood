@@ -37,7 +37,8 @@ The project applies two flood-resilience papers to the same 474 SA1 "urban units
 | SEIFA 2021 deciles matched | | 10,948 of 11,293 SA1s (ABS doesn't publish SEIFA for SA1s with very few usual residents or mostly non-private dwellings) |
 | River basins / creek catchments | | 5 basins / 84 creek catchments; 11,277 SA1s with a drainage chain |
 | GWR / MGWR R² | 0.232 / 0.451 (474 SA1s) | 0.338 / 0.408 (353 SA2s) |
-| Page size (one page since v0.6) | | 18.3 MB (about 4 MB compressed) |
+| Residents in planning overlays / in the 1% AEP extent / in both (upper bound) | | 185,536 / 14,563 / 6,419 |
+| Page size (one page since v0.6) | | 18.9 MB (about 4 MB compressed) |
 
 The residents placed by mesh-block counts match the Census SA1 totals to within 0.02%; the small gap is ABS perturbation between the two releases. The FRI range lands close to the paper's, even with the substituted depth, elevation and sand inputs.
 
@@ -532,7 +533,10 @@ The cloud environment's network policy blocks the data hosts by default. To run 
 - **What they don't do:** neither contains a model or data for Melbourne.
 - **What is needed:** a finished HEC-RAS run for the October 2022 event, which rashdf could then bring into this pipeline as depth per SA1.
 - **Building a model here is not an option:** a hydraulic model built without calibration data would produce convincing-looking but unvalidated depths.
-| ~~Melbourne Water 1% AEP flood extent~~ | **Added**, from the Victorian Flood Database map service, layer *"Flood extent – 1 in 100 year recurrence <250K"*: 308 polygons, 191.5 km² inside Greater Melbourne. It is a separate map variable and layer beside the overlays. **Caveat:** this is the VFD's compilation, which may be older and more generalised ("<250K") than DEECA's quarterly-updated 1% AEP layer. That newer layer is published only as vector tiles. | DEECA (VFD) | Yes |
+| ~~Melbourne Water 1% AEP flood extent~~ | **Added**, from the Victorian Flood Database map service, layer *"Flood extent – 1 in 100 year recurrence <250K"*: 308 polygons, 191.5 km² inside Greater Melbourne. It is a separate map variable and layer beside the overlays. **Caveat:** this is the VFD's compilation, which may be older and more generalised ("<250K") than DEECA's quarterly-updated 1% AEP layer. That newer layer is published only as vector tiles.
+- **Measured on the published build:** 14,563 Greater Melbourne residents live inside this extent, against 185,536 inside the planning overlays.
+- **Why the gap is probably coverage:** the overlays include Melbourne Water's Special Building Overlay (overland flow from drains), which most exposed residents live under. This layer appears to cover mainly the major rivers, in generalised form.
+- **Read it as riverine 1% AEP, not all flooding.** | DEECA (VFD) | Yes |
 | 1% AEP flood *depth* (next step) | Real depth instead of extent: the VFD also publishes **"Flood height contours – 1 in 100 year recurrence"** (layer 13), water-surface levels that can be interpolated and subtracted from the Vicmap 10 m DEM (now working) | DEECA (VFD) + Vicmap | Yes |
 
 ### Keeping the data current
