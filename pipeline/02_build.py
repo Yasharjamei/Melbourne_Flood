@@ -262,7 +262,7 @@ def sample(paths, scale=1.0):
     return (pd.Series(np.nan_to_num(v) * w).groupby(mb["i"]).sum() / w.groupby(mb["i"]).sum()).reindex(range(len(sa)))
 # Vicmap 10 m DEM, as the paper used: a statewide GeoTIFF placed by hand (the 12 GB DataVic download
 # is Deflate64-zipped, so it can't be read remotely; see README), else chunks from the image service.
-elev = sample(sorted(glob.glob("data/raw/shared/vmelev_dem10m*.tif")) + sorted(glob.glob(f"{RAW}/dem10_*.tif")))
+elev = sample(sorted(glob.glob("data/raw/shared/vmelev_dem10m*.tif")) + sorted(glob.glob(f"{RAW}/dem10*.tif")))
 if elev is not None:
     NOTES.append("Elevation: Vicmap Elevation 10 m DEM (as in the paper), sampled at mesh-block points.")
 else:
@@ -370,28 +370,43 @@ if os.path.exists(BLD):
 SEIFA_NAMES = [("IRSD", "Disadvantage"), ("IRSAD", "Advantage and Disadvantage"),
                ("IER", "Economic Resources"), ("IEO", "Education and Occupation")]
 seifa = None
+def which_index(name):
+    """Map an ABS column title to IRSD / IRSAD / IER / IEO (IRSAD's title also contains 'Disadvantage')."""
+    n = name.lower()
+    if "advantage and disadvantage" in n or "irsad" in n: return "IRSAD"
+    if "disadvantage" in n or "irsd" in n: return "IRSD"
+    if "economic resources" in n or "ier" in n.split(): return "IER"
+    if "education and occupation" in n or "ieo" in n.split(): return "IEO"
+    return None
 if os.path.exists("data/raw/shared/seifa_sa1_2021.xlsx"):
     try:
-        df = pd.read_excel("data/raw/shared/seifa_sa1_2021.xlsx", sheet_name="Table 1", header=None, dtype=str)
-        hdr = next(r for r in range(min(15, len(df))) if df.iloc[r].astype(str).str.contains("Disadvantage").any())
-        names = df.iloc[hdr].ffill().astype(str)
-        sub = df.iloc[hdr + 1].astype(str)
-        code_col = next(c for c in df.columns if df[c].astype(str).str.fullmatch(r"\d{11}").sum() > 1000)
+        book = pd.read_excel("data/raw/shared/seifa_sa1_2021.xlsx", sheet_name=None, header=None, dtype=object)
+        df = book.get("Table 1") if "Table 1" in book else next(iter(v for k, v in book.items() if "1" in k))
+        txt = df.map(lambda v: "" if v is None or (isinstance(v, float) and np.isnan(v)) else str(v).strip())
+        # the sub-header row has both "Score" and "Decile"; the index names are in the row above it
+        h = next(r for r in range(min(20, len(txt))) if {"Score", "Decile"} <= set(txt.iloc[r]))
+        names = txt.iloc[h - 1].replace("", np.nan).ffill().fillna("")
         cols = {}
-        for key, words in SEIFA_NAMES:
-            m = [c for c in df.columns if words in names[c] and ("Decile" in sub[c])
-                 and not (key == "IRSD" and "Advantage" in names[c])]
-            if m:
-                cols[key] = m[0]
-        body = df[df[code_col].astype(str).str.fullmatch(r"\d{11}")]
+        for c in txt.columns:
+            if txt.iat[h, c] == "Decile":
+                k = which_index(names[c])
+                if k and k not in cols:
+                    cols[k] = c
+        code_col = next(c for c in txt.columns if txt[c].str.fullmatch(r"\d{11}").sum() > 1000)
+        body = txt[txt[code_col].str.fullmatch(r"\d{11}")]
         seifa = {k: pd.to_numeric(body[c], errors="coerce").groupby(body[code_col].values).first() for k, c in cols.items()}
         got = {k: int(v.reindex(codes).notna().sum()) for k, v in seifa.items()}
-        print(f"SEIFA: decile columns {list(cols)}; SA1s matched {got}")
+        print(f"SEIFA: header row {h}, decile columns {cols}; SA1s matched {got}")
         if not cols:
             raise ValueError("no decile columns found")
         NOTES.append("SEIFA 2021 (ABS) deciles by SA1: 1 = most disadvantaged 10% of Australian SA1s.")
     except Exception as e:
-        print("WARNING could not read SEIFA:", e); seifa = None
+        print("WARNING could not read SEIFA:", repr(e))
+        try:
+            print("  sheets:", list(book)[:8]); [print("  row", r, list(txt.iloc[r])[:11]) for r in range(min(8, len(txt)))]
+        except Exception:
+            pass
+        seifa = None
 
 # ---------------- Lama & Sun (2026) indices
 dwell = g36[dwell_cols].sum(axis=1).values

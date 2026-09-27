@@ -19,6 +19,10 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 ### Changed
 - **One map for all of Greater Melbourne**, at the site's root. The papers' study area (Maribyrnong + Moonee Valley, 474 SA1s) is now a preset in the council menu, *Paper study area (Lama & Sun)*. With the preset on, Lama & Sun's indices are scaled within those 474 SA1s, as in the paper, and the legend says which scaling is shown. The analysis page fits both models: the paper's 474 SA1s, directly comparable with its Table 5, and all SA2s. `/metro/` redirects to the root.
 - The map's variable menu and panel list only the variables a given build has data for.
+- **Fixed after the first CI run on real data:**
+  - SEIFA parsing now finds the Score/Decile header row instead of the first row mentioning "Disadvantage". The ABS title row also mentions it.
+  - Tree canopy reads all four statewide packages that overlap Greater Melbourne (Melbourne, Warburton, Port Phillip, Warragul). With only the Melbourne package, 18% of mesh blocks had no canopy value.
+  - The Vicmap DEM image service refuses `exportImage`, so the pipeline now reads the service's LERC elevation tiles at the level closest to 10 m. That adds the `lerc` dependency.
 - The GWR/MGWR bandwidth search has explicit bounds, and MGWR starts from the GWR bandwidth. The mgwr library's default floor (62) exceeded the number of units in small sets. Nothing changes for the 474-SA1 model.
 - A failed regression no longer stops the build: the maps are published, and the analysis page says the model could not be fitted.
 

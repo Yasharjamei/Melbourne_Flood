@@ -527,9 +527,9 @@ The Census is the anchor, and it is five-yearly. Everything else can be refreshe
 | Planning overlays (LSIO, FO, SBO) | **live**, fetched at build time | updated whenever an amendment is gazetted | Automatic on every build |
 | Address points (Vicmap Address) | **live** | weekly | Automatic |
 | Building footprints (Microsoft) | the release listed in `dataset-links.csv` (2026-08 at the time of writing) | periodic | Automatic: the manifest points at the newest tiles. Overture Maps buildings, which merge Microsoft, OpenStreetMap and others and are released monthly, are an alternative. |
-| Tree canopy | 2020 | the next statewide tree-extent capture | Change `CANOPY_ZIP` |
+| Tree canopy | 2020 | the next statewide tree-extent capture | Change `CANOPY_ZIPS` (four 1:250k packages cover Greater Melbourne) |
 | Road casement | the DataVic order date | live on the Vicmap WFS | Order links expire, so the pipeline falls back to the WFS layer automatically; to pin a new snapshot, order it on DataVic and put the link in `ROAD_ORDER_URLS` |
-| Elevation | Vicmap 10 m DEM (image service) | LiDAR-derived 1–5 m DEMs via ELVIS for parts of Melbourne | A different fetch function; the build only needs GeoTIFFs |
+| Elevation | Vicmap 10 m DEM (image service, LERC tiles) | LiDAR-derived 1–5 m DEMs via ELVIS for parts of Melbourne | A different fetch function; the build only needs GeoTIFFs |
 
 **Using the statewide Vicmap 10 m DEM file on your own computer.** DataVic also publishes the whole DEM as one file: [`vmelev_dem10m_Geotiff_GDA94_VicGrid.zip`](https://cl-isd-prd-datashare-s3-delivery.s3.amazonaws.com/PrePackages/vmelev_dem10m_Geotiff_GDA94_VicGrid.zip).
 - **Size:** 11.9 GB zipped, 12.5 GB unzipped, one float32 GeoTIFF in VicGrid (EPSG:3111).

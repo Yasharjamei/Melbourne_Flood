@@ -33,8 +33,9 @@ SEIFA_URLS = [
 # Vicmap Elevation 10 m DEM as an image service (real elevation values, unlike the shaded-relief tiles).
 DEM10 = "https://tiles-ap1.arcgis.com/P744lA0wf4LlBZ84/arcgis/rest/services/Vicmap_10m_DEM/ImageServer"
 # Vicmap Vegetation tree extent, 20 cm canopy / no-canopy rasters (2020), one zip for Greater Melbourne.
-CANOPY_ZIP = ("https://cl-isd-prd-datashare-s3-delivery.s3.amazonaws.com/PrePackages/VMVEG_TREE_EXTENT/"
-              "VMVEG_TREE_EXTENT_MELBOURNE.zip")
+# Greater Melbourne spans four of the statewide 1:250k packages; tiles outside the study bbox are skipped.
+CANOPY_ZIPS = [f"https://cl-isd-prd-datashare-s3-delivery.s3.amazonaws.com/PrePackages/VMVEG_TREE_EXTENT/"
+               f"VMVEG_TREE_EXTENT_{n}.zip" for n in ("MELBOURNE", "WARBURTON", "PORT_PHILLIP", "WARRAGUL")]
 # Vicmap Property road casement (road reserves), a DataVic order for the Melbourne Water region.
 # Order links are temporary; when this one is gone the WFS layer is used instead.
 ROAD_ORDER_URLS = ["https://s3.ap-southeast-2.amazonaws.com/cl-isd-prd-datashare-s3-delivery/Order_5YFHYM.zip"]
@@ -283,22 +284,25 @@ class HttpRange(io.RawIOBase):
 
 
 def canopy(bbox, outdir="data/raw/shared/canopy10"):
-    """Tree canopy share on a 10 m grid, from the 20 cm Vicmap tree-extent tiles that overlap bbox.
+    """Tree canopy share on a 10 m grid, from the 20 cm Vicmap tree-extent tiles that overlap bbox
+    (listing every package is cheap: only zip directories are read until a tile is needed).
     Each 20 cm tile (about 110,000 x 70,000 pixels, 0 = no tree, 1 = tree, 2 = no data) is read
     straight out of the remote zip and averaged 50 x 50 into a 10 m percentage grid."""
     import rasterio
     from rasterio.enums import Resampling
     from rasterio.warp import transform_bounds
     os.makedirs(outdir, exist_ok=True)
-    z = zipfile.ZipFile(io.BufferedReader(HttpRange(CANOPY_ZIP), 1 << 20))
-    tifs = [m for m in z.namelist() if m.lower().endswith(".tif")]
+    tifs = []
+    for url in CANOPY_ZIPS:
+        z = zipfile.ZipFile(io.BufferedReader(HttpRange(url), 1 << 20))
+        tifs += [(url, m) for m in z.namelist() if m.lower().endswith(".tif")]
     env = rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".zip,.tif",
                        GDAL_HTTP_MAX_RETRY="4", GDAL_HTTP_RETRY_DELAY="2")
     used = 0
     with env:
-        for m in tifs:
+        for url, m in tifs:
             dst = os.path.join(outdir, os.path.basename(m).replace("_20cm_", "_10m_"))
-            src = f"/vsizip//vsicurl/{CANOPY_ZIP}/{m}"
+            src = f"/vsizip//vsicurl/{url}/{m}"
             with rasterio.open(src) as r:
                 w, s_, e, n = transform_bounds(r.crs, 4326, *r.bounds)
                 if e < bbox[0] or w > bbox[2] or n < bbox[1] or s_ > bbox[3]:
@@ -400,29 +404,94 @@ def glob_any(d, exts):
 
 
 def dem10(bbox, raw):
-    """Vicmap Elevation 10 m DEM from its image service, in chunks the service will export."""
+    """Vicmap Elevation 10 m DEM from its image service. exportImage is tried first; hosted tiled
+    image services often refuse it, so the fallback reads the service's own LERC elevation tiles
+    (float values, not a picture) at the level closest to 10 m and mosaics them into one GeoTIFF."""
+    if glob_any(raw, ("dem10.tif",)) or os.path.exists(f"{raw}/dem10_000.tif"):
+        print("  Vicmap 10 m DEM: cached"); return
     info = get_json(DEM10, {"f": "json"})
+    print(f"  DEM service: capabilities={info.get('capabilities')}, format={(info.get('tileInfo') or {}).get('format')}, "
+          f"pixelType={info.get('pixelType')}, allowExport={info.get('exportTilesAllowed')}")
+    try:
+        b = get(DEM10 + "/exportImage", {"bbox": f"{bbox[0]},{bbox[1]},{min(bbox[2], bbox[0] + 0.05)},{min(bbox[3], bbox[1] + 0.05)}",
+                                         "bboxSR": 4326, "imageSR": 4326, "size": "500,500", "format": "tiff",
+                                         "pixelType": "F32", "f": "image"}, binary=True, tries=1)
+        if b[:2] not in (b"II", b"MM"):
+            raise RuntimeError(b[:200].decode("latin1"))
+        dem10_export(bbox, raw, info)
+    except Exception as e:
+        print(f"  DEM exportImage refused ({str(e)[:160]}); trying LERC tiles")
+        dem10_tiles(bbox, raw, info)
+
+
+def dem10_export(bbox, raw, info):
     mw, mh = int(info.get("maxImageWidth", 4000)), int(info.get("maxImageHeight", 4000))
     res = 0.0001                                # ~9-11 m at Melbourne's latitude
     cw, ch = min(mw, 4000) * res, min(mh, 4000) * res
-    k = 0
-    x = bbox[0]
+    k, x = 0, bbox[0]
     while x < bbox[2]:
         y = bbox[1]
         while y < bbox[3]:
             dst = f"{raw}/dem10_{k:03d}.tif"; k += 1
             x2, y2 = min(x + cw, bbox[2] + res), min(y + ch, bbox[3] + res)
-            if not os.path.exists(dst):
-                b = get(DEM10 + "/exportImage", {"bbox": f"{x},{y},{x2},{y2}", "bboxSR": 4326, "imageSR": 4326,
-                                                 "size": f"{round((x2 - x) / res)},{round((y2 - y) / res)}",
-                                                 "format": "tiff", "pixelType": "F32", "interpolation": "RSP_BilinearInterpolation",
-                                                 "f": "image"}, binary=True, tries=3)
-                if b[:2] not in (b"II", b"MM"):
-                    raise RuntimeError("DEM export is not a GeoTIFF: " + b[:300].decode("latin1"))
-                open(dst, "wb").write(b)
+            b = get(DEM10 + "/exportImage", {"bbox": f"{x},{y},{x2},{y2}", "bboxSR": 4326, "imageSR": 4326,
+                                             "size": f"{round((x2 - x) / res)},{round((y2 - y) / res)}",
+                                             "format": "tiff", "pixelType": "F32", "f": "image"}, binary=True, tries=3)
+            open(dst, "wb").write(b)
             y = y2
         x = x2
-    print(f"  Vicmap 10 m DEM: {k} chunks in {raw}/dem10_*.tif")
+    print(f"  Vicmap 10 m DEM: {k} exported chunks in {raw}/dem10_*.tif")
+
+
+def dem10_tiles(bbox, raw, info):
+    import lerc, rasterio
+    from rasterio.transform import from_origin
+    from concurrent.futures import ThreadPoolExecutor
+    ti = info.get("tileInfo") or {}
+    if str(ti.get("format", "")).upper() != "LERC":
+        raise RuntimeError(f"tiles are {ti.get('format')}, not LERC elevation")
+    wkid = (ti.get("spatialReference") or {}).get("latestWkid") or (ti.get("spatialReference") or {}).get("wkid")
+    if wkid not in (3857, 102100):
+        raise RuntimeError(f"tile grid in wkid {wkid}, expected Web Mercator")
+    ox, oy, tw, th = ti["origin"]["x"], ti["origin"]["y"], ti["cols"], ti["rows"]
+    lat = (bbox[1] + bbox[3]) / 2
+    want = 10 / math.cos(math.radians(lat))    # Web Mercator units per 10 ground metres here
+    lod = min(ti["lods"], key=lambda l: abs(l["resolution"] - want))
+    r = lod["resolution"]
+    X = lambda lon: lon * 20037508.342789244 / 180
+    Y = lambda la: math.log(math.tan((90 + la) * math.pi / 360)) * 6378137.0
+    c0, c1 = int((X(bbox[0]) - ox) / (r * tw)), int((X(bbox[2]) - ox) / (r * tw))
+    r0, r1 = int((oy - Y(bbox[3])) / (r * th)), int((oy - Y(bbox[1])) / (r * th))
+    print(f"  DEM tiles: level {lod['level']} ({r:.1f} m Web Mercator, ~{r * math.cos(math.radians(lat)):.1f} m ground), "
+          f"{(c1 - c0 + 1) * (r1 - r0 + 1)} tiles")
+    out = np.full(((r1 - r0 + 1) * th, (c1 - c0 + 1) * tw), np.nan, dtype="float32")
+    def one(rc):
+        row, col = rc
+        try:
+            b = get(f"{DEM10}/tile/{lod['level']}/{row}/{col}", binary=True, tries=3)
+        except Exception:
+            return rc, None                   # tiles over the sea may not exist
+        res = lerc.decode(b)
+        data, mask = res[1], res[2] if len(res) > 2 else None
+        a = np.asarray(data, dtype="float32").reshape(th, tw)
+        if mask is not None:
+            a = np.where(np.asarray(mask).reshape(th, tw) > 0, a, np.nan)
+        return rc, a
+    cells = [(row, col) for row in range(r0, r1 + 1) for col in range(c0, c1 + 1)]
+    got = 0
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        for (row, col), a in ex.map(one, cells):
+            if a is not None:
+                out[(row - r0) * th:(row - r0 + 1) * th, (col - c0) * tw:(col - c0 + 1) * tw] = a; got += 1
+    if not got:
+        raise RuntimeError("no DEM tile could be read")
+    tr = from_origin(ox + c0 * tw * r, oy - r0 * th * r, r, r)
+    with rasterio.open(f"{raw}/dem10.tif", "w", driver="GTiff", width=out.shape[1], height=out.shape[0], count=1,
+                       dtype="float32", crs="EPSG:3857", transform=tr, nodata=np.nan, compress="deflate",
+                       predictor=3, tiled=True) as o:
+        o.write(out, 1)
+    print(f"  Vicmap 10 m DEM: {got} of {len(cells)} LERC tiles -> {raw}/dem10.tif "
+          f"(elevation {np.nanmin(out):.0f} to {np.nanmax(out):.0f} m)")
 
 
 def optional(label, fn):

@@ -98,9 +98,9 @@ snapshots/           the first prototype, frozen
 | `wfs_layer` | finds a Vicmap layer by regex in GetCapabilities | layer names change between GeoServer releases |
 | `wfs_points` | Vicmap Address points, geometry only, saved as a float32 `addr.npy` | tries both axis orders; about 2 M points for metro |
 | `HttpRange` | a seekable file over HTTP range requests | lets `zipfile` list and extract single members of a remote zip |
-| `canopy` | Vicmap tree extent (20 cm, 0/1/2 = no tree, tree, no data), reduced to 10 m canopy-% grids in `data/raw/shared/canopy10/` | reads only the tiles that overlap the study area, straight from the 2 GB zip (`/vsizip//vsicurl/`); ~30 s per tile |
+| `canopy` | Vicmap tree extent (20 cm, 0/1/2 = no tree, tree, no data), reduced to 10 m canopy-% grids in `data/raw/shared/canopy10/` | reads only the tiles that overlap the study area, straight from the four statewide zips (Melbourne, Warburton, Port Phillip, Warragul) (`/vsizip//vsicurl/`); ~30 s per tile |
 | `buildings` | Microsoft ML building footprints (quadkey tiles from `dataset-links.csv`), saved as `lon, lat, area m², height` | area from degrees² × cos(latitude), which is accurate to well under 1% at building scale |
-| `dem10` | Vicmap 10 m DEM via the image service's `exportImage`, in chunks | the *shaded relief* service is only a picture and is used as a map layer, not as data |
+| `dem10` | Vicmap 10 m DEM from the image service: `exportImage` if allowed, else its LERC elevation tiles at the level nearest 10 m, mosaicked to `dem10.tif` (Web Mercator) | the *shaded relief* service is only a picture and is used as a map layer, not as data |
 | `optional` | runs an optional download and only warns on failure | 02_build falls back and records the fallback in `NOTES` |
 
 **Required inputs:** councils, SA1, mesh blocks, suburbs (SAL), overlays and the Census DataPack. A failure here stops the run.
