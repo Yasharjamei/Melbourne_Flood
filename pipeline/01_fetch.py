@@ -4,13 +4,14 @@
     python pipeline/01_fetch.py --study metro    # all 31 Greater Melbourne councils
 
 Required inputs stop the run on failure. Optional ones (mesh-block counts, address
-points, DEM, soil sand) log a warning and 02_build.py falls back, saying so in its output.
+points, DEMs, soil sand, SEIFA, tree canopy, building footprints) log a warning and 02_build.py falls back, saying so in its output.
 
 Every download is cached under data/raw/: delete a file to fetch it again.
 """
 import argparse, io, json, math, os, re, sys, time, urllib.parse, urllib.request, zipfile
 sys.path.insert(0, os.path.dirname(__file__))
 from config import STUDIES, norm_lga
+import numpy as np
 
 UA = {"User-Agent": "Mozilla/5.0 (melbourne-flood pipeline)"}
 ABS_GEO = "https://geo.abs.gov.au/arcgis/rest/services/ASGS2021"
@@ -26,14 +27,25 @@ WFS_LAYER = "open-data-platform:plan_overlay"
 DEM_TILE = ("https://copernicus-dem-30m.s3.amazonaws.com/Copernicus_DSM_COG_10_{ns}{lat:02d}_00_{ew}{lon:03d}_00_DEM/"
             "Copernicus_DSM_COG_10_{ns}{lat:02d}_00_{ew}{lon:03d}_00_DEM.tif")
 SAND_WCS = "https://maps.isric.org/mapserv?map=/map/sand.map"
+SEIFA_URLS = [
+    "https://www.abs.gov.au/statistics/people/people-and-communities/socio-economic-indexes-areas-seifa-australia/2021/"
+    "Statistical%20Area%20Level%201%2C%20Indexes%2C%20SEIFA%202021.xlsx",
+]
+# Vicmap Elevation 10 m DEM as an image service (real elevation values, unlike the shaded-relief tiles).
+DEM10 = "https://tiles-ap1.arcgis.com/P744lA0wf4LlBZ84/arcgis/rest/services/Vicmap_10m_DEM/ImageServer"
+# Vicmap Vegetation tree extent, 20 cm canopy / no-canopy rasters (2020), one zip for Greater Melbourne.
+CANOPY_ZIP = ("https://cl-isd-prd-datashare-s3-delivery.s3.amazonaws.com/PrePackages/VMVEG_TREE_EXTENT/"
+              "VMVEG_TREE_EXTENT_MELBOURNE.zip")
+# Microsoft Global ML Building Footprints: manifest of per-country, per-quadkey files.
+MS_BUILDINGS = "https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv"
 
 
-def get(url, params=None, tries=4, binary=False):
+def get(url, params=None, tries=4, binary=False, headers=None):
     if params:
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
     for i in range(tries):
         try:
-            with urllib.request.urlopen(urllib.request.Request(url, headers=UA), timeout=300) as r:
+            with urllib.request.urlopen(urllib.request.Request(url, headers={**UA, **(headers or {})}), timeout=300) as r:
                 data = r.read()
             return data if binary else data.decode("utf-8")
         except Exception as e:
@@ -247,6 +259,124 @@ def wfs_points(bbox, out, pattern=r"address", prefer=(r"address_point$", r"addr.
     print(f"  address points: {len(a):,} from {layer} -> {out}")
 
 
+class HttpRange(io.RawIOBase):
+    """A seekable file over HTTP range requests, so zipfile can list and extract single members
+    of a remote archive without downloading all of it (the canopy zip is 2 GB)."""
+    def __init__(self, url):
+        r = urllib.request.urlopen(urllib.request.Request(url, method="HEAD", headers=UA), timeout=60)
+        self.url, self.n, self.p = url, int(r.headers["Content-Length"]), 0
+    def seekable(self): return True
+    def readable(self): return True
+    def tell(self): return self.p
+    def seek(self, o, w=0):
+        self.p = o if w == 0 else self.p + o if w == 1 else self.n + o
+        return self.p
+    def readinto(self, b):
+        if self.p >= self.n:
+            return 0
+        end = min(self.n, self.p + len(b)) - 1
+        d = get(self.url, binary=True, tries=4, headers={"Range": f"bytes={self.p}-{end}"})
+        b[:len(d)] = d; self.p += len(d)
+        return len(d)
+
+
+def canopy(bbox, outdir="data/raw/shared/canopy10"):
+    """Tree canopy share on a 10 m grid, from the 20 cm Vicmap tree-extent tiles that overlap bbox.
+    Each 20 cm tile (about 110,000 x 70,000 pixels, 0 = no tree, 1 = tree, 2 = no data) is read
+    straight out of the remote zip and averaged 50 x 50 into a 10 m percentage grid."""
+    import rasterio
+    from rasterio.enums import Resampling
+    from rasterio.warp import transform_bounds
+    os.makedirs(outdir, exist_ok=True)
+    z = zipfile.ZipFile(io.BufferedReader(HttpRange(CANOPY_ZIP), 1 << 20))
+    tifs = [m for m in z.namelist() if m.lower().endswith(".tif")]
+    env = rasterio.Env(GDAL_DISABLE_READDIR_ON_OPEN="EMPTY_DIR", CPL_VSIL_CURL_ALLOWED_EXTENSIONS=".zip,.tif",
+                       GDAL_HTTP_MAX_RETRY="4", GDAL_HTTP_RETRY_DELAY="2")
+    used = 0
+    with env:
+        for m in tifs:
+            dst = os.path.join(outdir, os.path.basename(m).replace("_20cm_", "_10m_"))
+            src = f"/vsizip//vsicurl/{CANOPY_ZIP}/{m}"
+            with rasterio.open(src) as r:
+                w, s_, e, n = transform_bounds(r.crs, 4326, *r.bounds)
+                if e < bbox[0] or w > bbox[2] or n < bbox[1] or s_ > bbox[3]:
+                    continue
+                used += 1
+                if os.path.exists(dst):
+                    continue
+                f = 50
+                a = r.read(1, out_shape=(r.height // f, r.width // f), resampling=Resampling.average, masked=True)
+                pct = np.where(np.ma.getmaskarray(a), 255, np.round(a.filled(0) * 100)).astype("uint8")
+                t = r.transform * r.transform.scale(r.width / pct.shape[1], r.height / pct.shape[0])
+                prof = dict(driver="GTiff", width=pct.shape[1], height=pct.shape[0], count=1, dtype="uint8",
+                            crs=r.crs, transform=t, nodata=255, compress="deflate")
+                with rasterio.open(dst, "w", **prof) as o:
+                    o.write(pct, 1)
+                print(f"  canopy: {os.path.basename(m)} -> {dst} ({pct.shape[1]}x{pct.shape[0]})")
+    if not used:
+        raise RuntimeError("no canopy tile overlaps the study area")
+    print(f"  canopy: {used} tiles cover the study area")
+
+
+def buildings(bbox, out):
+    """Microsoft Global ML Building Footprints inside bbox, reduced to one row per building:
+    lon, lat (centroid), footprint area in m2, height in m (-1 if unknown)."""
+    if os.path.exists(out):
+        print("  buildings: cached"); return
+    import csv, gzip, shapely
+    def quadkey(lon, lat, z=9):
+        x = int((lon + 180) / 360 * 2 ** z)
+        s = math.sin(math.radians(lat)); y = int((0.5 - math.log((1 + s) / (1 - s)) / (4 * math.pi)) * 2 ** z)
+        return "".join(str(((x >> i) & 1) + 2 * ((y >> i) & 1)) for i in range(z - 1, -1, -1))
+    step = 0.05
+    keys = {quadkey(bbox[0] + i * step, bbox[1] + j * step)
+            for i in range(int((bbox[2] - bbox[0]) / step) + 2) for j in range(int((bbox[3] - bbox[1]) / step) + 2)}
+    rows = [r for r in csv.DictReader(io.StringIO(get(MS_BUILDINGS)))
+            if r["Location"] == "Australia" and r["QuadKey"].zfill(9) in keys]
+    if not rows:
+        raise RuntimeError(f"no Australia building tiles for quadkeys {sorted(keys)[:5]}...")
+    print(f"  buildings: {len(rows)} tiles, uploaded {sorted({r.get('UploadDate', '?') for r in rows})}")
+    parts = []
+    for r in rows:
+        lines = gzip.decompress(get(r["Url"], binary=True)).decode("utf-8").splitlines()
+        feats = [json.loads(l) for l in lines if l.strip()]
+        g = shapely.from_geojson([json.dumps(f["geometry"]) for f in feats])
+        c = shapely.centroid(g); x, y = shapely.get_x(c), shapely.get_y(c)
+        k = (x >= bbox[0]) & (x <= bbox[2]) & (y >= bbox[1]) & (y <= bbox[3])
+        area = shapely.area(g) * (111320.0 ** 2) * np.cos(np.radians(y))     # degrees^2 -> m^2
+        h = np.array([float((f.get("properties") or {}).get("height") or -1) for f in feats])
+        parts.append(np.column_stack([x, y, area, h])[k])
+        print(f"  buildings: tile {r['QuadKey']}: {len(feats):,} footprints, {int(k.sum()):,} in the study bbox")
+    a = np.vstack(parts).astype(np.float32)
+    np.save(out, a); print(f"  buildings: {len(a):,} -> {out}")
+
+
+def dem10(bbox, raw):
+    """Vicmap Elevation 10 m DEM from its image service, in chunks the service will export."""
+    info = get_json(DEM10, {"f": "json"})
+    mw, mh = int(info.get("maxImageWidth", 4000)), int(info.get("maxImageHeight", 4000))
+    res = 0.0001                                # ~9-11 m at Melbourne's latitude
+    cw, ch = min(mw, 4000) * res, min(mh, 4000) * res
+    k = 0
+    x = bbox[0]
+    while x < bbox[2]:
+        y = bbox[1]
+        while y < bbox[3]:
+            dst = f"{raw}/dem10_{k:03d}.tif"; k += 1
+            x2, y2 = min(x + cw, bbox[2] + res), min(y + ch, bbox[3] + res)
+            if not os.path.exists(dst):
+                b = get(DEM10 + "/exportImage", {"bbox": f"{x},{y},{x2},{y2}", "bboxSR": 4326, "imageSR": 4326,
+                                                 "size": f"{round((x2 - x) / res)},{round((y2 - y) / res)}",
+                                                 "format": "tiff", "pixelType": "F32", "interpolation": "RSP_BilinearInterpolation",
+                                                 "f": "image"}, binary=True, tries=3)
+                if b[:2] not in (b"II", b"MM"):
+                    raise RuntimeError("DEM export is not a GeoTIFF: " + b[:300].decode("latin1"))
+                open(dst, "wb").write(b)
+            y = y2
+        x = x2
+    print(f"  Vicmap 10 m DEM: {k} chunks in {raw}/dem10_*.tif")
+
+
 def optional(label, fn):
     try:
         fn()
@@ -335,6 +465,20 @@ def main():
             raise RuntimeError("response is not a GeoTIFF: " + b[:200].decode("latin1"))
         open(dst, "wb").write(b); print(f"  sand -> {dst}")
     print("Soil sand %, SoilGrids (optional)"); optional("sand", sand)
+
+    def seifa():
+        dst = "data/raw/shared/seifa_sa1_2021.xlsx"
+        if os.path.exists(dst):
+            return
+        for u in SEIFA_URLS:
+            b = get(u, binary=True, tries=3)
+            if b[:2] == b"PK":
+                open(dst, "wb").write(b); print(f"  SEIFA -> {dst}"); return
+        raise RuntimeError("SEIFA download is not an xlsx")
+    print("SEIFA 2021 by SA1 (optional)"); optional("SEIFA", seifa)
+    print("Vicmap Elevation 10 m DEM (optional; Copernicus 30 m is the fallback)"); optional("DEM 10 m", lambda: dem10(bbox, raw))
+    print("Tree canopy, Vicmap tree extent 2020 (optional)"); optional("canopy", lambda: canopy(bbox))
+    print("Building footprints, Microsoft (optional)"); optional("buildings", lambda: buildings(bbox, f"{raw}/buildings.npy"))
     print("done")
 
 

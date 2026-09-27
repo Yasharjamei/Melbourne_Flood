@@ -293,8 +293,8 @@ Lama & Sun (2026) build their index in five steps. **All five are implemented in
 
 | Dimension | Indicator | AHP weight | Public substitute here | Status |
 |---|---|---|---|---|
-| Exposure | Flood depth (HEC-RAS, Oct 2022 event) | 0.019 | Share of SA1 inside LSIO/FO/SBO overlays (extent only, no depth) | Proxy |
-| Exposure | Elevation (Vicmap DEM 10 m); low = more exposed | 0.014 | Copernicus GLO-30 (30 m surface model), mesh-block samples, area-weighted to SA1 | Substitute |
+| Exposure | Flood depth (HEC-RAS, Oct 2022 event) | 0.019 | Share of the SA1's **residents** inside LSIO/FO/SBO overlays, placed by Vicmap Address points (extent only, no depth) | Proxy |
+| Exposure | Elevation (Vicmap DEM 10 m); low = more exposed | 0.014 | **Vicmap Elevation 10 m DEM**, the paper's own source (v0.6), sampled at mesh-block points and area-weighted to SA1. Copernicus 30 m is the fallback. | Same source |
 | Exposure | Sand % in soil (30 m); more sand = better drainage | 0.014 | SoilGrids 250 m, 0–5 cm | Substitute |
 | Sensitivity | Land use (Esri 10 m) | 0.050 | Share of SA1 area in built-up mesh-block categories (not Parkland, Water or Primary Production) | Substitute |
 | Sensitivity | Number of dwellings | 0.050 | G36 total dwellings | Available |
@@ -304,6 +304,39 @@ Lama & Sun (2026) build their index in five steps. **All five are implemented in
 | Adaptive capacity | Employed population | 0.168 | G46 | Available |
 | Adaptive capacity | Educated population | 0.168 | G43 non-school qualifications | Available |
 | Adaptive capacity | "Mean income generating population" ($91,000–$103,999 a year) | 0.259 | G17 persons earning $1,750–$1,999 a week, which is exactly that bracket | Available |
+
+### Lama & Sun's indices, in plain language
+
+Lama & Sun (2026) ask one question per SA1: **if a flood came, would this neighbourhood cope, or would the damage outrun its ability to recover?** They answer it with six numbers. Here is what each one means and how to read it on the map.
+
+**The three building blocks.** Each is a weighted sum of indicators scaled to 0–1, so each ranges from 0 up to its total weight.
+
+| Index | Question it answers | Built from (AHP weight) | Maximum | Higher means |
+|---|---|---|---|---|
+| **Exposure (E)** | How much hazard reaches this place? | flood (0.019), low elevation (0.014), low sand, i.e. poor drainage (0.014) | 0.047 | more exposed |
+| **Sensitivity (S)** | How much is there to be harmed? | built-up land (0.050), dwellings (0.050), population (0.074), dependent people under 20 and over 59 (0.074), long-term health conditions (0.110) | 0.358 | more to lose |
+| **Adaptive capacity (AC)** | How well can people absorb and recover? | employed (0.168), educated (0.168), residents on the reference income (0.259) | 0.595 | more capacity |
+
+**How each indicator is scaled.** Each is z-scored across the study area, then min–max scaled to 0–1, so every score is *relative to the other SA1s in the study*, not absolute. Elevation and sand are flipped, because higher ground and sandier soil mean *less* exposure. The weights come from the authors' Analytic Hierarchy Process survey (consistency ratio 0.042). Most of the weight sits in Adaptive capacity: income alone (0.259) outweighs all of Exposure (0.047) more than five times over.
+
+**The three results:**
+
+| Index | Formula | How to read it |
+|---|---|---|
+| **Flood Resilience Index (FRI)** | FRI = AC − (S + E) | **Above 0:** capacity outweighs sensitivity plus exposure, so the area is resilient. **Below 0:** it is not. The map uses a diverging red–blue scale split at 0. |
+| **Damage Index (DI)** | DI = normalise(Σ normalise(flood × X)) for the eight Sensitivity and Adaptive-capacity indicators X | How much of what is in the SA1 sits in the flood. It is 0 where nothing floods, whatever the SA1 contains. Since v0.5, "flood" is the share of *residents* in an overlay. |
+| **Integrated FRI (IFRI)** | IFRI = 0.5 × FRI − 0.5 × DI | Resilience minus likely damage. **Below 0: expected damage exceeds the ability to cope.** This is the paper's headline map. |
+
+**Reading them together:**
+- A high FRI with a low IFRI means a well-resourced area that sits in the flood, so the damage outweighs the resources.
+- A low FRI with an IFRI near 0 means a vulnerable area that is currently out of the flood's way.
+- The circles and pyramids show *who* is behind each number. FRI puts an under-20 and an 85-year-old in the same "dependent" count; the pyramid separates them.
+
+**Four cautions before quoting the indices:**
+1. **Scores are relative.** Because of min–max scaling, the same SA1 scores differently on the two-council page and the metro page. Compare SA1s within one page, not across pages.
+2. **Exposure barely moves the result.** Its maximum is 0.047, against 0.595 for Adaptive capacity. FRI is therefore mostly a socio-economic index; the flood enters mainly through the Damage Index.
+3. **Counts, not rates.** Population, dwellings, employed, educated and income earners all grow with SA1 size. A large SA1 scores as both more "sensitive" and more "capable". The VIFs on the analysis page (up to 53) show how entangled these variables are.
+4. **"Reference income" is one bracket:** $91,000–$103,999 a year. Residents earning more than that don't count towards adaptive capacity.
 
 ### Lama & Sun's statistical analysis (Table 5, Figures 4 and 7)
 
@@ -339,7 +372,15 @@ This build follows 2.2.3, for two reasons:
 
 **Collinearity.** The page reports a variance inflation factor for each variable: population 39.4, dwellings 15.1, employed 53.5, educated 44.9. Population, dwellings, employed, educated and income earners are all counts that grow with SA1 size. Their coefficients can't be interpreted separately wherever VIF is above 10, and that applies to the paper's specification too. The fitted model shows the symptom: population is +0.67 and significant everywhere, while employed (−0.43) and educated (−0.37) pull the other way. That is a suppression pattern, not three real effects.
 
-**Scope.** GWR and MGWR run on the two-council study area (474 SA1s, about 12 minutes on 4 cores). They aren't run on the 11,293 metro SA1s, because MGWR's cost grows with the square of the number of units. The correlation matrix is computed for both pages.
+**Scope.** On the two-council page, GWR and MGWR run on the paper's own 474 SA1s, which takes about 7 minutes. **Since v0.6, the metro page has them too, fitted on SA2s** (about 300 suburb-sized units).
+- **Why not SA1s:** MGWR's cost grows with the square of the number of units, so 11,293 SA1s would take days on a CI runner.
+- **How SA1s are combined into SA2s:**
+  - counts (population, dwellings and so on) are summed
+  - the flood share is resident-weighted
+  - elevation, sand and land use are area-weighted
+- **Caution:** SA2-scale coefficients can differ from SA1-scale ones (the modifiable areal unit problem), so read the two pages as two scales, not two samples.
+
+The correlation matrix is computed for both pages at SA1 level, now including the SEIFA disadvantage decile.
 
 **Assumptions the paper leaves open, and the choices made here:**
 - **Direction for elevation and sand.** The paper doesn't say whether low elevation or high sand is inverted before weighting. Its text implies both should be (low ground and clay soils flood). Their highest Exposure score, 0.043 out of a possible 0.047, is in low-lying Flemington. That only makes sense if low elevation scores high. Both are inverted here.
@@ -427,7 +468,7 @@ Ordered by how much each step changes the numbers, not the look.
    - **Mesh-block view mode.** A third geography next to SA1 and circle, answering "who lives *here*". The panel shows mesh-block population, dwellings and category, plus the age pyramid of the parent SA1, labelled as *inherited*, never as the mesh block's own.
 3. **Reproduce the Lama & Sun indicators.** *(done, v0.3; the sensitivity checks below are still open)* Add elevation, sand %, land use, education and the income bracket. Compute FRI, Damage Index and IFRI with their AHP weights. Map them next to the pyramids, and run the sensitivity checks above.
 4. **MapLibre GL JS plus a real basemap.** *(done, v0.4: CARTO basemap, council filter, per-variable symbology; the Circle/Compare/Density modes and PMTiles are still open)* Replace the inline SVG map. SA1s become a vector source. Circles become draggable GeoJSON using Turf.js `circle` and `booleanPointInPolygon`. Basemap: OpenFreeMap or CARTO Positron/Dark Matter (no key), or MapTiler/Mapbox with a key kept out of git. Add the video's **Circle / Compare / Density** modes. Parcels mode depends on step 2.
-5. **SEIFA 2021 (IRSD / IRSAD)** at SA1, added to the table and choropleth.
+5. **SEIFA 2021 (IRSD / IRSAD / IER / IEO)** at SA1. *(done, v0.6)*
 5b. **All Greater Melbourne.** *(done, v0.3)* A second page for the 31 councils, sharing the pipeline.
 6. **Modelled depth.** If Chayn Sun shares the HEC-RAS October 2022 depth raster, replace the overlay proxy with depth bands (for example > 0.3 m, > 0.5 m, > 1.2 m, matching common vehicle and pedestrian stability thresholds). Otherwise use Melbourne Water's 1% AEP flood extent where licensing allows.
 7. **Second paper (Lee, Sun & Wachowicz).** Add its method once it is reviewed.
@@ -466,14 +507,32 @@ The cloud environment's network policy blocks the data hosts by default. To run 
 
 | Dataset | Unlocks | Source | Public? |
 |---|---|---|---|
-| SEIFA 2021 at SA1 (IRSD, IRSAD, IER, IEO) | Lee et al. vulnerability and exposure | ABS | Yes |
-| Vicmap Elevation DEM 10 m (to replace Copernicus 30 m) | Finer elevation, slope, curvature, drainage density | DataVic / Vicmap | Yes |
-| Microsoft Global ML Building Footprints (Australia) | Building density; residential-only filtering of address points | Microsoft (ODbL) | Yes |
-| Tree canopy extent | Vegetation density | DataVic (DELWP) | Yes |
+| ~~SEIFA 2021 at SA1 (IRSD, IRSAD, IER, IEO)~~ | **Added in v0.6**: four map variables, a panel row and the correlation matrix | ABS | Yes |
+| ~~Vicmap Elevation DEM 10 m~~ | **Added in v0.6** as the elevation source (image service), plus a shaded-relief terrain layer on the map. Slope, curvature and drainage density are still to do. | DataVic / Vicmap | Yes |
+| ~~Microsoft Global ML Building Footprints~~ | **Added in v0.6**: building count and roof coverage per SA1. Residential-only filtering of address points is still to do. | Microsoft (ODbL) | Yes |
+| ~~Tree canopy extent~~ | **Added in v0.6**: Vicmap tree extent 2020 (20 cm) as canopy % per SA1 | DataVic (DEECA) | Yes |
 | Vicmap road casement | Transport density | DataVic | Yes |
 | Maribyrnong catchment boundary | The 412-SA1 study area of Lee et al. | Melbourne Water / DEM watershed | Probably |
 | HEC-RAS October 2022 depth raster | Real hazard (depth, spread ≥ 0.15 m) instead of overlays | Chayn Sun (RMIT), on request | No |
 | Melbourne Water 1% AEP flood extent | Better proxy than planning overlays | Melbourne Water / Jacobs | Licensed |
+
+### Keeping the data current
+
+The Census is the anchor, and it is five-yearly. Everything else can be refreshed more often.
+
+| Input | Current vintage here | Next or newer release | How to update |
+|---|---|---|---|
+| Census age, sex, need, income (ABS GCP) | 2021 | **2026 Census**, first release expected mid-2027 | Change `GCP_URL` and the table names in `01_fetch.py`; the ASGS 2026 boundaries come with it |
+| Population between Censuses | 2021 | ABS **Estimated Resident Population**, annual, by SA2, age and sex | Could scale SA1 age structure to the latest SA2 totals (not built yet) |
+| SEIFA | 2021 | 2026 SEIFA, about a year after the Census | Change `SEIFA_URLS` |
+| Planning overlays (LSIO, FO, SBO) | **live**, fetched at build time | updated whenever an amendment is gazetted | Automatic on every build |
+| Address points (Vicmap Address) | **live** | weekly | Automatic |
+| Building footprints (Microsoft) | the release listed in `dataset-links.csv` (2026-08 at the time of writing) | periodic | Automatic: the manifest points at the newest tiles. Overture Maps buildings, which merge Microsoft, OpenStreetMap and others and are released monthly, are an alternative. |
+| Tree canopy | 2020 | the next statewide tree-extent capture | Change `CANOPY_ZIP` |
+| Elevation | Vicmap 10 m DEM (service) | LiDAR-derived 1–5 m DEMs via ELVIS for parts of Melbourne | A different fetch function; the build only needs GeoTIFFs |
+| Flood hazard | planning overlays | Melbourne Water flood mapping and Victorian Flood Database extents | Swap the `riv`/`sbo` polygons (see ARCHITECTURE §4) |
+
+**To refresh everything that is live,** re-run the GitHub Action (Actions → *Build and deploy* → *Run workflow*). Delete the cache first if you want to force fresh downloads. A scheduled monthly run would keep the live inputs current; add a `schedule:` trigger to `pages.yml` if you want that.
 
 ## Data sources and licences
 
@@ -482,4 +541,7 @@ The cloud environment's network policy blocks the data hosts by default. To run 
 - **ABS** Mesh Block Counts 2021 and Suburbs and Localities 2021: CC BY 4.0.
 - **Copernicus GLO-30 DEM:** © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA.
 - **SoilGrids 2.0 (ISRIC):** CC BY 4.0.
+- **ABS SEIFA 2021** (SA1): CC BY 4.0.
+- **Vicmap Elevation 10 m DEM** and **Vicmap Vegetation tree extent 2020**, via DataVic: CC BY 4.0, © State of Victoria.
+- **Microsoft Global ML Building Footprints:** ODbL.
 - **Lama & Sun (2026):** CC BY 4.0. The methodology and weights are cited and credited. None of the authors' data is redistributed here.

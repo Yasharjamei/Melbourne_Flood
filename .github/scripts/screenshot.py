@@ -20,6 +20,13 @@ with sync_playwright() as p:
             pg.screenshot(path=out, full_page=True); print(out); continue
         pg.screenshot(path=out)
         print(out, "residents in A:", pg.inner_text("#popA"), "| legend:", pg.inner_text("#legend").replace("\n", " | ")[:200])
+        if "metro" not in src:  # a second view: SEIFA disadvantage with the 10 m terrain relief on
+            if pg.query_selector('#metric option[value="seifa0"]'):   # SEIFA is optional
+                pg.select_option("#metric", "seifa0")
+            pg.check("#relief"); pg.select_option("#lgasel", "Maribyrnong")
+            pg.wait_for_timeout(6000); pg.screenshot(path=out.replace(".png", "_seifa_relief.png"))
+            print("  variables:", pg.eval_on_selector_all("#metric option", "o => o.length"),
+                  "| legend:", pg.inner_text("#legend").replace("\n", " | ")[:160])
         if "metro" in src:  # a second view: IFRI, zoomed to one council
             pg.select_option("#metric", "ls5"); pg.select_option("#lgasel", "Casey")
             pg.wait_for_timeout(5000); pg.screenshot(path=out.replace(".png", "_casey_ifri.png"))

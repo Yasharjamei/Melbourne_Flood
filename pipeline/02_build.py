@@ -257,13 +257,97 @@ def sample(paths, scale=1.0):
         return None
     ok = ~np.isnan(v); w = mb["area"].where(ok, 0)
     return (pd.Series(np.nan_to_num(v) * w).groupby(mb["i"]).sum() / w.groupby(mb["i"]).sum()).reindex(range(len(sa)))
-elev = sample(sorted(glob.glob("data/raw/shared/dem_*.tif")))
+elev = sample(sorted(glob.glob(f"{RAW}/dem10_*.tif")))            # Vicmap 10 m DEM, as the paper used
+if elev is not None:
+    NOTES.append("Elevation: Vicmap Elevation 10 m DEM (as in the paper), sampled at mesh-block points.")
+else:
+    elev = sample(sorted(glob.glob("data/raw/shared/dem_*.tif")))
+    NOTES.append("Elevation: Copernicus GLO-30 surface model, 30 m (the Vicmap 10 m DEM was unavailable for this build)."
+                 if elev is not None else "Elevation unavailable for this build, so the elevation term is left out of Exposure.")
 sand = sample(glob.glob(f"{RAW}/sand.tif"), 0.1)  # SoilGrids g/kg -> %
-NOTES.append("Elevation: Copernicus GLO-30 surface model, 30 m (the paper used the Vicmap 10 m DEM)." if elev is not None
-             else "Elevation unavailable for this build, so the elevation term is left out of Exposure.")
 NOTES.append("Sand: SoilGrids 250 m, 0-5 cm (the paper used the 30 m Victorian soil grid)." if sand is not None
              else "Soil sand % unavailable for this build, so the sand term is left out of Exposure.")
 NOTES.append("Flood depth: share of each SA1's residents inside LSIO/FO/SBO planning overlays (the paper used HEC-RAS depth).")
+
+# ---------------- tree canopy: zonal mean of the 10 m canopy grids per mesh block, area-weighted to SA1
+def canopy_share():
+    tifs = sorted(glob.glob("data/raw/shared/canopy10/*.tif"))
+    if not tifs:
+        return None
+    import rasterio
+    from rasterio.features import rasterize
+    tot, cnt = np.zeros(len(mb)), np.zeros(len(mb))
+    for t in tifs:
+        with rasterio.open(t) as r:
+            m = mb.to_crs(r.crs)
+            b = r.bounds
+            k = m.intersects(shapely.box(b.left, b.bottom, b.right, b.top)).values
+            if not k.any():
+                continue
+            a = r.read(1)
+            ids = rasterize(((g, i + 1) for i, g in zip(np.flatnonzero(k), m.geometry.values[k])),
+                            out_shape=a.shape, transform=r.transform, fill=0, dtype="int32")
+            ok = (ids > 0) & (a != 255)
+            tot += np.bincount(ids[ok] - 1, weights=a[ok], minlength=len(mb))
+            cnt += np.bincount(ids[ok] - 1, minlength=len(mb))
+    if cnt.sum() == 0:
+        return None
+    mbc = np.where(cnt > 0, tot / np.maximum(cnt, 1), np.nan)            # % canopy per mesh block
+    w = mb["area"].where(cnt > 0, 0)
+    out = (pd.Series(np.nan_to_num(mbc) * w).groupby(mb["i"]).sum() / w.groupby(mb["i"]).sum()).reindex(range(len(sa)))
+    print(f"canopy: {len(tifs)} tiles, {int((cnt > 0).sum())} of {len(mb)} mesh blocks covered, "
+          f"study mean {np.nanmean(out):.1f}%")
+    return out
+try:
+    canopy = canopy_share()
+except Exception as e:
+    print("WARNING could not compute tree canopy:", e); canopy = None
+if canopy is not None:
+    NOTES.append("Tree canopy: Vicmap Vegetation tree extent (2020, 20 cm), as % of each SA1's area.")
+
+# ---------------- building footprints: count and roof coverage per SA1
+bcov = bcount = None
+BLD = f"{RAW}/buildings.npy"
+if os.path.exists(BLD):
+    try:
+        b = np.load(BLD)
+        bp = gpd.GeoDataFrame({"area": b[:, 2]}, geometry=gpd.points_from_xy(b[:, 0], b[:, 1]), crs=4326).to_crs(CRS)
+        j = gpd.sjoin(bp, sa[["geometry"]], predicate="within", how="inner")
+        j = j[~j.index.duplicated()]
+        bcount = j.groupby("index_right").size().reindex(range(len(sa))).fillna(0)
+        bcov = (j.groupby("index_right")["area"].sum().reindex(range(len(sa))).fillna(0) / sa["area"]).clip(0, 1)
+        print(f"buildings: {len(b):,} read, {len(j):,} in study SA1s, mean roof coverage {bcov.mean():.1%}")
+        NOTES.append("Buildings: Microsoft Global ML Building Footprints (machine-learned from Bing imagery), "
+                     "counted by footprint centroid.")
+    except Exception as e:
+        print("WARNING could not use building footprints:", e); bcov = bcount = None
+
+# ---------------- SEIFA 2021 deciles by SA1 (1 = most disadvantaged tenth of Australia)
+SEIFA_NAMES = [("IRSD", "Disadvantage"), ("IRSAD", "Advantage and Disadvantage"),
+               ("IER", "Economic Resources"), ("IEO", "Education and Occupation")]
+seifa = None
+if os.path.exists("data/raw/shared/seifa_sa1_2021.xlsx"):
+    try:
+        df = pd.read_excel("data/raw/shared/seifa_sa1_2021.xlsx", sheet_name="Table 1", header=None, dtype=str)
+        hdr = next(r for r in range(min(15, len(df))) if df.iloc[r].astype(str).str.contains("Disadvantage").any())
+        names = df.iloc[hdr].ffill().astype(str)
+        sub = df.iloc[hdr + 1].astype(str)
+        code_col = next(c for c in df.columns if df[c].astype(str).str.fullmatch(r"\d{11}").sum() > 1000)
+        cols = {}
+        for key, words in SEIFA_NAMES:
+            m = [c for c in df.columns if words in names[c] and ("Decile" in sub[c])
+                 and not (key == "IRSD" and "Advantage" in names[c])]
+            if m:
+                cols[key] = m[0]
+        body = df[df[code_col].astype(str).str.fullmatch(r"\d{11}")]
+        seifa = {k: pd.to_numeric(body[c], errors="coerce").groupby(body[code_col].values).first() for k, c in cols.items()}
+        got = {k: int(v.reindex(codes).notna().sum()) for k, v in seifa.items()}
+        print(f"SEIFA: decile columns {list(cols)}; SA1s matched {got}")
+        if not cols:
+            raise ValueError("no decile columns found")
+        NOTES.append("SEIFA 2021 (ABS) deciles by SA1: 1 = most disadvantaged 10% of Australian SA1s.")
+    except Exception as e:
+        print("WARNING could not read SEIFA:", e); seifa = None
 
 # ---------------- Lama & Sun (2026) indices
 dwell = g36[dwell_cols].sum(axis=1).values
@@ -299,10 +383,46 @@ print(f"Exposure max {dim['exposure'].max():.3f} | FRI {FRI.min():.3f} to {FRI.m
 
 # ---------------- Lama & Sun GWR / MGWR (Table 5, Fig. 4), two-council study area only
 stats = None
-if ST.get("mgwr"):
-    from lamasun_stats import run as run_mgwr
-    rp = sa.representative_point()
-    stats = run_mgwr(ind, np.column_stack([rp.x.values, rp.y.values]))
+def regressions():
+    """GWR/MGWR for this study (None when the study doesn't run them)."""
+    stats = None
+    if ST.get("mgwr") == "SA1":
+        from lamasun_stats import run as run_mgwr
+        rp = sa.representative_point()
+        stats = run_mgwr(ind, np.column_stack([rp.x.values, rp.y.values]))
+        stats["unit"] = "SA1"
+    elif ST.get("mgwr") == "SA2":
+        # MGWR's cost grows with n^2 (474 SA1s: ~7 min; 11,293 would take days), so the metro model
+        # is fitted on SA2s (~300 suburbs-sized units). Counts are summed, the flood share is
+        # resident-weighted, and the physical indicators (elevation, sand, land use) are area-weighted.
+        from lamasun_stats import run as run_mgwr
+        key = sa["sa2_name_2021"].values
+        w_area, w_pop = sa["area"].values, ind["pop"].values.astype(float)
+        agg = {}
+        for c in ind.columns:
+            v = ind[c].values.astype(float)
+            if c == "flood":
+                agg[c] = pd.Series(v * w_pop).groupby(key).sum() / pd.Series(w_pop).groupby(key).sum()
+            elif c in ("elev", "sand", "urban"):
+                ok = np.isfinite(v)
+                agg[c] = pd.Series(np.where(ok, v, 0) * w_area * ok).groupby(key).sum() / pd.Series(w_area * ok).groupby(key).sum()
+            else:
+                agg[c] = pd.Series(v).groupby(key).sum()
+        ind2 = pd.DataFrame(agg)
+        ind2 = ind2[ind2["pop"] > 0]
+        sa2 = sa.assign(k=key).dissolve("k").loc[ind2.index]
+        rp2 = sa2.representative_point()
+        print(f"MGWR on {len(ind2)} SA2s (from {len(sa)} SA1s)")
+        stats = run_mgwr(ind2.reset_index(drop=True), np.column_stack([rp2.x.values, rp2.y.values]))
+        stats["unit"] = "SA2"
+        stats["units"] = [{"name": n} for n in ind2.index]
+        stats["_geoms"] = list(sa2.geometry.values)          # simplified and exported below
+    return stats
+try:
+    stats = regressions()
+except Exception as e:                        # a failed model must not take the maps down with it
+    print("WARNING GWR/MGWR failed, analysis page will say so:", repr(e)[:300]); stats = None
+    NOTES.append("GWR/MGWR could not be fitted for this build.")
 
 r4 = lambda v: None if not np.isfinite(v) else round(float(v), 4)
 recs = []
@@ -321,6 +441,10 @@ for i, c in enumerate(codes):
         d_other=int(g36.loc[c, "OPDs_Other_dwelling_Tot_Dwgs"]), inc=int(g2.loc[c, "Median_tot_hhd_inc_weekly"]),
         riv=round(float(rivA[i]), 4), sbo=round(float(sboA[i]), 4),
         fl=round(float(anyA[i]), 4), fa=round(float(areaA[i]), 4),
+        can=None if canopy is None or not np.isfinite(canopy.iloc[i]) else round(float(canopy.iloc[i]), 1),
+        bcov=None if bcov is None else round(float(bcov.iloc[i]), 4), bn=None if bcount is None else int(bcount.iloc[i]),
+        seifa=None if seifa is None else [None if k not in seifa or pd.isna(seifa[k].get(c)) else int(seifa[k].get(c))
+                                          for k, _ in SEIFA_NAMES],
         ls=[r4(dim["exposure"][i]), r4(dim["sensitivity"][i]), r4(dim["adaptive"][i]), r4(FRI[i]), r4(DMG[i]), r4(IFRI[i])]))
 
 # ---------------- geometry for the browser
@@ -339,6 +463,9 @@ def gj(geom, t=tol):
     rnd = lambda o: [rnd(x) for x in o] if isinstance(o, (list, tuple)) else round(o, 5)
     m = g.__geo_interface__
     return {"type": m["type"], "coordinates": rnd(m["coordinates"])}
+if stats and "_geoms" in stats:
+    for u, g in zip(stats["units"], stats.pop("_geoms")):
+        u["g"] = gj(g, tol * 3)
 p4 = mb.representative_point().to_crs(4326)
 mbo = mb.assign(x=p4.x.round(5), y=p4.y.round(5))
 mbo = mbo[(mbo["w"] > 0) | (mbo["riv"] + mbo["sbo"] > 0)]

@@ -239,3 +239,20 @@ Both were tested against a simulated capped server and a truncated file.
 - **Largest single correction:** a Footscray SA1 with 48% of its area but about 1% of its residents in an overlay.
 - **Regression:** MGWR R² 0.444 vs GWR 0.218. Elevation is significant everywhere. Sand was not dropped this time, because GWR chose a wider bandwidth.
 
+## 14. v0.6: SEIFA, canopy, buildings, 10 m DEM, metro MGWR (2026-09-27)
+
+**Inputs offered by the owner, and what they turned out to be:**
+
+| Offered | What it is | Used as |
+|---|---|---|
+| SEIFA 2021 (attached files) | The attachments didn't reach the session, so the ABS workbook is downloaded directly instead | IRSD/IRSAD/IER/IEO deciles |
+| Vicmap 10 m DEM (WMTS link) | **Shaded relief: a picture, not elevation values** | A terrain toggle on the map. Values come from the separate `Vicmap_10m_DEM/ImageServer` |
+| Tree canopy (S3 zip) | 2 GB of 20 cm canopy/no-canopy GeoTIFFs in VicGrid 2020, one per 1:100k half-sheet | Remote-zip reads of only the overlapping tiles, averaged to 10 m (tested locally: 2 tiles for the two councils in 2.5 minutes) |
+| Microsoft building footprints | Per-quadkey line-delimited GeoJSON; the 2026-08 release | Count and roof coverage per SA1 |
+
+**Metro MGWR.** At SA1 level it isn't feasible: 474 SA1s take ~7 minutes, and cost grows with n², so 11,293 would take days. It is fitted on SA2s instead. Two library defaults broke on smaller unit sets and are now set explicitly:
+- the bandwidth search floor, 40 + 2k = 62
+- MGWR's own initial search
+
+**Statewide.** Possible, but not built. The tree-extent index covers all of Victoria (17 archives). An all-Victoria SA1 page would be about twice the metro page, around 30 MB, so it needs vector tiles first. The regression would run on SA2s (~520) or per region.
+
