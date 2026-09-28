@@ -75,6 +75,14 @@ jobs:
       - name: Circle check
         run: python .github/scripts/check_circles.py metro
 
+      # A captioned ~20 s demo of the real map (shots/demo.gif and demo.mp4, in the screenshots
+      # artifact) for sharing. Never blocks a deploy.
+      - name: Demo recording
+        continue-on-error: true
+        run: |
+          pip install pillow
+          python .github/scripts/demo_gif.py
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
