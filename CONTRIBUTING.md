@@ -79,7 +79,8 @@ Git never lets two worktrees check out the same branch, so each worktree gets a 
 git fetch origin main
 git worktree add -b wt/<topic> ../mf-<topic> origin/main
 ln -s "$PWD/data/raw" ../mf-<topic>/data/raw     # share the ~1 GB download cache
-#   Windows (admin or developer mode): mklink /D ..\mf-<topic>\data\raw %CD%\data\raw
+#   Windows (Command Prompt, no admin needed; quote paths that contain spaces):
+#     mklink /J "..\mf-<topic>\data\raw" "%CD%\data\raw"
 cd ../mf-<topic>
 
 # ... edit, run the checks in section 3, commit ...
