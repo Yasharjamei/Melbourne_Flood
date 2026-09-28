@@ -1,7 +1,7 @@
 name: Build and deploy to GitHub Pages
 
 # Work lands directly on main (no pull requests, no other branches). Every push to main:
-# fetch -> build -> bundle -> screenshot check -> publish dist/ to GitHub Pages.
+# fetch -> build -> bundle -> screenshot check -> publish dist/ to GitHub Pages -> clean up old runs.
 # If any step fails (including a page error in the screenshot check), nothing is deployed and
 # the live site keeps its last good version.
 # Needs Settings -> Pages -> Source: "GitHub Actions".
@@ -66,6 +66,7 @@ jobs:
           name: screenshots
           path: shots/
           if-no-files-found: ignore
+          retention-days: 14   # the clean-up job deletes older runs anyway
 
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -80,3 +81,42 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  # Only the newest site is ever live; this removes the history that piles up behind it.
+  # Runs only after a successful deploy, so a failed build never deletes the last good record.
+  # A clean-up error is logged as a warning and never fails the run: the site is already live.
+  cleanup:
+    needs: deploy
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write        # delete old workflow runs (and their logs and artifacts)
+      deployments: write    # delete old github-pages deployment records
+    env:
+      KEEP_RUNS: 5          # newest completed runs to keep, for their logs; 1 = only the latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const {owner, repo} = context.repo, keep = Number(process.env.KEEP_RUNS);
+            const newest = (a, b) => new Date(b.created_at) - new Date(a.created_at);
+            const tryDo = async (what, f) => { try { await f(); return 1; } catch (e) { core.warning(`${what}: ${e.message}`); return 0; } };
+
+            // 1. Deployment records: keep only the one just made (the live site).
+            const deps = (await github.paginate(github.rest.repos.listDeployments,
+              {owner, repo, environment: 'github-pages', per_page: 100})).sort(newest);
+            let nd = 0;
+            for (const d of deps.slice(1)) nd += await tryDo(`deployment ${d.id}`, async () => {
+              await github.rest.repos.createDeploymentStatus({owner, repo, deployment_id: d.id, state: 'inactive'});
+              await github.rest.repos.deleteDeployment({owner, repo, deployment_id: d.id});
+            });
+
+            // 2. Workflow runs of this workflow: keep the newest KEEP_RUNS completed ones.
+            // This run is still in progress, so it is never in the list.
+            const runs = (await github.paginate(github.rest.actions.listWorkflowRuns,
+              {owner, repo, workflow_id: 'pages.yml', status: 'completed', per_page: 100})).sort(newest);
+            let nr = 0;
+            for (const r of runs.slice(Math.max(keep - 1, 0)))
+              nr += await tryDo(`run ${r.id}`, () => github.rest.actions.deleteWorkflowRun({owner, repo, run_id: r.id}));
+
+            core.info(`kept 1 of ${deps.length} deployments (deleted ${nd}); deleted ${nr} of ${runs.length} older runs`);
+

@@ -4,6 +4,9 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 
 ## [Unreleased]
 
+### Changed
+- **Old deployments and runs are cleaned up.** After each successful deploy, a `cleanup` job deletes the old `github-pages` deployment records and all but the 5 newest workflow runs (with their logs and artifacts). Screenshot artifacts are kept 14 days instead of 90. Only one version of the site was ever live; this removes the history behind it.
+
 ### Fixed
 - **Light mode now matches dark mode.** In light mode the basemap's roads and buildings were drawn over the coloured SA1s, because the light basemap (Positron) has a waterway label ahead of its road layers and the map layers were inserted before the first label. They now go above every basemap road and building layer and below the labels, in both themes.
 

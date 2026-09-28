@@ -98,7 +98,7 @@ git pull --ff-only origin main
 - **Pushing:** if `git push origin HEAD:main` is rejected, someone pushed first. Rebase on `origin/main` and push again.
 
 After the push:
-1. Watch the run under **Actions**. If it fails, nothing is deployed and the live site keeps its last good version. Fix the problem in a worktree and push again.
+1. Watch the run under **Actions**. Only the 5 newest runs are kept; older runs and old deployment records are deleted after each successful deploy, so read a failed run's log before the next successful push removes it. If it fails, nothing is deployed and the live site keeps its last good version. Fix the problem in a worktree and push again.
 2. A green run deploys to https://yasharjamei.github.io/Melbourne_Flood/.
 
 **External contributors:** fork the repository and send a patch or open an issue describing the change. The owner applies it to `main`.

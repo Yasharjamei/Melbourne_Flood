@@ -325,3 +325,27 @@ It is documented as riverine 1% AEP. The newer DEECA statewide layer, which is v
 
 **Making the rule last.** `CLAUDE.md` states the rule, plus the owner-only commit authorship, so it survives new sessions. Chat instructions alone do not. This change was itself made in a worktree (`../mf-worktree-docs`) as the first use of the workflow.
 
+## 18. Keep only the latest Pages deployment (2026-09-28)
+
+**Request:** keep only the latest GitHub Pages site and delete the old ones.
+
+**What "old ones" are.** Pages serves exactly one version: each deploy replaces the whole site, so old versions are never reachable. What piles up is history: a `github-pages` deployment record per deploy, one workflow run per push (33 by then, each with logs), a Pages artifact per run, and a screenshots artifact kept 90 days.
+
+**Decision:** a `cleanup` job in `pages.yml`, after `deploy`, using `actions/github-script`.
+- Deployment records: all but the newest are marked inactive, then deleted.
+- Workflow runs: completed runs beyond the newest `KEEP_RUNS` are deleted, which takes their logs and artifacts with them.
+- It needs `actions: write` and `deployments: write`, granted to that job only.
+
+**Why 5 runs, not 1.** A failed run's log is the only record of why it failed. With 1, the next green run would delete the evidence. Set `KEEP_RUNS: 1` for strictly latest-only.
+
+**Safety.**
+- The job runs only after a successful deploy, so a broken build never removes the last good deployment record.
+- The current run is still in progress, so it is never in the list it deletes from.
+- Every deletion is wrapped so a failure warns and never fails the run.
+- The selection logic was tested against mock data: 4 deployments → 3 deleted, newest kept; 7 completed runs → 3 deleted, 4 kept plus the current run.
+- The GitHub API side can't be tested from the sandbox; the first real run's log shows the counts.
+
+**Not touched:**
+- The `/metro/` redirect pages, which keep old links working.
+- `snapshots/2026-09-25-prototype.html`, which is a file in the repository, not a deployed page.
+
