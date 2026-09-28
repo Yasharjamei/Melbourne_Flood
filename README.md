@@ -33,7 +33,7 @@ The project applies two flood-resilience papers to the same 474 SA1 "urban units
 | Max Exposure (paper: 0.043 of a possible 0.047) | 0.047 | 0.047 |
 | Tree canopy (Vicmap 2020, 20 cm → 10 m) | | 76 tiles, all 58,563 mesh blocks covered, mean 10.9% |
 | Road reserves (Vicmap road casement) | | 119,123 polygons, mean 22.3% of SA1 area |
-| Building footprints (Microsoft, 2026-02 release) | | 1.62 M in study SA1s, mean roof coverage 20.3% |
+| Building footprints (Microsoft, release listed in `dataset-links.csv` at build time) | | 1.62 M in study SA1s, mean roof coverage 20.3% |
 | SEIFA 2021 deciles matched | | 10,948 of 11,293 SA1s (ABS doesn't publish SEIFA for SA1s with very few usual residents or mostly non-private dwellings) |
 | River basins / creek catchments | | 5 basins / 84 creek catchments; 11,277 SA1s with a drainage chain |
 | GWR / MGWR R² | 0.232 / 0.451 (474 SA1s) | 0.338 / 0.408 (353 SA2s) |
@@ -93,7 +93,7 @@ Neither paper publishes its HEC-RAS flood output. Lama & Sun's data is "availabl
 - **Every SA1 a circle touches is shaded** in that circle's colour, darker where more of its residents are counted. The estimate's make-up is visible on the map, and the tooltip gives the exact share.
 - **Overlaid age–sex pyramid** in **percentages**, not counts, so a denser circle doesn't just look bigger. A is filled, B is outlined, and the two-council average sits in grey behind.
 - **Indicator table** comparing A and B: aged 75+, aged 0–4, need for assistance, long-term health condition, no car, limited English, unemployment, dwellings in 4+ storey blocks, median household income, and estimated residents inside riverine (LSIO + Floodway) and overland-flow (SBO) overlays.
-- **Basemap and map engine:** MapLibre GL JS (WebGL) over a CARTO basemap (Positron in light mode, Dark Matter in dark mode, © OpenStreetMap contributors). Data layers draw beneath the basemap's street and place labels. If the basemap can't load, the page falls back to a plain background, and a toggle hides the basemap.
+- **Basemap and map engine:** MapLibre GL JS (WebGL) over a CARTO basemap (Positron in light mode, Dark Matter in dark mode, © OpenStreetMap contributors). Data layers draw above the basemap's roads and buildings and beneath its street and place labels, in both themes (until the 2026-09-28 fix, the light basemap's roads and buildings covered the data; see the changelog). The grey building shapes visible when zoomed in are OpenStreetMap buildings from the basemap, not the Microsoft footprints used for roof coverage. If the basemap can't load, the page falls back to a plain background, and a toggle hides the basemap.
 - **Choropleth** of every SA1, chosen from one grouped "Show on map" menu. Each variable family has its own symbology:
 
   | Variable | ColorBrewer scheme | Classes |
@@ -219,6 +219,10 @@ One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
    - "Residents in overlay" uses the same weights, multiplied by each mesh block's overlay share.
    - Age–sex shares are assumed constant within an SA1, because mesh blocks carry no age data.
 6. **Suburbs.** Each SA1 is assigned to an ABS Suburb and Locality (SAL 2021) by its representative point.
+7. **Land-cover variables (v0.6).** Each is one value per SA1, shown as a map variable and a panel row.
+   - **Tree canopy:** the Vicmap tree extent 2020 (20 cm) is averaged to 10 m, then averaged over each mesh block and area-weighted to the SA1.
+   - **Road reserves:** Vicmap road casement polygons are rasterised at 5 m; the value is the share of the SA1's area in road reserve.
+   - **Roof coverage:** each Microsoft building footprint is reduced to its centroid and footprint area. Centroids are joined to SA1s, and roof coverage = Σ footprint area ÷ SA1 area, capped at 100%. The building count per SA1 is kept as `bn`. The footprints themselves are not drawn on the map; bundling 1.62 M polygons would roughly double the page size, so showing them would need vector tiles.
 
 ## How accurate is the data, and how it was tested
 
@@ -284,6 +288,11 @@ Lower R² is expected: the response variable is a stand-in for their flood depth
 - **No unit-test suite.** The checks above are integration checks on live data.
 - **Circles apportion; they don't observe.** A circle's age mix is its SA1s' mix weighted by residents. Below roughly 500 m radius, treat pyramids as indicative.
 - **Address points count every property equally,** so a house, a flat and a shop each count as one. Commercial addresses in overlays can slightly inflate exposure in mixed-use blocks.
+- **Roof coverage is approximate.**
+  - It is plan (outline) area, not the surface of a sloped roof.
+  - A building straddling two SA1s counts wholly in the one holding its centroid, which matters most for large buildings in small inner-city SA1s.
+  - The footprints are machine-learned: terraces can merge into one block, small sheds and carports can be missed, and imagery dates vary by tile. Not measured here.
+  - The denominator is the whole SA1, roads and parks included, so it is not the roof share of private land.
 - **Live sources change.** DataVic republishes overlays when planning amendments are gazetted, so a rebuild can differ slightly from the published version.
 
 ## How this maps onto the papers

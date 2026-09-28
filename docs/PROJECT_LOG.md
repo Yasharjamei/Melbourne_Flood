@@ -305,3 +305,13 @@ Both were tested against a simulated capped server and a truncated file.
 
 It is documented as riverine 1% AEP. The newer DEECA statewide layer, which is vector tiles only, may close the gap.
 
+## 16. Light-mode layer order; roof coverage explained (2026-09-28)
+
+**Light and dark mode looked different.** Two causes, one a bug:
+- **Bug (fixed in 8e8c95c):** data layers were inserted before the basemap's first symbol layer. In Dark Matter that is layer 66 of 93, after every road and building. In Positron it is layer 13 (`waterway_label`), before the roads and buildings, so in light mode they were drawn over the choropleth. Layers now go before the first label that follows the last non-label layer: `watername_ocean` in Positron, `waterway_label` in Dark Matter. The rule was checked against both style files from CartoDB/basemap-styles; the basemap host is not reachable from the development sandbox, so the rendered result is checked by CI screenshots and on the live site.
+- **Not a bug:** the two screenshots compared had different toggles (Flood overlays on in one, off in the other).
+
+**Roof coverage vs building footprints.** Roof coverage is derived from the Microsoft footprints (Σ footprint area ÷ SA1 area, by centroid) but the footprints are not drawn. The grey buildings on the basemap are OpenStreetMap. Drawing the footprints was considered and not done: ~1.62 M polygons would roughly double the 18.9 MB page, so it would need vector tiles (PMTiles) rather than a bundled page. The definition and its limits are now in the README (Method step 7, limits section).
+
+**Repository hygiene left to the owner.** Deleting the remote branches (`claude/ecstatic-albattani-003dlt`, `v0.5-address-exposure`, `v0.6-more-open-data`, `ci-preview`) and rewriting history with `clean_history.py` were both blocked for the assistant in this environment. The owner chose to leave them for now, so those branches and the early commit trailers still exist. Pull requests #1–#6 cannot be deleted on GitHub in any case.
+

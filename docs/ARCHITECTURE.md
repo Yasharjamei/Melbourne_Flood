@@ -169,7 +169,7 @@ This is one file, with CSS at the top, then markup, then a script. The script's 
 | state | `SAVED` | restores the variable, filter, circles and view across a theme switch (sessionStorage) |
 | symbology | `METRICS` | one entry per map variable: key, label, value function, formatter, ColorBrewer ramp `r`, `div` for diverging |
 | filters | `activeLga`, `activeSub`, `visible(i)`, `fillSuburbs()`, `applyFilter()`, `movePinsInside()` | council → suburb slicer |
-| map | `map`, sources `sa1`, `lga`, `sal`, `riv`, `sbo` | MapLibre layers are placed under the basemap's labels |
+| map | `map`, sources `sa1`, `lga`, `sal`, `riv`, `sbo` | MapLibre layers are inserted before the first label that follows the basemap's last non-label layer: above its roads and buildings, below its labels. (Inserting before the *first* label broke light mode, because Positron has a waterway label ahead of its roads.) |
 | classes | `recolour()`, `drawLegend()` | quintile breaks (or ±3 classes for diverging) over the **visible** SA1s |
 | aggregation | `agg(area)`, `sumW()`, `allAgg()` | what a circle counts |
 | tint | `paintTint()` | feature-state opacity = share of each SA1's residents inside a circle |
