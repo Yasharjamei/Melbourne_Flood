@@ -254,7 +254,11 @@ loadStyle().then(style=>{
   map.addControl(new maplibregl.NavigationControl({showCompass:false}),'bottom-right');
   map.on('load',()=>{
     baseLayers=map.getStyle().layers.filter(l=>l.type!=='background').map(l=>l.id);
-    const sym=map.getStyle().layers.find(l=>l.type==='symbol');
+    // Insert our layers above every basemap road/building layer and below the labels. The
+    // first symbol layer is not enough: Positron (light) puts a waterway label before its
+    // roads and buildings, which then drew over the choropleth in light mode only.
+    const SL=map.getStyle().layers, lastGeom=SL.map(l=>l.type!=='symbol').lastIndexOf(true);
+    const sym=SL.slice(lastGeom+1).find(l=>l.type==='symbol');
     const before=sym?sym.id:undefined, add=l=>map.addLayer(l,before);
     map.addSource('sa1',{type:'geojson',data:fcSA});
     map.addSource('riv',{type:'geojson',data:{type:'Feature',geometry:D.riv,properties:{}}});

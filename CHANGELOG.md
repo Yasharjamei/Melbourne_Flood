@@ -4,6 +4,9 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 
 ## [Unreleased]
 
+### Fixed
+- **Light mode now matches dark mode.** In light mode the basemap's roads and buildings were drawn over the coloured SA1s, because the light basemap (Positron) has a waterway label ahead of its road layers and the map layers were inserted before the first label. They now go above every basemap road and building layer and below the labels, in both themes.
+
 ### Changed
 - **One branch, no pull requests.** Work lands directly on `main`. Every push builds, runs a headless-browser check of both pages, and deploys only if everything passed. Screenshots are attached to each run as an artifact instead of being pushed to a `ci-preview` branch.
 - This repository's git identity is set to the owner, so every commit, including cherry-picks, is authored and committed by the owner.
