@@ -8,6 +8,7 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 - **Light mode now matches dark mode.** In light mode the basemap's roads and buildings were drawn over the coloured SA1s, because the light basemap (Positron) has a waterway label ahead of its road layers and the map layers were inserted before the first label. They now go above every basemap road and building layer and below the labels, in both themes.
 
 ### Documentation
+- **Changes are made in git worktrees.** CONTRIBUTING §5 gives the workflow: a local-only `wt/<topic>` branch per worktree, pushed straight to `main`, so GitHub still has one branch. `CLAUDE.md` records the same rules, plus commit authorship, for AI assistants. `.gitignore` now ignores `data/raw` when it is a link to a shared cache.
 - README Method step 7 defines tree canopy, road reserves and roof coverage; the limits section lists what roof coverage does not capture; the basemap note says the grey building shapes are OpenStreetMap, not the Microsoft footprints.
 
 ### Changed

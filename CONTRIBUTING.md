@@ -70,11 +70,36 @@ There's no unit-test suite yet. The checks are:
 
 ## 5. Getting a change onto `main`
 
-The repository keeps **one branch, `main`**, and doesn't use pull requests.
-1. Run the checks in section 3 locally.
-2. Commit to `main` with a clear message, and push.
-3. Watch the run under **Actions**. If it fails, nothing is deployed and the live site keeps its last good version. Fix the problem and push again.
-4. A green run deploys to https://yasharjamei.github.io/Melbourne_Flood/.
+The repository keeps **one branch on GitHub, `main`**, and doesn't use pull requests. Every change is made in its own **git worktree**: a second working folder beside your main checkout. Your main checkout stays clean on `main`, and two changes can be in progress at once without stashing.
+
+Git never lets two worktrees check out the same branch, so each worktree gets a **local-only** branch named `wt/<topic>`. It is never pushed; the work reaches GitHub as `main`.
+
+```bash
+# from your main checkout (Melbourne_Flood/)
+git fetch origin main
+git worktree add -b wt/<topic> ../mf-<topic> origin/main
+ln -s "$PWD/data/raw" ../mf-<topic>/data/raw     # share the ~1 GB download cache
+#   Windows (admin or developer mode): mklink /D ..\mf-<topic>\data\raw %CD%\data\raw
+cd ../mf-<topic>
+
+# ... edit, run the checks in section 3, commit ...
+
+git fetch origin main && git rebase origin/main  # only if main moved meanwhile
+git push origin HEAD:main                        # fast-forwards main; never use --force
+
+cd ../Melbourne_Flood
+git worktree remove ../mf-<topic>
+git branch -D wt/<topic>                         # local only; nothing to delete on GitHub
+git pull --ff-only origin main
+```
+
+- **Never push a `wt/` branch** (`git push origin wt/...`). That would put a second branch back on GitHub.
+- **The data cache:** `data/raw` is ignored by git whether it is a folder or a link, so the link is never committed. Without it, the first pipeline run in a new worktree downloads everything again.
+- **Pushing:** if `git push origin HEAD:main` is rejected, someone pushed first. Rebase on `origin/main` and push again.
+
+After the push:
+1. Watch the run under **Actions**. If it fails, nothing is deployed and the live site keeps its last good version. Fix the problem in a worktree and push again.
+2. A green run deploys to https://yasharjamei.github.io/Melbourne_Flood/.
 
 **External contributors:** fork the repository and send a patch or open an issue describing the change. The owner applies it to `main`.
 

@@ -188,7 +188,7 @@ This page reads `D.stats`, which is `null` for metro, and `D.sa1[].ls`. It draws
 
 ### 2.8 CI: `.github/workflows/pages.yml`
 
-The workflow runs on every push to `main` and on manual dispatch. The repository has one branch and no pull requests.
+The workflow runs on every push to `main` and on manual dispatch. The repository has one branch on GitHub and no pull requests; changes are made in local git worktrees and pushed to `main` (CONTRIBUTING §5).
 
 1. It restores the `data/raw` cache. The key is a hash of `01_fetch.py` and `config.py`, so changing either refetches everything. The first full fetch takes about 70 minutes.
 2. It fetches and builds `metro`, then bundles the map, the analysis page and the `/metro/` redirects.

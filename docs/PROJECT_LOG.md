@@ -315,3 +315,13 @@ It is documented as riverine 1% AEP. The newer DEECA statewide layer, which is v
 
 **Repository hygiene left to the owner.** Deleting the remote branches (`claude/ecstatic-albattani-003dlt`, `v0.5-address-exposure`, `v0.6-more-open-data`, `ci-preview`) and rewriting history with `clean_history.py` were both blocked for the assistant in this environment. The owner chose to leave them for now, so those branches and the early commit trailers still exist. Pull requests #1–#6 cannot be deleted on GitHub in any case.
 
+## 17. Work in git worktrees from here on (2026-09-28)
+
+**Decision:** every change is made in its own git worktree, following CONTRIBUTING §5.
+
+**Why local-only branches.** Git refuses to check out one branch in two worktrees, so each worktree needs its own branch. Those `wt/<topic>` branches stay local: the work is pushed with `git push origin HEAD:main`, and the branch is deleted afterwards. GitHub keeps one branch, as decided in §15.
+
+**Snag found while setting it up.** A worktree shares the ~1 GB download cache through a link to the main checkout's `data/raw`. `.gitignore` had `data/raw/`, and the trailing slash matches only real folders, so the link showed as an untracked file and could have been committed. The pattern is now `data/raw`, which matches both.
+
+**Making the rule last.** `CLAUDE.md` states the rule, plus the owner-only commit authorship, so it survives new sessions. Chat instructions alone do not. This change was itself made in a worktree (`../mf-worktree-docs`) as the first use of the workflow.
+
