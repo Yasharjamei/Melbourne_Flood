@@ -4,6 +4,9 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 
 ## [Unreleased]
 
+### Added
+- **A shareable demo recording on every build.** `demo_gif.py` records a captioned ~20 s tour of the real map: the whole city, the papers' study area, dragging a circle, two variables, 10 m terrain and the analysis page. It is saved as `demo.gif` (960 px) and `demo.mp4` (1280×720) in the run's *screenshots* artifact.
+
 ### Changed
 - **New data now reaches the site on its own.** Until now, live inputs (planning overlays, addresses, the 1% AEP extent, roads, buildings) were only re-downloaded when the fetch code changed, so the site could quietly go stale. A scheduled rebuild now runs monthly, and the cache key includes the month, so that run downloads everything afresh. On that run a failed download stops the deploy instead of degrading the site. The page footer shows when the data was downloaded and the page built.
 

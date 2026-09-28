@@ -399,3 +399,19 @@ It is documented as riverine 1% AEP. The newer DEECA statewide layer, which is v
 
 A config-driven factor registry (one entry in `config.py` → map variable, panel row, correlations) was proposed to the owner and not built yet.
 
+## 21. Demo recording for sharing (2026-09-28)
+
+**Request:** a GIF showing how the project works, for a LinkedIn post.
+
+**Why it runs in CI.** The development sandbox can't reach the live site or the basemap, so a recording made there shows a bare map on test data. `demo_gif.py` runs in the build job instead, on the real page with the basemap. It adds the files to the *screenshots* artifact and is `continue-on-error`.
+
+**Choices:**
+- Frames are screenshots between scripted steps, not screen video, so timing doesn't depend on runner speed.
+- The browser window is 1600×900, scaled down to 1280×720 (16:9, uncropped in feeds).
+- The GIF is 960 px wide with 128 colours, to stay small. The MP4 is H.264 at full size. LinkedIn plays MP4 as video; GIF support in posts is less reliable.
+- Hover tooltips and the first-visit hint are hidden in the recording.
+
+**Checked on the test fixture:**
+- The first attempt dragged circle A out of the study area (the final frame showed 0 residents), and a tooltip covered the map. The drag now heads for the middle of the view.
+- 15 frames, about 20 s, 1.2 MB GIF on the fixture.
+

@@ -167,6 +167,8 @@ Run every command from the repository root.
 
 ### Live site (GitHub Pages)
 
+**Demo recording:** every build records a captioned ~20 s tour of the map (`demo.gif` and `demo.mp4`). To get it: Actions → latest green run → *Artifacts* → *screenshots*. The recording is regenerated with each build, so it always shows the current data.
+
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) fetches, builds and bundles the map and analysis pages on a GitHub runner:
 - **Changes go straight to `main`.** There are no pull requests or other branches. Each push builds everything and runs a headless-browser check of both pages. **Only if all of that passes is the site deployed**, so a broken change never replaces the live version. The screenshots are attached to each run under *Artifacts*.
 - **Published pages:**
