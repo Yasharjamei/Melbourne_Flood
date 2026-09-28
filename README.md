@@ -595,11 +595,12 @@ The Census is the anchor, and it is five-yearly. Everything else can be refreshe
 | Census age, sex, need, income (ABS GCP) | 2021 | **2026 Census**, first release expected mid-2027 | Change `GCP_URL` and the table names in `01_fetch.py`; the ASGS 2026 boundaries come with it |
 | Population between Censuses | 2021 | ABS **Estimated Resident Population**, annual, by SA2, age and sex | Could scale SA1 age structure to the latest SA2 totals (not built yet) |
 | SEIFA | 2021 | 2026 SEIFA, about a year after the Census | Change `SEIFA_URLS` |
-| Planning overlays (LSIO, FO, SBO) | **live**, fetched at build time | updated whenever an amendment is gazetted | Automatic on every build |
-| Address points (Vicmap Address) | **live** | weekly | Automatic |
-| Building footprints (Microsoft) | the release listed in `dataset-links.csv` (2026-08 at the time of writing) | periodic | Automatic: the manifest points at the newest tiles. Overture Maps buildings, which merge Microsoft, OpenStreetMap and others and are released monthly, are an alternative. |
+| Planning overlays (LSIO, FO, SBO) | **live**, re-downloaded monthly | updated whenever an amendment is gazetted | Automatic: the scheduled monthly rebuild |
+| Address points (Vicmap Address) | **live**, re-downloaded monthly | weekly | Automatic: the scheduled monthly rebuild |
+| Building footprints (Microsoft) | the release listed in `dataset-links.csv` at the last monthly download | periodic | Automatic: the manifest points at the newest tiles, picked up by the monthly rebuild. Overture Maps buildings, which merge Microsoft, OpenStreetMap and others and are released monthly, are an alternative. |
 | Tree canopy | 2020 | the next statewide tree-extent capture | Change `CANOPY_ZIPS` (four 1:250k packages cover Greater Melbourne) |
 | Road casement | the DataVic order date | live on the Vicmap WFS | Order links expire, so the pipeline falls back to the WFS layer automatically; to pin a new snapshot, order it on DataVic and put the link in `ROAD_ORDER_URLS` |
+| Flood hazard | planning overlays | Melbourne Water flood mapping and Victorian Flood Database extents | Swap the `riv`/`sbo` polygons (see ARCHITECTURE §4) |
 | Elevation | Vicmap 10 m DEM (image service, LERC tiles; working since the 257-pixel fix: 5,265 tiles, −13 to 1,475 m) | LiDAR-derived 1–5 m DEMs via ELVIS for parts of Melbourne | A different fetch function; the build only needs GeoTIFFs |
 
 **Using the statewide Vicmap 10 m DEM file on your own computer.** DataVic also publishes the whole DEM as one file: [`vmelev_dem10m_Geotiff_GDA94_VicGrid.zip`](https://cl-isd-prd-datashare-s3-delivery.s3.amazonaws.com/PrePackages/vmelev_dem10m_Geotiff_GDA94_VicGrid.zip).
@@ -610,9 +611,16 @@ The Census is the anchor, and it is five-yearly. Everything else can be refreshe
   2. Extract it with Windows Explorer or 7-Zip; both handle Deflate64.
   3. Put `vmelev_dem10m_Geotiff_GDA94_Vicgrid.tif` in `data/raw/shared/`.
   4. Run `02_build.py`. It prefers this file over the image service and over Copernicus. The TIFF is internally tiled, so only the study area is read.
-| Flood hazard | planning overlays | Melbourne Water flood mapping and Victorian Flood Database extents | Swap the `riv`/`sbo` polygons (see ARCHITECTURE §4) |
 
-**To refresh everything that is live,** re-run the GitHub Action (Actions → *Build and deploy* → *Run workflow*). Delete the cache first if you want to force fresh downloads. A scheduled monthly run would keep the live inputs current; add a `schedule:` trigger to `pages.yml` if you want that.
+**How new data reaches the site.**
+- **Monthly, on its own.** `pages.yml` runs at 03:17 UTC on the 2nd of each month (about 1:17 pm Melbourne time; 2:17 pm in daylight saving). The raw-data cache key includes the month, so that run downloads every live input afresh: overlays, addresses, the 1% AEP extent, road casement, buildings, DEM tiles and canopy. Pushes later in the month reuse that download.
+- **The page says how fresh it is.** The footer shows the download date and the build date (`meta.fetched`, `meta.built`).
+- **A bad day upstream can't degrade the site.**
+  - On the scheduled run only, a failed download (`STRICT_FETCH=1`) stops the run instead of falling back to weaker data. The live site keeps last month's build, and GitHub emails the repository owner about the failed run.
+  - On a push, the old behaviour stays: fall back, and say so in the footer.
+- **Now, by hand:** Actions → *Build and deploy to GitHub Pages* → *Run workflow*. That run uses this month's cache; to force fresh downloads too, delete the cache under Actions → Caches first.
+- **Caveat: GitHub switches off scheduled workflows in a public repository after 60 days without activity.** It then emails a warning. Re-enable the workflow under Actions (or push any commit).
+- **What never refreshes on its own:** the 2021 Census, SEIFA and ASGS boundaries (new releases need code changes, above), and the static files in `data/static/`.
 
 ## Data sources and licences
 

@@ -582,9 +582,14 @@ def dem10_tiles(bbox, raw, info):
 
 
 def optional(label, fn):
+    """Run an optional download; on failure the build falls back and says so in the page footer.
+    With STRICT_FETCH=1 (the scheduled monthly refresh) a failure stops the run instead, so a
+    source that is down that day cannot quietly replace a good live site with a weaker one."""
     try:
         fn()
     except Exception as e:
+        if os.environ.get("STRICT_FETCH") == "1":
+            raise RuntimeError(f"optional input '{label}' unavailable in a strict (scheduled) fetch: {e}") from e
         print(f"  WARNING optional input '{label}' unavailable: {e}")
 
 
@@ -598,6 +603,11 @@ def main():
     os.makedirs(raw, exist_ok=True)
     os.makedirs("data/raw/gcp", exist_ok=True)
     os.makedirs("data/raw/shared", exist_ok=True)
+    # Date of this download set, shown on the page. Written once per fresh cache: CI starts a new
+    # cache every month (see pages.yml), and deleting data/raw/<study>/ locally does the same.
+    stamp = f"{raw}/fetched.txt"
+    if not os.path.exists(stamp):
+        open(stamp, "w").write(time.strftime("%Y-%m-%d", time.gmtime()))
     fine = 0.00002 if len(st["lgas"]) <= 3 else 0.00006   # ~2 m for a few councils, ~6 m for the metro
 
     print("LGAs")

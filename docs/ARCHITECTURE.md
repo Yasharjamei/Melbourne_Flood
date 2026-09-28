@@ -189,9 +189,9 @@ This page reads `D.stats`, which is `null` for metro, and `D.sa1[].ls`. It draws
 
 ### 2.8 CI: `.github/workflows/pages.yml`
 
-The workflow runs on every push to `main` and on manual dispatch. The repository has one branch on GitHub and no pull requests; changes are made in local git worktrees and pushed to `main` (CONTRIBUTING §5).
+The workflow runs on every push to `main`, on manual dispatch, and on a monthly schedule (03:17 UTC on the 2nd). The repository has one branch on GitHub and no pull requests; changes are made in local git worktrees and pushed to `main` (CONTRIBUTING §5).
 
-1. It restores the `data/raw` cache. The key is a hash of `01_fetch.py` and `config.py`, so changing either refetches everything. The first full fetch takes about 70 minutes.
+1. It restores the `data/raw` cache. The key is a hash of `01_fetch.py` and `config.py` plus the current month (`YYYY-MM`), so changing either file, or the month turning, refetches everything. `01_fetch.py` writes `data/raw/<study>/fetched.txt` when it starts a fresh download set; `02_build.py` copies it to `meta.fetched`. On the scheduled run `STRICT_FETCH=1` makes any failed optional download fatal, so nothing is deployed from a partial fetch. The first full fetch takes about 70 minutes.
 2. It fetches and builds `metro`, then bundles the map, the analysis page and the `/metro/` redirects.
 3. It opens both pages in headless Chromium with `screenshot.py`. A page error fails the run. The screenshots are uploaded as the run's `screenshots` artifact, kept 14 days.
 4. It runs `check_circles.py`, which recounts the A/B circles independently and drives a real pin drag and click; any mismatch fails the run. The page exposes `window.__test` (its own `agg`, filter, pin positions and screen projection) for this script only.
@@ -209,6 +209,8 @@ The workflow runs on every push to `main` and on manual dispatch. The repository
     "study": "west", "title": "...", "label": "Both councils", "n": 474,
     "lat0": -37.77,            // for the equirectangular distance used by circles
     "addr": true,              // address points were used for flood shares
+    "fetched": "2026-10-02",   // when the live inputs were downloaded (null if unknown)
+    "built": "2026-10-02",     // when 02_build.py ran
     "notes": ["..."],          // every substitution and fallback, shown in the page footer
     "other": ["All of Melbourne", "metro/"]
   },

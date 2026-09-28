@@ -372,3 +372,30 @@ It is documented as riverine 1% AEP. The newer DEECA statewide layer, which is v
 
 **Not yet run on real data from the sandbox.** Neither the live site nor its build artifact is reachable from the development sandbox. The first CI run after this commit is the first check on the 58,563 real mesh blocks; its log line "count: 300 random circles match …" is the evidence.
 
+## 20. New data reaches the site on its own (2026-09-28)
+
+**Request:** when new data comes in or a new factor is added, the project should reflect it automatically.
+
+**What was actually happening.** The raw-data cache key was a hash of `01_fetch.py` and `config.py` only. So live sources were re-downloaded only when that code changed, and the README's "automatic on every build" for overlays and addresses was wrong. The page didn't show its data date either.
+
+**Changes:**
+- A monthly `schedule:` trigger, at 03:17 UTC on the 2nd.
+- The month in the cache key: one full refetch per month, and later pushes reuse it.
+- `fetched.txt` → `meta.fetched`, plus `meta.built`, shown in the footer.
+- `STRICT_FETCH=1` on scheduled runs.
+
+**Why strict on the schedule only.** Without a human watching, a source that is down that day would make the build fall back (for example, to area shares if addresses fail) and deploy a weaker map. Failing instead keeps last month's good site, and GitHub emails the owner. Pushes keep fall-back-and-say-so, because someone is watching those runs.
+
+**Cost:** a full refetch is ~70–90 min of Actions time a month, well inside the 180-minute job timeout.
+
+**Known limit:** GitHub disables scheduled workflows in public repositories after 60 days without activity.
+
+**New factors are not automatic, and can't fully be.** A factor needs a source, a way to summarise it per SA1 (a mean, a share of area, a count) and a way to show it. The current route is ARCHITECTURE §4:
+1. a fetch function
+2. a build step
+3. a `METRICS` entry
+4. a panel row
+5. the analysis variables if it enters the models
+
+A config-driven factor registry (one entry in `config.py` → map variable, panel row, correlations) was proposed to the owner and not built yet.
+

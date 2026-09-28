@@ -6,7 +6,7 @@ Per SA1: Census 2021 counts, flood-overlay shares, suburb, and the Lama & Sun (2
 Exposure / Sensitivity / Adaptive capacity / FRI / Damage / IFRI indices.
 Per mesh block: a population weight used to apportion SA1 counts to circles.
 """
-import argparse, glob, json, os, re, sys
+import argparse, glob, json, os, re, sys, time
 import numpy as np, pandas as pd, geopandas as gpd, shapely
 from shapely.ops import unary_union
 sys.path.insert(0, os.path.dirname(__file__))
@@ -625,6 +625,9 @@ mbo = mbo[(mbo["w"] > 0) | (mbo["riv"] + mbo["sbo"] > 0) | (mbo["aep"].fillna(0)
 out = dict(
     meta=dict(study=STUDY, title=ST["title"], label=ST["label"], n=len(sa), lat0=round(float(p4.y.mean()), 3),
               addr=bool(mb["naddr"].any()),
+              # when the live inputs were downloaded (01_fetch.py stamp) and when this page was built
+              fetched=open(f"{RAW}/fetched.txt").read().strip() if os.path.exists(f"{RAW}/fetched.txt") else None,
+              built=time.strftime("%Y-%m-%d", time.gmtime()),
               notes=NOTES, presets=([{"key": "__paper", "label": ST["paper"]["label"], "group": "Study areas",
                                       "lgas": [l for l in lga["name"] if norm_lga(l) in {norm_lga(x) for x in ST["paper"]["lgas"]}]}]
                                     if ST.get("paper") else [])

@@ -139,6 +139,7 @@ td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
       <p>Census 2021 General Community Profile (ABS) by SA1; SA1, mesh block, suburb and council boundaries, ASGS 2021. Flood extents are Victorian planning scheme overlays: Land Subject to Inundation and Floodway (riverine) and Special Building Overlay (overland flow), Vicmap Planning, DataVic. Residents are placed within mesh blocks at Vicmap Address points (DataVic, CC BY 4.0) where available. Basemap © OpenStreetMap contributors © CARTO.</p>
       <p>Circle figures are estimates. Each SA1's counts are split across its mesh blocks in proportion to where people live, and a circle counts the mesh blocks whose centre falls inside it. With a council selected, circles count residents of that council only. Age–sex shares within an SA1 are assumed the same across its mesh blocks. ABS perturbation means totals can differ slightly between tables.</p>
       <p>Lama &amp; Sun (2026) indices use their Table 2 weights and formulas: FRI = Adaptive capacity − (Sensitivity + Exposure); IFRI = 0.5·FRI − 0.5·Damage index. Maps use five quantile classes; FRI and IFRI use three classes each side of zero. Substitutions for data the paper used but did not publish:</p>
+      <p id="dates"></p>
       <ul id="notes" style="margin:0 0 6px 18px;padding:0"></ul>
       <p>Overlays are planning controls, not modelled depths from the October 2022 event used in the papers.</p>
       <p><a id="other"></a></p>
@@ -162,6 +163,10 @@ const DARK=css('--ground').toLowerCase()==='#141817';
 let SAVED=null;try{SAVED=JSON.parse(sessionStorage.getItem('mapstate'));sessionStorage.removeItem('mapstate');}catch(e){}
 document.getElementById('lede').textContent=`${META.title}, ${META.n.toLocaleString()} SA1s. Compare the age structure and flood-relevant needs of any two places, instead of one average for the whole area.`;
 d3.select('#notes').selectAll('li').data(META.notes).join('li').text(d=>d);
+// Data currency: live inputs (overlays, addresses, AEP, roads, buildings) are re-downloaded monthly
+// by CI; Census 2021 and ASGS 2021 are fixed releases.
+document.getElementById('dates').textContent=(META.fetched?'Live inputs (overlays, addresses, flood extent, roads, buildings) downloaded '+META.fetched+'. ':'')+
+  (META.built?'Page built '+META.built+'. ':'')+'Census and boundaries are the fixed 2021 releases.';
 if(META.other){const o=document.getElementById('other');o.textContent='Open the '+META.other[0]+' version →';o.href=META.other[1];}
 const BANDS=['0–4','5–9','10–14','15–19','20–24','25–29','30–34','35–39','40–44','45–49','50–54','55–59','60–64','65–69','70–74','75–79','80–84','85+'];
 S.forEach(s=>{s.ages=s.M.reduce((a,b)=>a+b,0)+s.F.reduce((a,b)=>a+b,0);

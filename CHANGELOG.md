@@ -4,6 +4,9 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 
 ## [Unreleased]
 
+### Changed
+- **New data now reaches the site on its own.** Until now, live inputs (planning overlays, addresses, the 1% AEP extent, roads, buildings) were only re-downloaded when the fetch code changed, so the site could quietly go stale. A scheduled rebuild now runs monthly, and the cache key includes the month, so that run downloads everything afresh. On that run a failed download stops the deploy instead of degrading the site. The page footer shows when the data was downloaded and the page built.
+
 ### Fixed
 - **Circle distances use the circle's own latitude.** One study-wide latitude was used before, so a circle near Greater Melbourne's north or south edge counted up to ~1% too wide or narrow east–west, and could disagree with its drawn ring. Found while building the circle check; on the test data, one circle's count moved by 4% because a mesh block sat on its edge.
 
