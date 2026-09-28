@@ -419,3 +419,20 @@ A config-driven factor registry (one entry in `config.py` → map variable, pane
 - **Circle check passed on real data:** 11,293 SA1s and 53,134 mesh blocks, with every SA1's shares summing to 1. All 300 random circles matched the independent recount; 19 had a mesh block within 0.25 m of the ring. The council filter checked out in 4 councils. The drag and click tests matched exactly (3,248 and 2,718 residents).
 - **The demo GIF was made** (15 frames, 19.6 s, 2.1 MB), **but no MP4.** GitHub's ubuntu runners no longer ship `ffmpeg`, and Playwright's bundled ffmpeg has no H.264 encoder. Fixed by using the static build from the `imageio-ffmpeg` pip package.
 
+## 22. A truncated download degraded the live site (2026-09-28)
+
+**What happened.** The first build with a fresh monthly cache (ae5b3ea) was push-triggered, so it was not strict.
+- The Vicmap WFS returned a truncated JSON page at 2,755,000 of 3,123,830 address points (cut at char 983,040, exactly 960 KiB).
+- `get_json` treated a decode error as final. The address input was marked unavailable, and the build used area shares.
+- It deployed with "residents in planning overlays: 242,856" (the area measure) instead of ~185,500.
+- The footer said so, but nobody reads footers.
+- Everything else was fine: the circle check passed (11,293 SA1s, 53,134 mesh blocks, 300 circles, exact drag/click), the 1% AEP extent held 22,918 residents, and MGWR R² was 0.460 (paper) and 0.397 (metro).
+
+**Fixes:**
+1. `get_json` now re-fetches truncated JSON (4 tries, with backoff), as `get` already did for network errors.
+2. `STRICT_FETCH=1` on **every** CI run, not only the schedule. §20 kept pushes lenient on the grounds that "someone is watching"; this run disproved that.
+
+**Side effect, deliberate.** Editing `01_fetch.py` changes the cache key, so the next run refetches everything and saves a complete cache. The September cache from ae5b3ea has no address file.
+
+**AEP figures on the area method.** 22,918 in the 1% AEP extent and 12,915 in both. These will change once addresses are back.
+

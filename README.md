@@ -618,8 +618,9 @@ The Census is the anchor, and it is five-yearly. Everything else can be refreshe
 - **Monthly, on its own.** `pages.yml` runs at 03:17 UTC on the 2nd of each month (about 1:17 pm Melbourne time; 2:17 pm in daylight saving). The raw-data cache key includes the month, so that run downloads every live input afresh: overlays, addresses, the 1% AEP extent, road casement, buildings, DEM tiles and canopy. Pushes later in the month reuse that download.
 - **The page says how fresh it is.** The footer shows the download date and the build date (`meta.fetched`, `meta.built`).
 - **A bad day upstream can't degrade the site.**
-  - On the scheduled run only, a failed download (`STRICT_FETCH=1`) stops the run instead of falling back to weaker data. The live site keeps last month's build, and GitHub emails the repository owner about the failed run.
-  - On a push, the old behaviour stays: fall back, and say so in the footer.
+  - In CI (every run, `STRICT_FETCH=1`) a failed download stops the run instead of falling back to weaker data. The live site keeps its last good build, and GitHub emails the repository owner about the failed run. Re-run it once the source is back.
+  - A cut-off server response is retried up to 4 times before it counts as failed.
+  - Local runs keep the fall-back behaviour, and the page footer says what was substituted.
 - **Now, by hand:** Actions → *Build and deploy to GitHub Pages* → *Run workflow*. That run uses this month's cache; to force fresh downloads too, delete the cache under Actions → Caches first.
 - **Caveat: GitHub switches off scheduled workflows in a public repository after 60 days without activity.** It then emails a warning. Re-enable the workflow under Actions (or push any commit).
 - **What never refreshes on its own:** the 2021 Census, SEIFA and ASGS boundaries (new releases need code changes, above), and the static files in `data/static/`.

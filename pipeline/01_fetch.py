@@ -57,11 +57,18 @@ def get(url, params=None, tries=4, binary=False, headers=None):
             time.sleep(2 ** (i + 1))
 
 
-def get_json(url, params=None):
-    try:
-        js = json.loads(get(url, params))
-    except json.JSONDecodeError as e:    # truncated response from an overloaded server
-        raise RuntimeError(f"Invalid JSON from {url[:120]}: {e}")
+def get_json(url, params=None, tries=4):
+    """GET and parse JSON. A response cut off mid-way (an overloaded server; seen on the Vicmap
+    WFS at 2.75 M of 3.1 M address points) is fetched again, like any other transient failure."""
+    for i in range(tries):
+        try:
+            js = json.loads(get(url, params))
+            break
+        except json.JSONDecodeError as e:
+            if i == tries - 1:
+                raise RuntimeError(f"Invalid JSON from {url[:120]} after {tries} tries: {e}")
+            print(f"  truncated JSON from {url[:80]}...; retrying ({i + 1}/{tries - 1})")
+            time.sleep(2 ** (i + 2))
     if isinstance(js, dict) and "error" in js:
         raise RuntimeError(f"Server error from {url}: {js['error']}")
     return js
@@ -583,8 +590,8 @@ def dem10_tiles(bbox, raw, info):
 
 def optional(label, fn):
     """Run an optional download; on failure the build falls back and says so in the page footer.
-    With STRICT_FETCH=1 (the scheduled monthly refresh) a failure stops the run instead, so a
-    source that is down that day cannot quietly replace a good live site with a weaker one."""
+    With STRICT_FETCH=1 (every CI run) a failure stops the run instead, so a source that is
+    down that day cannot quietly replace a good live site with a weaker one."""
     try:
         fn()
     except Exception as e:

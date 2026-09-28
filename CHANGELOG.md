@@ -4,6 +4,9 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 
 ## [Unreleased]
 
+### Fixed
+- **A cut-off download no longer degrades the live site.** On 2026-09-28 the Vicmap address download received a truncated page at 2.75 M of 3.12 M points. The build fell back to land-area exposure and deployed it (242,856 residents in overlays instead of about 185,500). Truncated JSON is now retried, and every CI run is strict: a failed download stops the deploy, and the last good site stays live.
+
 ### Added
 - **A shareable demo recording on every build.** `demo_gif.py` records a captioned ~20 s tour of the real map: the whole city, the papers' study area, dragging a circle, two variables, 10 m terrain and the analysis page. It is saved as `demo.gif` (960 px) and `demo.mp4` (1280×720) in the run's *screenshots* artifact.
 
