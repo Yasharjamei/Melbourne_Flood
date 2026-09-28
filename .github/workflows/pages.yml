@@ -80,7 +80,7 @@ jobs:
       - name: Demo recording
         continue-on-error: true
         run: |
-          pip install pillow
+          pip install pillow imageio-ffmpeg
           python .github/scripts/demo_gif.py
 
       - uses: actions/upload-artifact@v4

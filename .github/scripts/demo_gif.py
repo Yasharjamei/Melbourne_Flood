@@ -99,13 +99,21 @@ pal[0].save("shots/demo.gif", save_all=True, append_images=pal[1:], duration=[ms
             loop=0, optimize=True)
 print(f"shots/demo.gif: {len(frames)} frames, {sum(ms for _, ms in frames) / 1000:.1f} s, "
       f"{os.path.getsize('shots/demo.gif') / 1e6:.1f} MB")
-if shutil.which("ffmpeg"):
+# ffmpeg: the system one if present, else the static build bundled by the imageio-ffmpeg package
+# (GitHub's ubuntu runners no longer ship ffmpeg; Playwright's own copy has no H.264 encoder).
+ffmpeg = shutil.which("ffmpeg")
+if not ffmpeg:
+    try:
+        import imageio_ffmpeg; ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+    except ImportError:
+        print("no ffmpeg: MP4 skipped (pip install imageio-ffmpeg)")
+if ffmpeg:
     os.makedirs("shots/frames", exist_ok=True)
     with open("shots/frames/list.txt", "w") as f:
         for k, (im, ms) in enumerate(frames):
             im.save(f"shots/frames/{k:03d}.png"); f.write(f"file '{k:03d}.png'\nduration {ms / 1000}\n")
         f.write(f"file '{len(frames) - 1:03d}.png'\n")   # concat demuxer needs the last frame repeated
-    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-i", "shots/frames/list.txt",
+    subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-f", "concat", "-i", "shots/frames/list.txt",
                     "-vf", "fps=25,format=yuv420p", "-c:v", "libx264", "-crf", "20", "-movflags", "+faststart",
                     "shots/demo.mp4"], check=True)
     shutil.rmtree("shots/frames")

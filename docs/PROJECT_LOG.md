@@ -415,3 +415,7 @@ A config-driven factor registry (one entry in `config.py` → map variable, pane
 - The first attempt dragged circle A out of the study area (the final frame showed 0 residents), and a tooltip covered the map. The drag now heads for the middle of the view.
 - 15 frames, about 20 s, 1.2 MB GIF on the fixture.
 
+**First real run** (ae5b3ea, full refetch):
+- **Circle check passed on real data:** 11,293 SA1s and 53,134 mesh blocks, with every SA1's shares summing to 1. All 300 random circles matched the independent recount; 19 had a mesh block within 0.25 m of the ring. The council filter checked out in 4 councils. The drag and click tests matched exactly (3,248 and 2,718 residents).
+- **The demo GIF was made** (15 frames, 19.6 s, 2.1 MB), **but no MP4.** GitHub's ubuntu runners no longer ship `ffmpeg`, and Playwright's bundled ffmpeg has no H.264 encoder. Fixed by using the static build from the `imageio-ffmpeg` pip package.
+
