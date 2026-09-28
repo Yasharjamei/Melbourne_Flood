@@ -67,6 +67,7 @@ web/
 .github/
   workflows/pages.yml   CI: fetch -> build -> bundle -> screenshot check -> deploy -> clean-up
   scripts/screenshot.py headless-Chromium check and screenshots of the built pages (a page error fails the run)
+  scripts/check_circles.py independent recount of the A/B circles against the page's maths
 docs/
   ARCHITECTURE.md    this file
   PROJECT_LOG.md     decisions and history
@@ -193,8 +194,9 @@ The workflow runs on every push to `main` and on manual dispatch. The repository
 1. It restores the `data/raw` cache. The key is a hash of `01_fetch.py` and `config.py`, so changing either refetches everything. The first full fetch takes about 70 minutes.
 2. It fetches and builds `metro`, then bundles the map, the analysis page and the `/metro/` redirects.
 3. It opens both pages in headless Chromium with `screenshot.py`. A page error fails the run. The screenshots are uploaded as the run's `screenshots` artifact, kept 14 days.
-4. **Only if every step passed**, it uploads `dist/` and deploys it to Pages. A failed run leaves the live site on its last good version.
-5. **Clean-up (after a successful deploy only).** It deletes every `github-pages` deployment record except the one just made, and every completed run of this workflow except the newest `KEEP_RUNS` (5, counting the current run). Deleting a run deletes its logs and artifacts too. Each deletion that fails is logged as a warning and never fails the run.
+4. It runs `check_circles.py`, which recounts the A/B circles independently and drives a real pin drag and click; any mismatch fails the run. The page exposes `window.__test` (its own `agg`, filter, pin positions and screen projection) for this script only.
+5. **Only if every step passed**, it uploads `dist/` and deploys it to Pages. A failed run leaves the live site on its last good version.
+6. **Clean-up (after a successful deploy only).** It deletes every `github-pages` deployment record except the one just made, and every completed run of this workflow except the newest `KEEP_RUNS` (5, counting the current run). Deleting a run deletes its logs and artifacts too. Each deletion that fails is logged as a warning and never fails the run.
 
 ---
 

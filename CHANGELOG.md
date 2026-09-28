@@ -4,6 +4,12 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 
 ## [Unreleased]
 
+### Fixed
+- **Circle distances use the circle's own latitude.** One study-wide latitude was used before, so a circle near Greater Melbourne's north or south edge counted up to ~1% too wide or narrow east–west, and could disagree with its drawn ring. Found while building the circle check; on the test data, one circle's count moved by 4% because a mesh block sat on its edge.
+
+### Added
+- **Circle check on every build** (`.github/scripts/check_circles.py`). It recounts the A/B circles independently: residents and both flood rows, 300 random circles, 4 councils, radius and move rules, and a real pin drag and click. Any mismatch stops the deploy. README: *How the A/B circles are validated*.
+
 ### Changed
 - **Old deployments and runs are cleaned up.** After each successful deploy, a `cleanup` job deletes the old `github-pages` deployment records and all but the 5 newest workflow runs (with their logs and artifacts). Screenshot artifacts are kept 14 days instead of 90. Only one version of the site was ever live; this removes the history behind it.
 

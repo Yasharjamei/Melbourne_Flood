@@ -318,6 +318,12 @@ loadStyle().then(style=>{
     areas.forEach(addMarker);
     document.getElementById('hint').textContent='Two example areas are placed. Drag the pins, or click to move the nearer one.';
     drawRings();update();
+    // Test hook for .github/scripts/check_circles.py: the page's own circle maths and filter,
+    // without going through the mouse. Not used by the page itself.
+    window.__test={agg:(a,r)=>{const R0=R;R=r;try{return agg(a);}finally{R=R0;}},NB,visible,
+      filter:l=>{setLga(l);activeSub=null;fillSuburbs();applyFilter();},areas:()=>areas.map(({id,lon,lat})=>({id,lon,lat})),radius:()=>R,
+      px:(lon,lat)=>{const q=map.project([lon,lat]),r=map.getContainer().getBoundingClientRect();return [q.x+r.left,q.y+r.top];},
+      jump:(lon,lat)=>map.jumpTo({center:[lon,lat],zoom:13})};
     window.__ready=true;
   });
 });
@@ -433,10 +439,13 @@ function drawLegend(){
 }
 
 // ---- aggregation
-const COS=Math.cos(META.lat0*Math.PI/180);
 // What circle a counts: each mesh-block point within R metres adds its resident share w to
 // its SA1 (and w x in-overlay share to the flood tallies). Returns sumW() of those weights.
+// Distance is equirectangular at the circle's own latitude, the same circle d3.geoCircle draws
+// (within 0.2 m at the 2 km maximum radius). A single study-wide latitude was used until 2026-09-28; it counted up
+// to ~1% too wide or narrow east-west near the north and south edges of Greater Melbourne.
 function agg(a){
+  const COS=Math.cos(a.lat*Math.PI/180);
   const w=new Float64Array(S.length), wr=new Float64Array(S.length), ws=new Float64Array(S.length), wa=new Float64Array(S.length);
   const r2=R*R;
   for(const c of C){if((activeLga||activeSub)&&!visible(c[2]))continue;const dx=(c[0]-a.lon)*111195*COS, dy=(c[1]-a.lat)*111195;
@@ -509,7 +518,7 @@ function update(){
   drawPyr(outA?null:oa,outB?null:ob);
 }
 function near(a){
-  let best=null,bd=1e18;for(const c of C){const dx=(c[0]-a.lon)*COS,dy=c[1]-a.lat,d=dx*dx+dy*dy;if(d<bd){bd=d;best=c[2];}}
+  const COS=Math.cos(a.lat*Math.PI/180);let best=null,bd=1e18;for(const c of C){const dx=(c[0]-a.lon)*COS,dy=c[1]-a.lat,d=dx*dx+dy*dy;if(d<bd){bd=d;best=c[2];}}
   return bd<1e-4?S[best].sub:'outside study area';
 }
 // ---- pyramid

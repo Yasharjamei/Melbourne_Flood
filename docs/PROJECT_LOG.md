@@ -349,3 +349,26 @@ It is documented as riverine 1% AEP. The newer DEECA statewide layer, which is v
 - The `/metro/` redirect pages, which keep old links working.
 - `snapshots/2026-09-25-prototype.html`, which is a file in the repository, not a deployed page.
 
+## 19. Validating the A/B circles (2026-09-28)
+
+**Question:** do moving the circles and the resident figures work correctly, and how would we know?
+
+**Reading the code first** (`agg`, `sumW` in `web/template.html`):
+- **The logic was sound.** A mesh block is counted when its point lies within R. It adds its resident share of its SA1, and its overlay shares scale the flood rows. The council filter skips SA1s outside the selection.
+- **One inaccuracy:** longitude was converted to metres at a single study-wide latitude (`META.lat0`), while the ring is drawn at the circle's own latitude. **Fixed:** the page now uses the circle's latitude.
+
+**Independent check** (`.github/scripts/check_circles.py`, in CI after the screenshots):
+- **Independent by design.** Python and haversine, not the page's formula. The only allowance is the 0.25 m band that covers the two formulas' ≤0.2 m difference at 2 km.
+- **A test hook.** The page code sits inside an IIFE (a self-contained function), so it exposes `window.__test` with its own `agg`, filter, pin positions and projection. The page never uses it.
+
+**Getting the UI test honest:**
+- The first drag test passed while proving nothing: the pin landed on 0 residents. It now drags onto the most populous point 300–1,500 m away.
+- The pins then appeared to land 500–1,000 m off. The cause was the test, not the page: its on-screen check ignored the toolbar, so the mouse grabbed the toolbar instead of the pin. Replayed on its own, the drag lands within 1 px.
+
+**Mutation testing** (deliberately broken copies of the page, test fixture):
+- **Caught:** a circle 1% too wide; shares 10% low; the old single-latitude formula (one circle moved 4%); the riverine row replaced by all residents; the overland-flow row 20% low.
+- **Missed at first:** a wrong flood-row value, because only "overlay ≤ residents" was checked. The flood rows are now recounted.
+- **A fixture limit:** a "shares 10% high, capped at 1" mutation passed only because every fixture weight is exactly 1. The real data has fractional weights.
+
+**Not yet run on real data from the sandbox.** Neither the live site nor its build artifact is reachable from the development sandbox. The first CI run after this commit is the first check on the 58,563 real mesh blocks; its log line "count: 300 random circles match …" is the evidence.
+

@@ -53,7 +53,8 @@ There's no unit-test suite yet. The checks are:
    - choosing a council, then a suburb
    - dragging both circles
    - switching between dark and light mode
-3. **CI is green after you push.** CI rebuilds everything from live data and opens both pages in a headless browser. The screenshots are attached to the run under *Artifacts*: the map for all councils, the paper preset with terrain relief, Casey, and the analysis page. A failing run is not deployed.
+3. **The circle counts still match.** After `03_bundle.py`, run `python .github/scripts/check_circles.py metro`. It needs `pip install playwright` and `python -m playwright install chromium`. It recounts the A/B circles independently and fails on any mismatch. If you change `agg()` or `sumW()` in `web/template.html`, change the recount in the script only if the *meaning* changed, and say why in the commit.
+4. **CI is green after you push.** CI rebuilds everything from live data and opens both pages in a headless browser. The screenshots are attached to the run under *Artifacts*: the map for all councils, the paper preset with terrain relief, Casey, and the analysis page. A failing run is not deployed.
 
 ## 4. Conventions
 

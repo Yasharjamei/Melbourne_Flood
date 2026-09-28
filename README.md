@@ -214,7 +214,7 @@ One-time setup: **Settings → Pages → Build and deployment → Source: GitHub
    - Each ABS 2021 mesh block gets a weight: its share of its SA1's residents, from the ABS Mesh Block Counts.
    - If that file can't be downloaded, residents go onto Residential mesh blocks in proportion to their area.
    - Each mesh block also records its category and the share of its area inside riverine and overland-flow overlays.
-5. **Circle aggregation (in the browser).** A circle counts the mesh blocks whose representative point is inside it.
+5. **Circle aggregation (in the browser).** A circle counts the mesh blocks whose representative point is inside it. Distance is measured at the circle's own latitude, matching the drawn ring (before 2026-09-28 one study-wide latitude was used, up to ~1% off east–west near Greater Melbourne's north and south edges). Validated on every build: see *How the A/B circles are validated*.
    - Each SA1 contributes its counts multiplied by the summed weight of those mesh blocks.
    - "Residents in overlay" uses the same weights, multiplied by each mesh block's overlay share.
    - Age–sex shares are assumed constant within an SA1, because mesh blocks carry no age data.
@@ -244,6 +244,44 @@ Each check below runs on every build unless marked otherwise. Anything not teste
 | **Geometry repair:** every polygon goes through `make_valid`, and rings are oriented clockwise on export. | Self-intersections that crash overlays; maps that render as "the whole world" | Found and fixed real defects in the metro SA1s (see CHANGELOG 0.3.1 and 0.4.0) |
 | **Regression guards:** coefficients are checked for blow-ups, MGWR for divergence, and VIF is reported. | Publishing numerically meaningless coefficients | Caught a locally constant soil layer (sand coefficient about 10¹⁵) and dropped it; MGWR then converged |
 | **Fallback notes:** every optional input that fails is named in the page footer. | Silent substitution | Visible on each page |
+| **A/B circle check** (`check_circles.py`, after the screenshots): the page's circle counts are recomputed independently and compared; see the next section. | Wrong counts when a pin is moved, the radius changed or a council selected | Added 2026-09-28; the result is in each run's log |
+
+### How the A/B circles are validated
+
+The circles are the part of the map people read numbers from, so their arithmetic is checked on every build by `.github/scripts/check_circles.py`, against the real data, before anything is deployed.
+
+**An independent recount.** The script does not reuse the page's code. It reads `data/processed/metro.json` and recounts each circle in Python:
+- It measures distance on the sphere (haversine). The page uses a flat-earth approximation at the circle's latitude.
+- The two formulas differ by at most 0.2 m at the 2 km maximum radius. A mesh block within 0.25 m of the ring may therefore land on either side, and the check allows exactly that.
+- It recounts residents, residents in the riverine overlay and residents in the overland-flow overlay. It then compares them with what the page's own function returns for the same circle.
+
+**What it runs:**
+
+| Test | Passes when |
+|---|---|
+| The data itself | Every SA1's mesh-block resident shares sum to 1; overlay shares lie between 0 and 1; every populated SA1 has mesh blocks |
+| 300 random circles, radii 300–2,000 m | Page = independent recount, for residents and both flood rows |
+| Council filter, 4 random councils | Page = recount restricted to that council, and no SA1 from another council is counted |
+| Radius from 300 to 2,000 m | The count never falls as the radius grows |
+| Move a circle away and back | The figures are identical |
+| A circle in Port Phillip Bay | Counts nobody |
+| Every circle | Residents in an overlay ≤ residents; 75+ in overlays ≤ 75+; age–sex shares sum to 100% |
+| **Real mouse drag** of pin A onto a populated spot | The pin lands where it was released, and the headline shows the recount at its new position |
+| **Real click** near pin B | B moves there (not A), and B's headline shows the recount |
+
+**Proving the check can fail.** A test that never fails proves nothing, so each check was run against deliberately broken copies of the page (2026-09-28, test fixture). Every one of these was caught:
+- a circle 1% too wide
+- resident shares 10% too low
+- the old single-latitude distance
+- residents in the riverine overlay replaced by all residents
+- the overland-flow row 20% low
+
+One weakness showed up and was fixed: the first version only checked that overlay counts didn't exceed residents, so a wrong overlay figure passed. The flood rows are now recounted too.
+
+**What it does not check:**
+- the percentage rows (need for assistance, no car, and so on); they use the same weights as the headline, but their values are not recounted
+- the colouring of SA1s touched by a circle
+- the age–sex pyramid's drawing, beyond its shares summing to 100%
 
 ### Checks against the paper (same 474 SA1s)
 

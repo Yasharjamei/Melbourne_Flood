@@ -60,6 +60,11 @@ jobs:
           pip install playwright && python -m playwright install --with-deps chromium
           python .github/scripts/screenshot.py
 
+      # Recompute the A/B circle counts independently (haversine, in Python) and compare with the
+      # page's own maths, plus a real mouse drag and click. Any mismatch fails the run.
+      - name: Circle check
+        run: python .github/scripts/check_circles.py metro
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
