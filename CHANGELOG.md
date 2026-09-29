@@ -4,6 +4,15 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 
 ## [Unreleased]
 
+### Added
+- **Phone layout and home-screen install (iOS and Android).**
+  - The menus sit in a compact grid, and the map gets 68% of the visible screen height; before, it had about a third of an iPhone screen.
+  - The legend and layer list collapse to one line each (tap to open), and an A/B readout on the map shows the counts while dragging.
+  - Menus use 16 px text so iOS Safari doesn't zoom in when one is tapped. Pins are bigger for fingers, and the layout respects the notch and home-bar insets.
+  - A web manifest and icons make *Add to Home Screen* give a full-screen app with its own icon.
+  - The analysis page gets tighter margins, and the scatter matrix scrolls sideways.
+  - CI now also screenshots the map at iPhone and Pixel sizes.
+
 ### Fixed
 - **A cut-off download no longer degrades the live site.** On 2026-09-28 the Vicmap address download received a truncated page at 2.75 M of 3.12 M points. The build fell back to land-area exposure and deployed it (242,856 residents in overlays instead of about 185,500). Truncated JSON is now retried, and every CI run is strict: a failed download stops the deploy, and the last good site stays live.
 

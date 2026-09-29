@@ -167,6 +167,20 @@ Run every command from the repository root.
 
 ### Live site (GitHub Pages)
 
+**On a phone (iOS and Android).** The same address works in any mobile browser; no app store is involved.
+- **iPhone / iPad (Safari):** open the link → Share button → *Add to Home Screen*.
+- **Android (Chrome):** open the link → ⋮ menu → *Add to Home screen* (or *Install app*).
+
+Either way it gets its own icon and opens full-screen.
+
+On a phone:
+- the map takes most of the screen
+- the legend and the layer list fold into one line each (tap to open)
+- a small A/B readout on the map shows the resident counts while you drag
+- tapping the map moves the nearer circle; the full comparison is below the map
+
+The page is large (~19 MB before compression), so the first load on mobile data takes a while; see *Known limits on phones* below.
+
 **Demo recording:** every build records a captioned ~20 s tour of the map (`demo.gif` and `demo.mp4`). To get it: Actions → latest green run → *Artifacts* → *screenshots*. The recording is regenerated with each build, so it always shows the current data.
 
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) fetches, builds and bundles the map and analysis pages on a GitHub runner:
@@ -323,6 +337,12 @@ Lower R² is expected: the response variable is a stand-in for their flood depth
 | Age and sex | SA1 only (about 400 people). **Nothing finer exists publicly.** |
 
 ### What is *not* tested, and the limits that follow
+
+- **Phones: tested in emulation only.**
+  - CI screenshots the map at iPhone 13 and Pixel 7 sizes with touch, in Chromium.
+  - Real iOS Safari runs WebKit, which is not tested, so there could be Safari-only quirks.
+  - The page inlines all 11,293 SA1s (~19 MB before compression). On an older phone, the first load and memory use are the weak points.
+  - Hovering over an area to see its details needs a mouse; on touch, a tap moves the nearer circle instead.
 
 - **No ground truth for flooding.** Overlays are planning controls, not observed or modelled water. No one has validated them here against the October 2022 flood extent, and no depth is available.
 - **No unit-test suite.** The checks above are integration checks on live data.

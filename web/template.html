@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Who lives in the flood path</title>
+<!-- Installable: "Add to Home Screen" on iOS (Safari) and Android (Chrome) opens it full-screen with its own icon -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-title" content="Flood path">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1b3a5c">
 <script>try{const t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -90,6 +98,44 @@ td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
   .bar select#metric{min-width:0;width:100%}
   .legend{bottom:32px;max-width:200px}
 }
+/* ---- phones (iOS and Android). The map gets most of the screen: menus in a compact grid,
+   the legend and layer list collapse to one line each (tap to open), and a small A/B readout
+   sits on the map so the counts are visible while dragging. */
+.mob,.mini{display:none}
+@media (max-width:700px){
+  .bar{display:grid;grid-template-columns:1fr 1fr;gap:6px 8px;padding:8px 10px;padding-top:max(8px,env(safe-area-inset-top))}
+  .bar label{font-size:10px;letter-spacing:.03em}
+  .bar label:first-child{grid-column:1/-1}
+  /* 16 px stops iOS Safari zooming the page when a menu is tapped */
+  .bar select,.bar input,.bar select#metric{min-width:0;width:100%;font-size:16px;padding:5px 8px}
+  .bar .sp{display:none}
+  .bar a.btn,.bar button.btn{font-size:13px;text-align:center;padding:7px 8px;white-space:normal}
+  /* the map's own height (the menus above it no longer eat into it); svh = the visible
+     height with Safari/Chrome toolbars shown, so it never hides under them */
+  .mapcol{height:auto}
+  #map{flex:none;height:68vh;height:68svh;min-height:340px}
+  .card{font-size:13px}
+  .legend{left:8px;bottom:26px;min-width:0;max-width:calc(100% - 70px);padding:7px 10px}
+  .legend h3{cursor:pointer}
+  .legend.collapsed h3{margin:0}
+  .legend.collapsed h3::after{content:" ▸";color:var(--muted)}
+  .legend:not(.collapsed) h3::after{content:" ▾";color:var(--muted)}
+  .legend.collapsed>:not(h3){display:none}
+  .ctrl{right:8px;top:8px;min-width:0;padding:7px 10px;gap:4px;max-height:calc(100% - 60px);overflow-y:auto}
+  .ctrl .mob{display:block}
+  .ctrl.collapsed>label:not(:first-of-type),.ctrl.collapsed>#reset{display:none}
+  .ctrl input[type=range]{width:90px}
+  .mini{display:flex;gap:10px;left:8px;top:8px;padding:6px 10px;font-size:13px;pointer-events:none}
+  .mini .a b{color:var(--a)} .mini .b b{color:var(--b)}
+  aside{padding:16px 16px calc(24px + env(safe-area-inset-bottom))}
+  .foot{overflow-wrap:anywhere}
+}
+@media (pointer:coarse){      /* fingers, not a mouse: bigger pins and tap targets */
+  .pin{width:34px;height:34px;font-size:14px}
+  .ctrl label{min-height:30px}
+  .ctrl input[type=checkbox]{width:18px;height:18px}
+}
+.app{padding-left:env(safe-area-inset-left);padding-right:env(safe-area-inset-right)}
 </style>
 </head>
 <body>
@@ -106,7 +152,9 @@ td small{display:block;color:var(--muted);font-size:11px;font-weight:400}
     <div id="map">
       <div class="card hint" id="hint">Click the map to place area A, then area B. Drag either pin to move it.</div>
       <div class="card legend" id="legend" aria-live="polite"></div>
-      <div class="card ctrl">
+      <div class="card mini" id="mini" aria-live="polite"><span class="a">A <b id="miniA">–</b></span><span class="b">B <b id="miniB">–</b></span></div>
+      <div class="card ctrl" id="ctrl">
+        <button id="layers" class="mob" type="button" aria-expanded="false">Layers ▾</button>
         <label>Radius <input type="range" id="rad" min="300" max="2000" step="50" value="800"> <span id="radv">800 m</span></label>
         <label><input type="checkbox" id="fl" checked> Flood overlays</label>
         <label id="aepwrap"><input type="checkbox" id="aept"> 1% AEP extent (modelled)</label>
@@ -163,6 +211,12 @@ const DARK=css('--ground').toLowerCase()==='#141817';
 let SAVED=null;try{SAVED=JSON.parse(sessionStorage.getItem('mapstate'));sessionStorage.removeItem('mapstate');}catch(e){}
 document.getElementById('lede').textContent=`${META.title}, ${META.n.toLocaleString()} SA1s. Compare the age structure and flood-relevant needs of any two places, instead of one average for the whole area.`;
 d3.select('#notes').selectAll('li').data(META.notes).join('li').text(d=>d);
+// ---- phones: legend and layer list start collapsed; tap to open
+{const small=()=>matchMedia('(max-width:700px)').matches,lg=document.getElementById('legend'),ct=document.getElementById('ctrl'),ly=document.getElementById('layers');
+ const setLayers=open=>{ct.classList.toggle('collapsed',!open);ly.textContent=open?'Layers ▴':'Layers ▾';ly.setAttribute('aria-expanded',open);};
+ if(small()){lg.classList.add('collapsed');setLayers(false);}
+ lg.addEventListener('click',()=>{if(small())lg.classList.toggle('collapsed');});
+ ly.addEventListener('click',()=>setLayers(ct.classList.contains('collapsed')));}
 // Data currency: live inputs (overlays, addresses, AEP, roads, buildings) are re-downloaded monthly
 // by CI; Census 2021 and ASGS 2021 are fixed releases.
 document.getElementById('dates').textContent=(META.fetched?'Live inputs (overlays, addresses, flood extent, roads, buildings) downloaded '+META.fetched+'. ':'')+
@@ -513,6 +567,8 @@ function update(){
   const outA=out(oa,A),outB=out(ob,B);
   document.getElementById('popA').textContent=oa?Math.round(oa.pop).toLocaleString():'–';
   document.getElementById('popB').textContent=ob?Math.round(ob.pop).toLocaleString():'–';
+  document.getElementById('miniA').textContent=document.getElementById('popA').textContent;   // phone readout on the map
+  document.getElementById('miniB').textContent=document.getElementById('popB').textContent;
   document.getElementById('subA').textContent=outA||(oa?'residents, '+near(A):'Click the map');
   document.getElementById('subB').textContent=outB||(ob?'residents, '+near(B):(oa?'Click to place':'then click again'));
   tb.selectAll('tr').data(ROWS.filter(r=>isFinite(r[1](ALL_STUDY)))).join('tr').html(r=>{const va=oa?r[1](oa):NaN,vb=ob?r[1](ob):NaN,vall=r[1](ALL);

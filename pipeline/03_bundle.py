@@ -25,6 +25,12 @@ for key, st in STUDIES.items():
 if not built:
     sys.exit("nothing to bundle: run 02_build.py first")
 
+# Home-screen install files (manifest and icons) sit beside the map page.
+import shutil
+shutil.copy("web/manifest.webmanifest", "dist/manifest.webmanifest")
+shutil.copytree("web/icons", "dist/icons", dirs_exist_ok=True)
+print("dist/manifest.webmanifest, dist/icons/: copied")
+
 # Old addresses keep working: /metro/ (the Greater Melbourne page until v0.6) redirects to the root.
 for old, to in {"metro/index.html": "../", "metro/analysis/index.html": "../../analysis/"}.items():
     dst = os.path.join("dist", old)

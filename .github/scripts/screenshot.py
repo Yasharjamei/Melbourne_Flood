@@ -29,6 +29,18 @@ with sync_playwright() as p:
         # Third view: IFRI, zoomed to one council.
         pg.uncheck("#relief"); pg.select_option("#metric", "ls5"); pg.select_option("#lgasel", "Casey")
         pg.wait_for_timeout(5000); pg.screenshot(path="shots/casey_ifri.png")
+    # Phones: the same map in iPhone- and Android-sized emulation (Chromium's engine for both;
+    # real iOS Safari is WebKit, which CI does not run).
+    for dev, out in (("iPhone 13", "shots/mobile_iphone.png"), ("Pixel 7", "shots/mobile_android.png")):
+        if not os.path.exists("dist/index.html"):
+            break
+        ctx = b.new_context(**p.devices[dev]); pg = ctx.new_page()
+        pg.on("pageerror", lambda e, d=dev: errors.append(f"{d}: {e}"))
+        pg.goto("file://" + os.path.abspath("dist/index.html"), wait_until="load", timeout=120000)
+        pg.wait_for_function("window.__ready === true", timeout=120000)
+        pg.wait_for_timeout(5000); pg.screenshot(path=out)
+        print(out, "readout:", pg.inner_text("#mini"))
+        ctx.close()
     b.close()
 if errors:
     sys.exit("page errors:\n" + "\n".join(errors))

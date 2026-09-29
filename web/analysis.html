@@ -2,7 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<meta name="theme-color" content="#1b3a5c">
 <title>Flood resilience analysis</title>
 <script>try{const t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -35,7 +38,15 @@ td.us{font-weight:600}
 .leg{display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);margin-top:4px}
 .leg .ramp{height:8px;flex:1;border-radius:2px}
 .leg .ns{width:14px;height:8px;background:var(--ns);border-radius:2px}
-.scroll{overflow-x:auto}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+/* phones: tighter margins; wide tables and the scatter matrix scroll sideways inside their card */
+@media (max-width:700px){
+  main{padding:16px max(12px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom))}
+  section{padding:14px 12px;border-radius:10px}
+  h1{font-size:21px}
+  .grid4{grid-template-columns:1fr 1fr;gap:10px}
+  .scroll::before{content:"Swipe sideways to see all of it →";display:block;font-size:11.5px;color:var(--muted);margin-bottom:6px}
+}
 .note{background:color-mix(in srgb,var(--focus) 8%,transparent);border-left:3px solid var(--focus);padding:10px 14px;font-size:13px;margin-top:14px;max-width:95ch}
 .tip{position:fixed;pointer-events:none;background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:6px 9px;font-size:12px;box-shadow:0 4px 14px rgba(0,0,0,.15);display:none;z-index:5}
 #splom{display:block}

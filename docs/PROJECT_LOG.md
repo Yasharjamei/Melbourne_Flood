@@ -436,3 +436,35 @@ A config-driven factor registry (one entry in `config.py` → map variable, pane
 
 **AEP figures on the area method.** 22,918 in the 1% AEP extent and 12,915 in both. These will change once addresses are back.
 
+## 23. Phones: iOS and Android (2026-09-29)
+
+**Request:** use the project on a phone, on iOS and Android.
+
+**No native app.** One responsive web page serves both. A web manifest with icons (`web/manifest.webmanifest`, `web/icons/`, drawn by `make_icons.py`; `03_bundle.py` copies them into `dist/`) makes *Add to Home Screen* open it full-screen with its own icon.
+
+**Found in emulation** (Playwright, iPhone 13 390×664 and Pixel 7 412×839, touch on):
+1. The legend and layer cards covered almost the whole map.
+2. The map was only **307 px** tall on the iPhone. `.mapcol` was 74svh and contained the menu bar, so the map got what the bar left over.
+3. The menus used 13.5 px text, so iOS Safari zooms in on focus.
+4. The A/B counts were below the map, out of sight while dragging.
+5. The scatter matrix scrolled sideways, with no cue that it could.
+
+**Fixes (≤700 px wide):**
+- The menus sit in a 2-column grid.
+- `#map` has its own height, 68svh (min 340 px).
+- The legend and layer list collapse (tap to toggle; the layer list scrolls inside the map when open).
+- A pointer-transparent A/B readout sits on the map.
+- Text inputs use 16 px.
+- On touch screens, pins are 34 px and checkboxes 18 px.
+- The layout respects the notch and home-bar insets.
+- The analysis page gets tighter margins, a two-column map grid and a "swipe sideways" cue.
+
+**Checks:**
+- **Taps in emulation:** Layers and legend open and close. A map tap moves the nearer pin (B), and both readouts update (8,821 → 4,137). No page errors.
+- **Desktop unchanged:** `check_circles.py` passes on the fixture.
+- **One bug caught while testing:** the readout card intercepted taps meant for the legend. It is now `pointer-events:none`.
+
+**Not verified:**
+- **Real WebKit:** iOS Safari uses WebKit, which isn't available here or in CI.
+- **Low-end phones:** the 19 MB inline page is the performance risk there.
+

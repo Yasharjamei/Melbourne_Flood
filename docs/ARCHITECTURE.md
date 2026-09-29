@@ -68,6 +68,7 @@ web/
   workflows/pages.yml   CI: fetch -> build -> bundle -> screenshot check -> deploy -> clean-up
   scripts/screenshot.py headless-Chromium check and screenshots of the built pages (a page error fails the run)
   scripts/check_circles.py independent recount of the A/B circles against the page's maths
+  scripts/screenshot.py also captures mobile_iphone.png and mobile_android.png (device emulation)
   scripts/demo_gif.py     captioned ~20 s demo of the built map (GIF + MP4) for sharing; never blocks a deploy
 docs/
   ARCHITECTURE.md    this file
