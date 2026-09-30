@@ -478,3 +478,9 @@ A config-driven factor registry (one entry in `config.py` → map variable, pane
 
 **Tested** on the fixture. It has only the papers' two councils, so the tour fell back to those: 14 frames, 18 s, 1.1 MB GIF, 0.6 MB MP4. The real council choice is visible in the demo run's log ("tour: …").
 
+**Ranking changed from total to share (same day).**
+- The first live recording ranked by total and picked Melbourne (34,173), Glen Eira (16,876) and Port Phillip (15,167). All three are dense inner-city councils.
+- Much of those counts is likely apartment residents above ground level: an address point per unit, inside an SBO or LSIO overlay.
+- A caption like "34,000 residents live in flood overlays" invites an obvious challenge.
+- The councils are now ranked by share of residents, the caption states the share and the count, and the owner's post notes that inner-city counts include apartment residents above ground level.
+

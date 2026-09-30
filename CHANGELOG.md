@@ -5,7 +5,7 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 ## [Unreleased]
 
 ### Changed
-- **The demo tours the most exposed councils.** It no longer shows the papers' two councils. It picks the three councils with the most residents in flood overlays from the data, and drags circle A to the most exposed mesh block. A new manual workflow, *Record demo from the live site*, records it from the published page without rebuilding anything.
+- **The demo tours the most exposed councils.** It no longer shows the papers' two councils. It picks the three councils with the highest share of residents in flood overlays from the data (by share, not total, so dense inner-city apartment counts don't dominate), and drags circle A to the most exposed mesh block. A new manual workflow, *Record demo from the live site*, records it from the published page without rebuilding anything.
 
 ### Added
 - **Phone layout and home-screen install (iOS and Android).**

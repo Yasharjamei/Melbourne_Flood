@@ -1,7 +1,7 @@
 """Record a short captioned demo of the built map for sharing (GIF and, if ffmpeg exists, MP4).
 
-Scenes: all of Greater Melbourne -> three councils chosen from the data (most residents in
-flood overlays, outside the papers' study area), each through a different variable, with
+Scenes: all of Greater Melbourne -> three councils chosen from the data (highest share of
+residents in flood overlays, outside the papers' study area), each through a different variable, with
 circle A dragged to the most exposed spot in the first -> 10 m terrain -> the analysis page. Frames are
 screenshots taken between scripted actions, so the timing does not depend on machine speed.
 
@@ -60,20 +60,22 @@ with sync_playwright() as p:
     pg.add_style_tag(content="#hint,.tip{display:none!important}")
     T = "window.__test"
 
-    # The councils to tour are chosen from the data, not by hand: the three with the most
-    # residents in flood overlays, leaving out the two councils of the papers' own study area.
+    # The councils to tour are chosen from the data, not by hand: the three with the highest
+    # SHARE of residents in flood overlays, leaving out the two councils of the papers' own study
+    # area. (Ranking by total favoured dense inner-city councils, where much of the count is
+    # apartment residents above ground level.)
     # For each, the mesh-block point with the most residents in an overlay is where circle A goes.
     tour = pg.evaluate("""()=>{
       const D=JSON.parse(document.getElementById('data').textContent);
       const paper=new Set(((D.meta.presets||[]).find(p=>p.key==='__paper')||{lgas:[]}).lgas);
-      const t={};D.sa1.forEach(s=>{t[s.lga]=(t[s.lga]||0)+s.pop*(s.fl||0);});
-      const all=Object.entries(t).sort((a,b)=>b[1]-a[1]);
+      const t={},p={};D.sa1.forEach(s=>{t[s.lga]=(t[s.lga]||0)+s.pop*(s.fl||0);p[s.lga]=(p[s.lga]||0)+s.pop;});
+      const all=Object.entries(t).map(([k,v])=>[k,v,v/p[k]]).sort((a,b)=>b[2]-a[2]);
       const pick=(all.filter(([n])=>!paper.has(n)).length?all.filter(([n])=>!paper.has(n)):all).slice(0,3);
-      return pick.map(([name,n])=>{let best=null,bs=-1;
+      return pick.map(([name,n,share])=>{let best=null,bs=-1;
         for(const m of D.mb){const s=D.sa1[m[2]];if(s.lga!==name)continue;
           const v=m[3]*s.pop*Math.min(1,m[4]+m[5]);if(v>bs){bs=v;best=[m[0],m[1]];}}
-        return {name,n,hot:best};});}""")
-    print("tour:", ", ".join(f"{c['name']} ({c['n']:,.0f} residents in overlays)" for c in tour))
+        return {name,n,share,hot:best};});}""")
+    print("tour:", ", ".join(f"{c['name']} ({c['share']:.1%}, {c['n']:,.0f} residents in overlays)" for c in tour))
     about = lambda n: f"{round(n, -2):,.0f}" if n >= 1000 else f"{n:,.0f}"
 
     def drag_a(target, caption, steps=8):
@@ -92,7 +94,7 @@ with sync_playwright() as p:
     snap(pg, "Who lives in the flood path? 31 councils, 4.8 million residents", 2600)
 
     # 2. three councils, each with a different lens
-    lenses = [("flood", "{c}: about {n} residents live in flood overlays"),
+    lenses = [("flood", "{c}: {p} of residents ({n}) have their home in a flood overlay"),
               ("o75", "{c}: where residents aged 75+ live"),
               ("ls5", "{c}: flood resilience index, per neighbourhood")]
     for k, (c, (key, cap)) in enumerate(zip(tour, lenses)):
@@ -100,7 +102,7 @@ with sync_playwright() as p:
             key = "flood"
         pg.select_option("#metric", key)
         pg.select_option("#lgasel", c["name"]); pg.wait_for_timeout(settle)
-        snap(pg, cap.format(c=c["name"], n=about(c["n"])), 2400)
+        snap(pg, cap.format(c=c["name"], n=about(c["n"]), p=f"{c['share']:.0%}"), 2400)
         if k == 0 and c["hot"]:
             drag_a(c["hot"], "Drag a circle: residents, ages and flood exposure update live")
             snap(pg, "Compare any two places side by side (A and B)", 2200)

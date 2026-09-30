@@ -182,7 +182,7 @@ On a phone:
 The page is large (~19 MB before compression), so the first load on mobile data takes a while; see *Known limits on phones* below.
 
 **Demo recording:** a captioned ~20 s tour of the map (`demo.gif` and `demo.mp4`).
-- **What it shows:** all of Greater Melbourne, then the **three councils with the most residents in flood overlays** (outside the papers' two, chosen from the data at recording time), each through a different variable. It also drags a circle to the most exposed spot, turns on 10 m terrain and ends on the analysis page.
+- **What it shows:** all of Greater Melbourne, then the **three councils with the highest share of residents in flood overlays** (outside the papers' two, chosen from the data at recording time; ranking by total picked dense inner-city councils, where many counted residents live in apartments above ground level), each through a different variable. It also drags a circle to the most exposed spot, turns on 10 m terrain and ends on the analysis page.
 - **Without a rebuild:** Actions → *Record demo from the live site* → *Run workflow*. It records the published site in a few minutes and changes nothing. Download it from that run's *Artifacts* → *demo*.
 - **Every build** also records one, under *Artifacts* → *screenshots*.
 
