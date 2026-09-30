@@ -181,7 +181,10 @@ On a phone:
 
 The page is large (~19 MB before compression), so the first load on mobile data takes a while; see *Known limits on phones* below.
 
-**Demo recording:** every build records a captioned ~20 s tour of the map (`demo.gif` and `demo.mp4`). To get it: Actions → latest green run → *Artifacts* → *screenshots*. The recording is regenerated with each build, so it always shows the current data.
+**Demo recording:** a captioned ~20 s tour of the map (`demo.gif` and `demo.mp4`).
+- **What it shows:** all of Greater Melbourne, then the **three councils with the most residents in flood overlays** (outside the papers' two, chosen from the data at recording time), each through a different variable. It also drags a circle to the most exposed spot, turns on 10 m terrain and ends on the analysis page.
+- **Without a rebuild:** Actions → *Record demo from the live site* → *Run workflow*. It records the published site in a few minutes and changes nothing. Download it from that run's *Artifacts* → *demo*.
+- **Every build** also records one, under *Artifacts* → *screenshots*.
 
 [`.github/workflows/pages.yml`](.github/workflows/pages.yml) fetches, builds and bundles the map and analysis pages on a GitHub runner:
 - **Changes go straight to `main`.** There are no pull requests or other branches. Each push builds everything and runs a headless-browser check of both pages. **Only if all of that passes is the site deployed**, so a broken change never replaces the live version. The screenshots are attached to each run under *Artifacts*.

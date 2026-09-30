@@ -1,0 +1,34 @@
+name: Record demo from the live site
+
+# Manual only (Actions -> "Record demo from the live site" -> Run workflow). Records the captioned
+# demo (demo.gif, demo.mp4) straight from the published site: no fetch, no build, no deploy, so
+# it takes a few minutes and never changes the site. The normal build also records one.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: |
+          pip install playwright pillow imageio-ffmpeg
+          python -m playwright install --with-deps chromium
+      - name: Record
+        run: python .github/scripts/demo_gif.py
+        env:
+          DEMO_URL: https://yasharjamei.github.io/Melbourne_Flood/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: demo
+          path: |
+            shots/demo.gif
+            shots/demo.mp4
+          retention-days: 14

@@ -4,6 +4,9 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 
 ## [Unreleased]
 
+### Changed
+- **The demo tours the most exposed councils.** It no longer shows the papers' two councils. It picks the three councils with the most residents in flood overlays from the data, and drags circle A to the most exposed mesh block. A new manual workflow, *Record demo from the live site*, records it from the published page without rebuilding anything.
+
 ### Added
 - **Phone layout and home-screen install (iOS and Android).**
   - The menus sit in a compact grid, and the map gets 68% of the visible screen height; before, it had about a third of an iPhone screen.

@@ -468,3 +468,13 @@ A config-driven factor registry (one entry in `config.py` → map variable, pane
 - **Real WebKit:** iOS Safari uses WebKit, which isn't available here or in CI.
 - **Low-end phones:** the 19 MB inline page is the performance risk there.
 
+## 24. Demo tours data-chosen councils; recorded without a rebuild (2026-09-30)
+
+**Request:** a better demo that shows councils other than the papers' two. The owner asked for no site rebuild.
+
+**Council choice.** The councils are chosen from the page's own data, not by hand. For each council, Σ SA1 residents × `fl` (the address-based share in any overlay) gives its residents in overlays. The top three outside the `__paper` preset are shown with three lenses: flood overlay, aged 75+, IFRI. In the first council, circle A is dragged to the mesh-block point with the most residents in an overlay. The captions quote each council's figure, rounded to the nearest 100.
+
+**No rebuild.** `demo.yml` (manual `workflow_dispatch`) runs `demo_gif.py` against the live site (`DEMO_URL`). It only checks out the scripts; it doesn't fetch, build or deploy. The code change went up with `[skip ci]`, so the push didn't start `pages.yml`. `pages.yml`'s cleanup deletes only its own runs, so demo runs are kept until their artifacts expire (14 days).
+
+**Tested** on the fixture. It has only the papers' two councils, so the tour fell back to those: 14 frames, 18 s, 1.1 MB GIF, 0.6 MB MP4. The real council choice is visible in the demo run's log ("tour: …").
+

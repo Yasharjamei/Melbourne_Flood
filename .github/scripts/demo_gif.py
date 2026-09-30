@@ -1,10 +1,12 @@
 """Record a short captioned demo of the built map for sharing (GIF and, if ffmpeg exists, MP4).
 
-Scenes: all of Greater Melbourne -> the papers' study area -> drag circle A and watch the
-figures change -> switch variables -> 10 m terrain -> the analysis page. Frames are
+Scenes: all of Greater Melbourne -> three councils chosen from the data (most residents in
+flood overlays, outside the papers' study area), each through a different variable, with
+circle A dragged to the most exposed spot in the first -> 10 m terrain -> the analysis page. Frames are
 screenshots taken between scripted actions, so the timing does not depend on machine speed.
 
 Usage (after 03_bundle.py):  python .github/scripts/demo_gif.py   ->  shots/demo.gif, shots/demo.mp4
+Or from the live site, no build:  DEMO_URL=https://yasharjamei.github.io/Melbourne_Flood/ python .github/scripts/demo_gif.py
 Optional env: CHROMIUM (browser binary), LIBS (local node_modules for offline runs).
 """
 import io, os, shutil, subprocess
@@ -48,46 +50,66 @@ with sync_playwright() as p:
             nm, "d3/dist/d3.min.js" if "d3" in r.request.url else "maplibre-gl/dist/" + r.request.url.rsplit("/", 1)[1])))
         pg.route("**/{basemaps.cartocdn.com,tiles-ap1.arcgis.com}/**", lambda r: r.abort())
     settle = 1500 if nm else 4000      # time for basemap tiles after each view change
-    pg.goto("file://" + os.path.abspath("dist/index.html"), wait_until="load", timeout=120000)
-    pg.wait_for_function("window.__ready === true", timeout=120000)
+    # DEMO_URL records the live site (no build needed); otherwise the freshly built dist/.
+    url = os.environ.get("DEMO_URL")
+    page = url or "file://" + os.path.abspath("dist/index.html")
+    apage = (url.rstrip("/") + "/analysis/") if url else "file://" + os.path.abspath("dist/analysis/index.html")
+    pg.goto(page, wait_until="load", timeout=180000)
+    pg.wait_for_function("window.__ready === true", timeout=180000)
     # no first-visit hint or hover tooltips in the recording
     pg.add_style_tag(content="#hint,.tip{display:none!important}")
+    T = "window.__test"
+
+    # The councils to tour are chosen from the data, not by hand: the three with the most
+    # residents in flood overlays, leaving out the two councils of the papers' own study area.
+    # For each, the mesh-block point with the most residents in an overlay is where circle A goes.
+    tour = pg.evaluate("""()=>{
+      const D=JSON.parse(document.getElementById('data').textContent);
+      const paper=new Set(((D.meta.presets||[]).find(p=>p.key==='__paper')||{lgas:[]}).lgas);
+      const t={};D.sa1.forEach(s=>{t[s.lga]=(t[s.lga]||0)+s.pop*(s.fl||0);});
+      const all=Object.entries(t).sort((a,b)=>b[1]-a[1]);
+      const pick=(all.filter(([n])=>!paper.has(n)).length?all.filter(([n])=>!paper.has(n)):all).slice(0,3);
+      return pick.map(([name,n])=>{let best=null,bs=-1;
+        for(const m of D.mb){const s=D.sa1[m[2]];if(s.lga!==name)continue;
+          const v=m[3]*s.pop*Math.min(1,m[4]+m[5]);if(v>bs){bs=v;best=[m[0],m[1]];}}
+        return {name,n,hot:best};});}""")
+    print("tour:", ", ".join(f"{c['name']} ({c['n']:,.0f} residents in overlays)" for c in tour))
+    about = lambda n: f"{round(n, -2):,.0f}" if n >= 1000 else f"{n:,.0f}"
+
+    def drag_a(target, caption, steps=8):
+        """Drag circle A to target (lon, lat) with the mouse, one captioned frame per step."""
+        a = pg.evaluate(f"{T}.areas().find(a=>a.id==='a')")
+        sx, sy = pg.evaluate(f"([lon,lat])=>{T}.px(lon,lat)", [a["lon"], a["lat"]])
+        tx, ty = pg.evaluate(f"([lon,lat])=>{T}.px(lon,lat)", target)
+        pg.mouse.move(sx, sy); pg.mouse.down()
+        for k in range(1, steps + 1):
+            pg.mouse.move(sx + (tx - sx) * k / steps, sy + (ty - sy) * k / steps, steps=6)
+            pg.wait_for_timeout(250); snap(pg, caption, 420)
+        pg.mouse.up(); pg.wait_for_timeout(500)
 
     # 1. the whole study area
     pg.select_option("#metric", "flood"); pg.wait_for_timeout(settle)
-    snap(pg, "Who lives in the flood path? Greater Melbourne, 4.8 million residents", 2600)
+    snap(pg, "Who lives in the flood path? 31 councils, 4.8 million residents", 2600)
 
-    # 2. the papers' study area
-    pg.select_option("#lgasel", "__paper"); pg.wait_for_timeout(settle)
-    snap(pg, "Zoom to any council, river basin or suburb", 2000)
+    # 2. three councils, each with a different lens
+    lenses = [("flood", "{c}: about {n} residents live in flood overlays"),
+              ("o75", "{c}: where residents aged 75+ live"),
+              ("ls5", "{c}: flood resilience index, per neighbourhood")]
+    for k, (c, (key, cap)) in enumerate(zip(tour, lenses)):
+        if not pg.query_selector(f'#metric option[value="{key}"]'):
+            key = "flood"
+        pg.select_option("#metric", key)
+        pg.select_option("#lgasel", c["name"]); pg.wait_for_timeout(settle)
+        snap(pg, cap.format(c=c["name"], n=about(c["n"])), 2400)
+        if k == 0 and c["hot"]:
+            drag_a(c["hot"], "Drag a circle: residents, ages and flood exposure update live")
+            snap(pg, "Compare any two places side by side (A and B)", 2200)
+        if k == len(tour) - 1:
+            pg.check("#relief"); pg.wait_for_timeout(settle + 1000)
+            snap(pg, "10 m terrain shows the valleys water follows", 2200)
 
-    # 3. drag circle A across the area and watch the figures change
-    T = "window.__test"
-    a = pg.evaluate(f"{T}.areas().find(a=>a.id==='a')")
-    sx, sy = pg.evaluate(f"{T}.px({a['lon']},{a['lat']})")
-    # towards the middle of the map, which after the preset zoom is the middle of the study area
-    cx, cy = pg.evaluate("(()=>{const r=document.getElementById('map').getBoundingClientRect();return [r.left+r.width*0.55,r.top+r.height*0.5]})()")
-    path = [(sx + (cx - sx) * k / 8, sy + (cy - sy) * k / 8) for k in range(1, 9)]
-    pg.mouse.move(sx, sy); pg.mouse.down()
-    for x, y in path:
-        pg.mouse.move(x, y, steps=6); pg.wait_for_timeout(250)
-        snap(pg, "Drag a circle: residents, ages and flood exposure update live", 420)
-    pg.mouse.up(); pg.wait_for_timeout(500)
-    snap(pg, "Compare any two places side by side (A and B)", 2200)
-
-    # 4. switch what the map shows
-    for key, cap in (("o75", "Map who is most vulnerable: residents aged 75+"),
-                     ("ls5", "Flood resilience index (Lama & Sun 2026), per neighbourhood")):
-        if pg.query_selector(f'#metric option[value="{key}"]'):
-            pg.select_option("#metric", key); pg.wait_for_timeout(settle)
-            snap(pg, cap, 2200)
-
-    # 5. terrain
-    pg.check("#relief"); pg.wait_for_timeout(settle + 1000)
-    snap(pg, "10 m terrain shows the valleys water follows", 2200)
-
-    # 6. the statistics page
-    pg.goto("file://" + os.path.abspath("dist/analysis/index.html"), wait_until="load", timeout=120000)
+    # 3. the statistics page
+    pg.goto(apage, wait_until="load", timeout=180000)
     pg.wait_for_timeout(settle + 1500)
     snap(pg, "Correlations and MGWR: which factors matter where", 2800)
     b.close()
