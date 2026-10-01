@@ -218,11 +218,63 @@ def address_dates():
             say(f"- {yr}: {str(e)[:150]}")
 
 
-say("# Feasibility probe, round 2")
-for title, fn in [("VIF2023 small-area files", vif2), ("UDP residential (redevelopment, broadhectare)", udp2),
-                  ("ABS Data API (correct host)", abs2), ("ABS 2016 Mesh Block counts: file links", mb2016),
-                  ("Sentinel-2 over Melbourne (GET search)", s2), ("GHSL epochs incl. projections", ghsl2),
-                  ("Vicmap Address: addresses created per year, Greater Melbourne", address_dates)]:
+# ---- round 3: the questions round 2 left open
+
+def links(page, pattern, n=25):
+    html = get(page, timeout=90).decode("utf-8", "ignore")
+    hrefs = sorted(set(h.replace("&amp;", "&") for h in re.findall(r'href="([^"]+)"', html) if re.search(pattern, h, re.I)))
+    say(f"- {page}: {len(hrefs)} links matching `{pattern}`")
+    for h in hrefs[:n]:
+        say(f"  - <{urllib.parse.urljoin(page, h)}>")
+
+
+def vif3():
+    links("https://www.planning.vic.gov.au/guides-and-resources/Data-spatial-and-insights/discover-and-access-planning-open-data/victoria-in-future",
+          r"\.xlsx|SA2|small.?area")
+
+
+def abs3():
+    js = jget("https://data.api.abs.gov.au/rest/dataflow/ABS?detail=allstubs", timeout=120,
+              headers={"Accept": "application/vnd.sdmx.structure+json"})
+    flows = js.get("data", {}).get("dataflows", [])
+    nm = lambda f: f.get("name") if isinstance(f.get("name"), str) else (f.get("names") or {}).get("en", "")
+    hits = [(f["id"], nm(f)) for f in flows if re.search(r"ERP|resident population|building approv", f["id"] + " " + str(nm(f)), re.I)]
+    say(f"- {len(flows)} dataflows; {len(hits)} on ERP / building approvals:")
+    for i, n in hits[:30]:
+        say(f"  - `{i}`: {n}")
+    links("https://www.abs.gov.au/statistics/people/population/regional-population/latest-release", r"\.xlsx|\.zip")
+
+
+def mb3():
+    links("https://www.abs.gov.au/AUSSTATS/abs@.nsf/DetailsPage/2074.02016?OpenDocument", r"openagent|\.csv|\.xlsx|\.zip")
+    links("https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs-edition-3/jul2021-jun2026/access-and-downloads/correspondences",
+          r"MB.*2016|2016.*MB|mesh")
+
+
+def wfs3():
+    caps = get("https://opendata.maps.vic.gov.au/geoserver/wfs?service=WFS&version=2.0.0&request=GetCapabilities", timeout=120).decode("utf-8", "ignore")
+    names = re.findall(r"<Name>([^<]+)</Name>", caps)
+    hits = sorted({n for n in names if re.search(r"udp|redevel|greenfield|broadhect|mrrs|slr|inund", n, re.I)})
+    say(f"- {len(names)} WFS layers; {len(hits)} on housing pipeline or sea-level rise: {hits}")
+
+
+def s2_3():
+    for name, url in (("Earth Search", "https://earth-search.aws.element84.com/v1/search"),
+                      ("Planetary Computer", "https://planetarycomputer.microsoft.com/api/stac/v1/search")):
+        try:
+            q = urllib.parse.urlencode({"collections": "sentinel-2-l2a", "bbox": "144.9,-37.85,145.0,-37.8",
+                                        "datetime": "2025-01-01T00:00:00Z/2025-03-31T23:59:59Z", "limit": 50})
+            f = jget(f"{url}?{q}", timeout=120)["features"]
+            cc = sorted(round(x["properties"].get("eo:cloud_cover", 100)) for x in f)
+            say(f"- {name}: {len(f)} scenes over central Melbourne, Jan–Mar 2025; cloud cover % {cc[:12]}")
+        except Exception as e:
+            say(f"- {name}: {type(e).__name__}: {str(e)[:150]}")
+
+
+say("# Feasibility probe, round 3")
+for title, fn in [("VIF2023 files on planning.vic.gov.au", vif3), ("ABS: ERP and building approvals", abs3),
+                  ("ABS: 2016 Mesh Block counts and 2016->2021 correspondence", mb3),
+                  ("Vicmap WFS: housing pipeline or sea-level-rise layers?", wfs3), ("Sentinel-2 (two catalogues)", s2_3)]:
     section(title, fn)
 open("probe_report.md", "w").write("\n".join(out) + "\n")
 if os.environ.get("GITHUB_STEP_SUMMARY"):
