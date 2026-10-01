@@ -1,0 +1,151 @@
+"""Feasibility probe for the population-forecast and remote-sensing work (scenarios page).
+
+Checks, from a machine with open internet, what each candidate source actually offers:
+format, years, coverage and useful fields. Prints a report and writes probe_report.md.
+Changes nothing; run it from Actions -> "Probe data sources" -> Run workflow.
+"""
+import json, os, re, ssl, sys, urllib.parse, urllib.request
+
+BBOX = (144.33, -38.50, 145.88, -37.40)          # Greater Melbourne, lon/lat
+UA = {"User-Agent": "Mozilla/5.0 (Melbourne_Flood feasibility probe)"}
+out = []
+
+
+def say(s=""):
+    print(s); out.append(s)
+
+
+def get(url, n=None, timeout=60, headers=None):
+    req = urllib.request.Request(url, headers={**UA, **(headers or {})})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read(n) if n else r.read()
+
+
+def jget(url, **kw):
+    return json.loads(get(url, **kw))
+
+
+def section(title, fn):
+    say(f"\n## {title}")
+    try:
+        fn()
+    except Exception as e:
+        say(f"- **FAILED:** {type(e).__name__}: {str(e)[:300]}")
+
+
+def ckan(query, rows=8):
+    """DataVic's catalogue (CKAN API): datasets matching query, with each resource's format and URL."""
+    q = urllib.parse.urlencode({"q": query, "rows": rows})
+    js = jget(f"https://discover.data.vic.gov.au/api/3/action/package_search?{q}")
+    say(f"- {js['result']['count']} datasets match `{query}`")
+    for p in js["result"]["results"]:
+        say(f"  - **{p['title']}** (licence: {p.get('license_title')}, modified {str(p.get('metadata_modified'))[:10]})")
+        for r in p.get("resources", [])[:8]:
+            say(f"    - {r.get('format') or '?'}: {r.get('name') or ''} <{r.get('url')}>")
+
+
+def vif():
+    ckan("VIF2023 SA2")
+    ckan("VIF2023 small area")
+
+
+def udp():
+    ckan("urban development program")
+
+
+def coastal():
+    ckan("Victorian Coastal Inundation")
+    caps = get("https://opendata.maps.vic.gov.au/geoserver/wfs?service=WFS&version=2.0.0&request=GetCapabilities", timeout=120).decode("utf-8", "ignore")
+    names = sorted(set(re.findall(r"<Name>([^<]*(?:inund|slr|sea_?level|storm|coast)[^<]*)</Name>", caps, re.I)))
+    say(f"- Vicmap WFS layers matching inundation/SLR/coast: {len(names)}")
+    for n in names[:40]:
+        say(f"  - `{n}`")
+
+
+def abs_api():
+    xml = get("https://api.data.abs.gov.au/dataflow/ABS", timeout=120, headers={"Accept": "application/xml"}).decode("utf-8", "ignore")
+    flows = re.findall(r'<structure:Dataflow[^>]*id="([^"]+)"[^>]*>.*?<common:Name[^>]*>([^<]+)</common:Name>', xml, re.S)
+    hits = [(i, n) for i, n in flows if re.search(r"ERP|resident population|building approv|BA_", i + " " + n, re.I)]
+    say(f"- ABS Data API dataflows: {len(flows)} total; {len(hits)} about ERP or building approvals:")
+    for i, n in hits[:30]:
+        say(f"  - `{i}`: {n}")
+
+
+def abs_mb2016():
+    """2016 Mesh Block counts are needed for the 2016 -> 2021 back-test."""
+    for url in ["https://www.abs.gov.au/AUSSTATS/subscriber.nsf/log?openagent&2016%20census%20mesh%20block%20counts.xlsx&2074.0&Data%20Cubes&1DED88080198D6C6CA2581520083D113&0&2016&04.07.2017&Latest",
+                "https://www.abs.gov.au/ausstats/abs@.nsf/mf/2074.0"]:
+        try:
+            b = get(url, n=400, timeout=60); say(f"- reachable: <{url[:110]}> ({b[:60]!r})")
+        except Exception as e:
+            say(f"- not reachable: <{url[:110]}>: {e}")
+
+
+def sentinel2():
+    """Free Sentinel-2 L2A (10 m) scenes over Melbourne, via the Earth Search STAC API on AWS."""
+    for yr in (2016, 2019, 2021, 2025):
+        body = json.dumps({"collections": ["sentinel-2-l2a"], "bbox": list(BBOX),
+                           "datetime": f"{yr}-01-01T00:00:00Z/{yr}-03-31T23:59:59Z",
+                           "query": {"eo:cloud_cover": {"lt": 10}}, "limit": 100}).encode()
+        req = urllib.request.Request("https://earth-search.aws.element84.com/v1/search", data=body,
+                                     headers={**UA, "Content-Type": "application/geo+json"})
+        js = json.loads(urllib.request.urlopen(req, timeout=120).read())
+        tiles = sorted({f["properties"].get("s2:mgrs_tile") or f["id"].split("_")[1] for f in js["features"]})
+        say(f"- Jan–Mar {yr}: {len(js['features'])} scenes under 10% cloud; MGRS tiles {tiles}")
+
+
+def ghsl():
+    """JRC Global Human Settlement Layer: built-up surface/volume and population, 1975-2030 (incl. projections)."""
+    base = "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/"
+    html = get(base, timeout=60).decode("utf-8", "ignore")
+    dirs = sorted(set(re.findall(r'href="(GHS_[A-Z_]+_GLOBE_R20\d\d[AB]?)/?"', html)))
+    say(f"- GHSL product folders: {dirs}")
+    for d in [x for x in dirs if re.search(r"BUILT_S|BUILT_V|POP", x)][:4]:
+        sub = get(base + d + "/", timeout=60).decode("utf-8", "ignore")
+        subs = sorted(set(re.findall(r'href="([^"/]+)/"', sub)))[:12]
+        say(f"  - {d}: {subs}")
+
+
+def worldpop():
+    js = jget("https://hub.worldpop.org/rest/data/pop/wpgp?iso3=AUS", timeout=60)
+    yrs = sorted({d.get("popyear") for d in js.get("data", [])})
+    say(f"- WorldPop 100 m population, Australia: years {yrs}")
+
+
+def worldcover():
+    for y, v in (("2020", "v100"), ("2021", "v200")):
+        url = f"https://esa-worldcover.s3.eu-central-1.amazonaws.com/{v}/{y}/map/ESA_WorldCover_10m_{y}_{v}_S39E144_Map.tif"
+        req = urllib.request.Request(url, method="HEAD", headers=UA)
+        r = urllib.request.urlopen(req, timeout=60)
+        say(f"- ESA WorldCover {y} tile S39E144: HTTP {r.status}, {int(r.headers.get('Content-Length', 0)) / 1e6:.0f} MB")
+
+
+def ms_buildings():
+    """Do Microsoft footprints carry capture dates or heights? (needed to date new buildings)."""
+    import csv, gzip, io
+    rows = list(csv.DictReader(io.StringIO(get("https://minedbuildings.z5.web.core.windows.net/global-buildings/dataset-links.csv", timeout=120).decode())))
+    au = [r for r in rows if r["Location"] == "Australia"]
+    url = au[len(au) // 2]["Url"]
+    feat = json.loads(gzip.decompress(get(url, timeout=120)).splitlines()[0])
+    say(f"- {len(au)} Australian tiles; sample properties: `{json.dumps(feat.get('properties'))[:300]}`")
+
+
+def vicmap_address():
+    """Does Vicmap Address record when an address was created? (observed new dwellings since 2021)."""
+    d = get("https://opendata.maps.vic.gov.au/geoserver/wfs?service=WFS&version=2.0.0&request=DescribeFeatureType&typeNames=open-data-platform:address", timeout=120).decode("utf-8", "ignore")
+    fields = re.findall(r'name="([^"]+)"\s+[^>]*type="([^"]+)"', d)
+    dated = [f for f in fields if re.search(r"date|time|creat|modif|retire", f[0], re.I)]
+    say(f"- {len(fields)} fields; date-like: {dated}")
+
+
+say("# Feasibility probe: population forecast and remote sensing")
+for title, fn in [("VIF2023 small-area projections (DataVic)", vif), ("Urban Development Program (DataVic)", udp),
+                  ("Coastal inundation / sea-level rise", coastal), ("ABS Data API: ERP and building approvals", abs_api),
+                  ("ABS 2016 Mesh Block counts (back-test)", abs_mb2016), ("Sentinel-2 L2A over Melbourne (Earth Search)", sentinel2),
+                  ("GHSL built-up and population incl. 2030 projections", ghsl), ("WorldPop", worldpop),
+                  ("ESA WorldCover 10 m", worldcover), ("Microsoft building footprints: dates/heights?", ms_buildings),
+                  ("Vicmap Address: creation dates?", vicmap_address)]:
+    section(title, fn)
+open("probe_report.md", "w").write("\n".join(out) + "\n")
+if os.environ.get("GITHUB_STEP_SUMMARY"):
+    open(os.environ["GITHUB_STEP_SUMMARY"], "a").write("\n".join(out) + "\n")

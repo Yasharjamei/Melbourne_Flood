@@ -1,0 +1,25 @@
+name: Probe data sources
+
+# Manual only. Checks which population-forecast and remote-sensing sources are reachable and
+# what they offer (formats, years, fields). Writes a report; changes nothing on the site.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python .github/scripts/probe_sources.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: probe-report
+          path: probe_report.md
+          retention-days: 30
