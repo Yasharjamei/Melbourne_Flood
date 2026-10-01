@@ -484,3 +484,38 @@ A config-driven factor registry (one entry in `config.py` → map variable, pane
 - A caption like "34,000 residents live in flood overlays" invites an obvious challenge.
 - The councils are now ranked by share of residents, the caption states the share and the count, and the owner's post notes that inner-city counts include apartment residents above ground level.
 
+## 25. Population forecast: what the data allows, and the back-test (2026-10-01)
+
+**Goal:** a scenarios page showing residents in today's flood areas in 2036, plus sea-level rise, with forecasts reaching SA1 and mesh-block level. The owner asked for multiple data sources and remote sensing.
+
+**Three probe rounds** (`probe.yml`, manual, no site change) established:
+- **ABS**
+  - ERP by SA2: `ABS_ANNUAL_ERP_ASGS2021`, 2001 onwards, plus the 2024–25 regional population cubes.
+  - ERP by council, age and sex, to 2025. Building approvals by council.
+  - 2016 Mesh Block Counts (CSV) and the `CG_MB_2016_MB_2021` correspondence.
+- **Vicmap Address** has `pfi_created`. Addresses created per year in Greater Melbourne, 2012–2026: 57,680; 43,206; 67,807; 76,880; 90,930; 82,763; 75,909; 71,852; 78,714; 76,456; 73,463; 57,442; 54,957; 59,570; 53,434 (2026 to October). No database-event spikes, and the trend follows the building cycle.
+- **GHSL R2023A**: built-up surface, building volume and population at 100 m, 1975–2030 (2025 and 2030 modelled). **Sentinel-2 L2A**: 38 scenes over central Melbourne in Jan–Mar 2025, many cloud-free.
+- **Not usable:** WorldPop (Australia stops at 2020), ESA WorldCover (2020–21 only), Microsoft footprints (no dates or heights).
+- **Need the owner:**
+  - VIF2023 files: planning.vic.gov.au answers automated requests with HTTP 403, and only council and region files are catalogued.
+  - DataShare orders: Urban Development Program sites, 2016–2025, and the sea-level-rise scenarios. The WFS has only the 2009 baselines.
+
+**Why addresses rather than satellite change.** A dated address is a new dwelling where it sits, towers and infill included. 10 m imagery sees new roofs, not new homes, and misses vertical growth. GHSL stays as an independent cross-check, and the bespoke Sentinel-2 analysis is dropped.
+
+**Back-test design** (`pipeline/forecast/backtest.py`).
+- **What it predicts:** each 2021 mesh block's residents, from the 2016 counts (moved onto 2021 mesh blocks with the correspondence) plus addresses created between the Census nights.
+- **SA2 totals are set to the true 2021 values**, so the error measured is placement alone.
+- **Methods compared:**
+  - A: uniform growth within each SA2.
+  - B: existing homes grow at a common SA2 rate, and new addresses add the SA2's persons per dwelling.
+  - C: existing stock fixed, with the SA2 remainder going to new addresses.
+- **Metrics:** WAPE, the share of units within 10 people or 20%, and the median error, for all mesh blocks, for growth mesh blocks (10+ new addresses) and for SA1s.
+- **Decision rule:** the measured error decides whether the page shows mesh blocks, SA1s or suburbs.
+
+**A bug caught on synthetic data.** pandas inferred one column from ABS title rows and, with `on_bad_lines="skip"`, silently dropped every data row. The file is now read as ragged rows.
+
+**Known biases.**
+- Retired addresses are absent, so 2016–21 new addresses are slightly undercounted.
+- Addresses can predate occupation (created at subdivision).
+- Non-residential addresses are included.
+

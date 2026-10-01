@@ -1,0 +1,55 @@
+name: Forecast back-test
+
+# Manual only, and never deploys. Development of the population forecast (scenarios page):
+# downloads the forecast inputs and runs the 2016 -> 2021 placement back-test, then attaches the
+# report. Reuses the main build's raw-data cache (mesh blocks, 2021 counts) without changing it.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Restore the main build's raw inputs (read-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: data/raw
+          key: raw-v2-${{ hashFiles('pipeline/01_fetch.py', 'pipeline/config.py') }}-none
+          restore-keys: raw-v2-
+      - name: Forecast inputs cache
+        uses: actions/cache@v4
+        with:
+          path: data/raw/forecast
+          key: forecast-v1-${{ hashFiles('pipeline/forecast/fetch.py') }}
+
+      - name: Main inputs, only if the cache was empty
+        run: |
+          if [ ! -f data/raw/metro/mb.geojson ] || [ ! -f data/raw/shared/mb_counts_2021.xlsx ]; then
+            python pipeline/01_fetch.py --study metro
+          fi
+      - name: Forecast inputs
+        run: python pipeline/forecast/fetch.py
+        env:
+          STRICT_FETCH: "1"
+      - name: Back-test 2016 -> 2021
+        run: python pipeline/forecast/backtest.py | tee backtest.txt
+      - run: |
+          echo '```' >> "$GITHUB_STEP_SUMMARY"; cat backtest.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: forecast-backtest
+          path: |
+            backtest.txt
+            data/processed/forecast_backtest.json
+          retention-days: 30

@@ -4,6 +4,9 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 
 ## [Unreleased]
 
+### In development (not on the site yet)
+- **Population forecast, step 1: inputs and a placement back-test.** `pipeline/forecast/fetch.py` downloads the 2016 mesh-block counts, the ABS 2016→2021 mesh-block correspondence, ABS population estimates by SA2, and every Vicmap address created since Census 2016. `pipeline/forecast/backtest.py` predicts each 2021 mesh block's residents from 2016 in three ways and measures the error against the 2021 Census. Run it manually with the *Forecast back-test* workflow; it never deploys.
+
 ### Changed
 - **The demo tours the most exposed councils.** It no longer shows the papers' two councils. It picks the three councils with the highest share of residents in flood overlays from the data (by share, not total, so dense inner-city apartment counts don't dominate), and drags circle A to the most exposed mesh block. A new manual workflow, *Record demo from the live site*, records it from the published page without rebuilding anything.
 

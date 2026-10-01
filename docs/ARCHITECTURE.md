@@ -69,6 +69,8 @@ web/
   scripts/screenshot.py headless-Chromium check and screenshots of the built pages (a page error fails the run)
   scripts/check_circles.py independent recount of the A/B circles against the page's maths
   scripts/screenshot.py also captures mobile_iphone.png and mobile_android.png (device emulation)
+  workflows/forecast.yml manual only: forecast inputs + 2016->2021 placement back-test (never deploys)
+  workflows/probe.yml   manual only: checks what candidate data sources offer
   workflows/demo.yml    manual only: records the demo from the live site (no build, no deploy)
   scripts/demo_gif.py     captioned ~20 s demo of the built map (GIF + MP4) for sharing; never blocks a deploy
 docs/
