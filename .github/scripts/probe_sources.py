@@ -138,13 +138,91 @@ def vicmap_address():
     say(f"- {len(fields)} fields; date-like: {dated}")
 
 
-say("# Feasibility probe: population forecast and remote sensing")
-for title, fn in [("VIF2023 small-area projections (DataVic)", vif), ("Urban Development Program (DataVic)", udp),
-                  ("Coastal inundation / sea-level rise", coastal), ("ABS Data API: ERP and building approvals", abs_api),
-                  ("ABS 2016 Mesh Block counts (back-test)", abs_mb2016), ("Sentinel-2 L2A over Melbourne (Earth Search)", sentinel2),
-                  ("GHSL built-up and population incl. 2030 projections", ghsl), ("WorldPop", worldpop),
-                  ("ESA WorldCover 10 m", worldcover), ("Microsoft building footprints: dates/heights?", ms_buildings),
-                  ("Vicmap Address: creation dates?", vicmap_address)]:
+# ---- round 2: fixes for round 1's probe errors, plus the questions round 1 raised
+
+def ckan_titles(query, rows=25, must=None):
+    q = urllib.parse.urlencode({"q": query, "rows": rows})
+    js = jget(f"https://discover.data.vic.gov.au/api/3/action/package_search?{q}")
+    hits = [p for p in js["result"]["results"] if not must or re.search(must, p["title"], re.I)]
+    say(f"- `{query}`: {len(hits)} relevant of {js['result']['count']}")
+    for p in hits[:15]:
+        res = "; ".join(f"{r.get('format')} <{r.get('url')}>" for r in p.get("resources", [])[:3])
+        say(f"  - **{p['title']}** ({p.get('license_title')}): {res}")
+
+
+def vif2():
+    ckan_titles("Victoria in Future 2023", must=r"VIF|Victoria in Future")
+    ckan_titles("VIF2023", must=r"SA2|SA3|small|statistical", rows=60)
+
+
+def udp2():
+    for q in ("Urban Development Program major redevelopment", "Urban Development Program broadhectare",
+              "Urban Development Program residential"):
+        ckan_titles(q, must=r"redevelop|broadhectare|residential|minor infill")
+
+
+def abs2():
+    xml = get("https://data.api.abs.gov.au/rest/dataflow/ABS?detail=allstubs", timeout=120,
+              headers={"Accept": "application/xml"}).decode("utf-8", "ignore")
+    flows = re.findall(r'id="([^"]+)"[^>]*>\s*<common:Name[^>]*>([^<]+)<', xml)
+    hits = [(i, n) for i, n in flows if re.search(r"ERP|resident population|building approv", i + " " + n, re.I)]
+    say(f"- {len(flows)} dataflows; {len(hits)} on ERP / building approvals:")
+    for i, n in hits[:30]:
+        say(f"  - `{i}`: {n}")
+
+
+def mb2016():
+    for page in ("https://www.abs.gov.au/AUSSTATS/abs@.nsf/DetailsPage/2074.02016?OpenDocument",
+                 "https://www.abs.gov.au/ausstats/abs@.nsf/mf/2074.0"):
+        try:
+            html = get(page, timeout=60).decode("utf-8", "ignore")
+            links = sorted(set(re.findall(r'href="([^"]*(?:mesh%20block|Mesh%20Block|mesh_block|MB)[^"]*\.(?:csv|xlsx|xls|zip)[^"]*)"', html, re.I)))
+            say(f"- {page}: {len(links)} file links")
+            for l in links[:10]:
+                say(f"  - <{l.replace('&amp;', '&')}>")
+        except Exception as e:
+            say(f"- {page}: {e}")
+
+
+def s2():
+    for yr in (2016, 2019, 2021, 2025):
+        q = urllib.parse.urlencode({"collections": "sentinel-2-l2a", "bbox": ",".join(map(str, BBOX)),
+                                    "datetime": f"{yr}-01-01T00:00:00Z/{yr}-03-31T23:59:59Z", "limit": 200})
+        js = jget(f"https://earth-search.aws.element84.com/v1/search?{q}", timeout=120)
+        f = js["features"]
+        clear = [x for x in f if (x["properties"].get("eo:cloud_cover") or 100) < 10]
+        tiles = sorted({x["properties"].get("grid:code") or x["properties"].get("s2:mgrs_tile") or x["id"] for x in clear})
+        say(f"- Jan–Mar {yr}: {len(f)} scenes over Melbourne, {len(clear)} under 10% cloud; tiles {tiles[:12]}")
+
+
+def ghsl2():
+    base = "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/GHSL/"
+    for d in ("GHS_BUILT_S_GLOBE_R2023A", "GHS_BUILT_V_GLOBE_R2023A", "GHS_POP_GLOBE_R2023A"):
+        sub = get(base + d + "/", timeout=60).decode("utf-8", "ignore")
+        ep = sorted(set(re.findall(r"_E(\d{4})_GLOBE_R2023A_54009_100", sub)))
+        say(f"- {d}: epochs at 100 m: {ep}")
+
+
+def address_dates():
+    """How many Melbourne addresses were created each year? Spikes = database events, not homes."""
+    wfs = "https://opendata.maps.vic.gov.au/geoserver/wfs"
+    for yr in range(2012, 2027):
+        cql = (f"BBOX(geom,{BBOX[1]},{BBOX[0]},{BBOX[3]},{BBOX[2]},'urn:ogc:def:crs:EPSG::4326') AND "
+               f"pfi_created >= '{yr}-01-01T00:00:00Z' AND pfi_created < '{yr + 1}-01-01T00:00:00Z'")
+        q = urllib.parse.urlencode({"service": "WFS", "version": "2.0.0", "request": "GetFeature",
+                                    "typeNames": "open-data-platform:address", "resultType": "hits", "CQL_FILTER": cql})
+        try:
+            m = re.search(r'numberMatched="(\d+)"', get(f"{wfs}?{q}", timeout=180).decode("utf-8", "ignore"))
+            say(f"- addresses with pfi_created in {yr}: {int(m.group(1)):,}" if m else f"- {yr}: no count")
+        except Exception as e:
+            say(f"- {yr}: {str(e)[:150]}")
+
+
+say("# Feasibility probe, round 2")
+for title, fn in [("VIF2023 small-area files", vif2), ("UDP residential (redevelopment, broadhectare)", udp2),
+                  ("ABS Data API (correct host)", abs2), ("ABS 2016 Mesh Block counts: file links", mb2016),
+                  ("Sentinel-2 over Melbourne (GET search)", s2), ("GHSL epochs incl. projections", ghsl2),
+                  ("Vicmap Address: addresses created per year, Greater Melbourne", address_dates)]:
     section(title, fn)
 open("probe_report.md", "w").write("\n".join(out) + "\n")
 if os.environ.get("GITHUB_STEP_SUMMARY"):
