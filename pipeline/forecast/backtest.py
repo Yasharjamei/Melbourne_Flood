@@ -11,6 +11,12 @@ the placement error alone, not the error of the SA2 projections themselves.
                Censuses (Vicmap pfi_created) add residents at the SA2's persons per dwelling
   C  address only where it matters: as B, but a mesh block's existing stock keeps its 2016 count
                (rate 1) and the SA2 remainder goes to new addresses
+  D  calibrated: as C, but each new address adds k residents, one metro-wide k fitted as
+               (2021 - 2016 residents) / new addresses, instead of the SA2's persons per dwelling.
+               (Run 1 showed ~373k new addresses against ~453k new residents: most new addresses
+               are not a full household by Census night.)
+  E  calibrated + lag: as D, counting only addresses created at least 12 months before Census
+               night (an address is often created at subdivision, long before anyone moves in)
 
 Run after pipeline/forecast/fetch.py and the main 01_fetch.py (mesh blocks, 2021 counts):
     python pipeline/forecast/backtest.py   ->  data/processed/forecast_backtest.json, prints a report
@@ -106,6 +112,8 @@ def main():
     pts = gpd.GeoDataFrame(geometry=gpd.points_from_xy(a[sel, 0], a[sel, 1]), crs=4326).to_crs(mb.crs)
     j = gpd.sjoin(pts, mb[["geometry"]], predicate="within", how="inner")
     mb["new"] = j.groupby("index_right").size().reindex(range(len(mb))).fillna(0).values
+    old = (when[sel] < CENSUS_2021 - np.timedelta64(365, "D"))[j.index.values]
+    mb["new_old"] = j[old].groupby("index_right").size().reindex(range(len(mb))).fillna(0).values
     print(f"addresses created {CENSUS_2016} to {CENSUS_2021}: {int(sel.sum()):,}; {int(mb['new'].sum()):,} inside study mesh blocks")
 
     # SA2 control totals (oracle: the true 2021 values) and persons per dwelling
@@ -121,13 +129,20 @@ def main():
     r = ((P21 - ppd * N) / P16.clip(lower=1)).clip(0.7, 1.3)
     B = to_total(mb["p16"] * r + mb["new"] * ppd)
     C = to_total(mb["p16"] + mb["new"] * ppd)
+    k = max(0.0, (mb["p21"].sum() - mb["p16"].sum()) / max(mb["new"].sum(), 1))
+    D = to_total(mb["p16"] + mb["new"] * k)
+    k_old = max(0.0, (mb["p21"].sum() - mb["p16"].sum()) / max(mb["new_old"].sum(), 1))
+    E = to_total(mb["p16"] + mb["new_old"] * k_old)
+    print(f"calibrated residents per new address: k = {k:.2f} (all), {k_old:.2f} (created 12+ months before Census)")
 
     out = {"period": "2016 -> 2021", "sa2_totals": "true 2021 values (placement error only)",
            "mesh_blocks": len(mb), "residents_2021": int(mb["p21"].sum()), "new_addresses": int(mb["new"].sum()), "models": {}}
     act = mb["p21"].values
     grow = (mb["new"] >= 10).values                           # where most of the growth landed
     sa1_act = mb.groupby("sa1")["p21"].sum()
-    for name, pred in (("A_uniform", A), ("B_address", B), ("C_address_stock_fixed", C)):
+    out["k_residents_per_new_address"] = round(k, 3); out["k_lagged"] = round(k_old, 3)
+    for name, pred in (("A_uniform", A), ("B_address", B), ("C_address_stock_fixed", C),
+                       ("D_calibrated", D), ("E_calibrated_lag12m", E)):
         pred = np.asarray(pred, dtype=float)
         sa1_pred = pd.Series(pred).groupby(mb["sa1"].values).sum().reindex(sa1_act.index).values
         out["models"][name] = [metrics(pred, act, "mesh block"), metrics(pred[grow], act[grow], "mesh block, >=10 new addresses"),

@@ -523,3 +523,17 @@ A config-driven factor registry (one entry in `config.py` → map variable, pane
 - **The back-test stopped on the 2021 counts workbook.** Its data-dictionary sheet names `MB_CODE_2021` too. The reader now skips any sheet lacking the required columns.
 - **The run reported success anyway**, because `| tee` hid the exit code. The step now sets `pipefail`.
 
+**Back-test result, run 2 (c0c3669).** 62,017 mesh blocks (the fetch box reaches past the 31 councils), 5,048,248 residents in 2021 and 4,594,879 in 2016 on the same blocks. 373,443 new addresses fell inside, against about 453,000 new residents.
+
+| Model | Mesh block WAPE / within | Growth mesh blocks (10+ new addresses) | SA1 WAPE / within |
+|---|---|---|---|
+| A uniform | 22.5% / 72.9% | 46.4% / 46.8% | 16.7% / 82.3% |
+| B address | 21.7% / 74.4% | **56.1%** / 41.4% | 15.4% / 83.9% |
+| C address, stock fixed | 20.3% / 76.3% | 51.5% / 43.6% | 14.1% / 85.6% |
+
+**The finding.**
+- **Addresses barely help overall, and hurt where growth is.** Even with the true SA2 totals, placement error is ~20% at mesh block and ~14% at SA1.
+- **The likely cause:** a new address is not a new household. At ~2.6 persons per dwelling, 373k addresses would mean ~970k people, twice the real growth. Many addresses are lots or units not yet occupied by Census night.
+- **Next test:** D (one metro-wide residents-per-new-address, fitted) and E (D counting only addresses created 12+ months before Census night).
+- **Publishing:** mesh-block forecasts are not publishable on this evidence. SA1 is borderline, so suburb or SA2 it is unless D/E change the picture.
+
