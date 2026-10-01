@@ -43,7 +43,9 @@ jobs:
         env:
           STRICT_FETCH: "1"
       - name: Back-test 2016 -> 2021
-        run: python pipeline/forecast/backtest.py | tee backtest.txt
+        run: |
+          set -o pipefail   # without this, tee hides a failing back-test and the run shows green
+          python pipeline/forecast/backtest.py | tee backtest.txt
       - run: |
           echo '```' >> "$GITHUB_STEP_SUMMARY"; cat backtest.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4

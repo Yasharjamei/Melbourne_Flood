@@ -519,3 +519,7 @@ A config-driven factor registry (one entry in `config.py` → map variable, pane
 - Addresses can predate occupation (created at subdivision).
 - Non-residential addresses are included.
 
+**First real run.** Inputs downloaded: 2016 counts (14.0 MB), correspondence (14.5 MB), ERP by SA2 (6.6 MB), and 717,776 addresses created since Census 2016. Two faults:
+- **The back-test stopped on the 2021 counts workbook.** Its data-dictionary sheet names `MB_CODE_2021` too. The reader now skips any sheet lacking the required columns.
+- **The run reported success anyway**, because `| tee` hid the exit code. The step now sets `pipefail`.
+

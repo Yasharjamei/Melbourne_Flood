@@ -31,7 +31,7 @@ def table(path, key, cols):
         frames = [pd.DataFrame([r + [""] * (width - len(r)) for r in rows], dtype=str)]
     else:
         frames = list(pd.read_excel(path, sheet_name=None, header=None, dtype=str).values())
-    parts = []
+    parts, seen = [], []
     for df in frames:
         h = df.index[df.apply(lambda r: r.astype(str).str.strip().str.upper().eq(key.upper()).any(), axis=1)]
         if not len(h):
@@ -41,12 +41,13 @@ def table(path, key, cols):
         pick = {}
         for want in cols:
             m = [i for i, x in enumerate(up) if re.fullmatch(want, x, re.I)]
-            if not m:
-                raise KeyError(f"{path}: no column {want} in {hdr}")
-            pick[want] = m[0]
+            if m:
+                pick[want] = m[0]
+        if len(pick) < len(cols):                             # e.g. a data-dictionary sheet naming the column
+            seen.append(hdr[:8]); continue
         d = df.loc[h[0] + 1:, list(pick.values())]; d.columns = list(pick.keys()); parts.append(d)
     if not parts:
-        raise KeyError(f"{path}: header {key} not found")
+        raise KeyError(f"{path}: no sheet has all of {cols}; header rows seen: {seen}")
     return pd.concat(parts)
 
 
