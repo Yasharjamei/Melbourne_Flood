@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="../manifest.webmanifest">
+<link rel="apple-touch-icon" href="../icons/apple-touch-icon.png">
+<meta name="theme-color" content="#1b3a5c">
+<title>Flood scenarios to 2036</title>
+<script>try{const t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--ground:#F4F5F1;--panel:#FCFCFB;--ink:#16201F;--muted:#5B6664;--rule:#DCE0DA;--grid:#E9ECE7;--focus:#2A78D6;
+  --s0:#7A8583;--s1:#8FB4E3;--s2:#3F7FCC;--s3:#123F7A;--band:rgba(42,120,214,.16);--warn:#B4441C;--warnbg:#FBEDE6}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--ground:#141817;--panel:#1B1F1E;--ink:#ECEFEC;--muted:#A3ADAA;--rule:#2F3634;--grid:#252B29;--focus:#86B6EF;
+  --s0:#8C9694;--s1:#3E6595;--s2:#6FA3E2;--s3:#B9D6FA;--band:rgba(134,182,239,.18);--warn:#F09A72;--warnbg:#3A2219}}
+:root[data-theme="dark"]{--ground:#141817;--panel:#1B1F1E;--ink:#ECEFEC;--muted:#A3ADAA;--rule:#2F3634;--grid:#252B29;--focus:#86B6EF;
+  --s0:#8C9694;--s1:#3E6595;--s2:#6FA3E2;--s3:#B9D6FA;--band:rgba(134,182,239,.18);--warn:#F09A72;--warnbg:#3A2219}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;font-size:14px;line-height:1.5;font-variant-numeric:tabular-nums}
+main{max-width:1180px;margin:0 auto;padding:28px 20px 60px}
+header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+h1{font-size:24px;margin:0 0 4px;letter-spacing:-.01em}
+.lede{color:var(--muted);margin:0 0 6px;max-width:75ch}
+nav a,button.theme{font:inherit;font-size:13px;color:var(--ink);border:1px solid var(--rule);background:var(--panel);border-radius:999px;padding:6px 12px;text-decoration:none;cursor:pointer}
+section{background:var(--panel);border:1px solid var(--rule);border-radius:12px;padding:20px 22px;margin-top:22px}
+h2{font-size:16px;margin:0 0 4px}
+.sub{color:var(--muted);font-size:13px;margin:0 0 14px;max-width:85ch}
+.sample{margin-top:18px;border:1px solid var(--warn);background:var(--warnbg);color:var(--ink);border-radius:10px;padding:10px 14px;font-size:13px}
+.sample b{color:var(--warn)}
+.controls{display:flex;flex-wrap:wrap;gap:14px 28px;align-items:center}
+.seg{display:inline-flex;flex-wrap:wrap;border:1px solid var(--rule);border-radius:999px;overflow:hidden;background:var(--ground)}
+.seg button{font:inherit;font-size:13px;border:0;background:none;color:var(--ink);padding:6px 13px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--focus);color:#fff}
+:root[data-theme="dark"] .seg button[aria-pressed="true"]{color:#0F1716}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .seg button[aria-pressed="true"]{color:#0F1716}}
+.lab{font-size:12px;color:var(--muted);margin-right:8px;font-weight:600}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:18px}
+.kpi{border-top:3px solid var(--focus);padding-top:8px}
+.kpi .k{font-size:12px;color:var(--muted);font-weight:600}
+.kpi .v{font-size:28px;font-weight:700;letter-spacing:-.01em;line-height:1.2}
+.kpi .r{font-size:12.5px;color:var(--muted)}
+svg text{fill:var(--muted);font-size:11.5px;font-family:inherit}
+.legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted);margin-top:6px}
+.legend i{display:inline-block;width:16px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+table{border-collapse:collapse;font-size:13px;width:100%;min-width:600px}
+th,td{padding:7px 10px;border-top:1px solid var(--rule);text-align:right;white-space:nowrap}
+th:first-child,td:first-child{text-align:left}
+thead th{border-top:0;color:var(--muted);font-weight:600;font-size:12px}
+td.bar{width:38%;padding:4px 10px}
+td.bar svg{display:block;width:100%;height:18px}
+tr.chosen td{font-weight:600}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+ul.plain{margin:6px 0 0;padding-left:18px;max-width:90ch}
+ul.plain li{margin:4px 0}
+.tag{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;margin-left:6px;vertical-align:1px}
+.tag.real{background:color-mix(in srgb,var(--focus) 15%,transparent);color:var(--focus)}
+.tag.todo{background:var(--warnbg);color:var(--warn)}
+@media (max-width:700px){
+  main{padding:16px max(12px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom))}
+  section{padding:14px 12px;border-radius:10px}
+  h1{font-size:21px}
+  .kpis{grid-template-columns:1fr;gap:12px}
+  .kpi .v{font-size:24px}
+  .scroll::before{content:"Swipe sideways to see all of it →";display:block;font-size:11.5px;color:var(--muted);margin-bottom:6px}
+}
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>Flood scenarios to 2036</h1>
+      <p class="lede">How many residents could live in flood-prone areas as the city grows and the sea rises. Growth is placed where new homes are actually being built; the sea-level layers are the Victorian Coastal Inundation scenarios.</p>
+    </div>
+    <nav style="display:flex;gap:8px"><a href="../">← Back to the map</a><button class="theme" id="theme"></button></nav>
+  </header>
+
+  <div class="sample" id="sample" hidden><b>Preview with invented numbers.</b> Every figure in the scenario sections below is made up to test the layout, and the area names are placeholders. Only the accuracy table is real. Do not quote or share.</div>
+
+  <section>
+    <div class="controls">
+      <div><span class="lab">Year</span><span class="seg" id="years"></span></div>
+      <div><span class="lab">Sea level</span><span class="seg" id="slr"></span></div>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><div class="k" id="k1h"></div><div class="v" id="k1"></div><div class="r" id="k1r"></div></div>
+      <div class="kpi"><div class="k">Change since 2021</div><div class="v" id="k2"></div><div class="r" id="k2r"></div></div>
+      <div class="kpi"><div class="k">Added by sea-level rise</div><div class="v" id="k3"></div><div class="r" id="k3r"></div></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Residents in flood areas over time</h2>
+    <p class="sub">One line per sea-level scenario. The shaded band is the likely range for the selected scenario; it widens with the horizon because both the growth totals and their placement get less certain.</p>
+    <svg id="trend" style="width:100%;display:block"></svg>
+    <div class="legend" id="tleg"></div>
+  </section>
+
+  <section>
+    <h2 id="ah"></h2>
+    <p class="sub">Dot: central estimate. Bar: likely range. Tick: 2021 Census count. Sorted by the central estimate.</p>
+    <div class="scroll"><table id="areas"></table></div>
+  </section>
+
+  <section>
+    <h2>How accurate is the placement?<span class="tag real">real result</span></h2>
+    <p class="sub" id="btsub"></p>
+    <div class="scroll"><table id="bt"></table></div>
+    <p class="sub" style="margin-top:12px">Error is WAPE: the total absolute error divided by total residents. "Within" is the share of units within 10 people or 20% of the Census count. SA2 totals were set to the true 2021 values, so this measures placement only; real forecasts add the error of the totals themselves. On this evidence the page shows suburbs and SA2s as headline figures, SA1s only with ranges, and never single mesh blocks.</p>
+  </section>
+
+  <section>
+    <h2>Method</h2>
+    <ul class="plain">
+      <li><b>Totals:</b> Victoria in Future 2023 projections, checked against ABS Estimated Resident Population by SA2 up to 2025.</li>
+      <li><b>Placement:</b> each SA2's growth goes to the mesh blocks where Vicmap addresses were created at least 12 months earlier, at a fitted residents-per-new-address rate; existing homes keep their 2021 count. Planned redevelopment and greenfield sites carry the trend forward to 2036.</li>
+      <li><b>Cross-check:</b> GHSL built-up and population grids (1975–2030, 100 m, from satellite imagery) flag SA2s where the address-based growth and the satellite trend disagree.</li>
+      <li><b>Flood areas:</b> today's planning flood overlays, as on the main map, plus the sea-level-rise inundation extents for each scenario.</li>
+      <li><b>Ranges:</b> from the back-test error at each scale, widened by the spread between projection sources.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Inputs still missing<span class="tag todo">pending</span></h2>
+    <ul class="plain">
+      <li>Victoria in Future 2023 by council or SA2 (only the statewide workbook is in hand).</li>
+      <li>Sea-level-rise and storm-tide inundation extents, by DataShare order.</li>
+      <li>Urban Development Program redevelopment and greenfield sites, by DataShare order.</li>
+    </ul>
+  </section>
+</main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+(function(){
+// Scenarios page: residents in flood areas by year and sea-level scenario (D.total, D.areas[].v),
+// each value [central, low, high]; plus the real placement back-test (D.backtest).
+// See docs/ARCHITECTURE.md §2.7.1.
+const D=JSON.parse(document.getElementById('data').textContent),M=D.meta,Y=M.years,S=D.slr;
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const DARK=document.documentElement.dataset.theme==='dark'||(!document.documentElement.dataset.theme&&matchMedia('(prefers-color-scheme:dark)').matches);
+const tb=document.getElementById('theme');tb.textContent=DARK?'☀ Light mode':'☾ Dark mode';
+tb.onclick=()=>{try{localStorage.setItem('theme',DARK?'light':'dark');}catch(e){}location.reload();};
+document.getElementById('sample').hidden=!M.sample;
+const fmt=v=>Math.round(v).toLocaleString('en-AU'),sgn=v=>(v>=0?'+':'−')+fmt(Math.abs(v));
+const NS='http://www.w3.org/2000/svg';
+const el=(tag,attrs,parent)=>{const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;};
+const COL=['--s0','--s1','--s2','--s3'];
+let yi=Y.length-1,si=0;
+
+function seg(id,items,get,set){
+  const box=document.getElementById(id);
+  items.forEach((it,i)=>{const b=document.createElement('button');b.textContent=it;b.onclick=()=>{set(i);draw();};box.appendChild(b);});
+  return()=>[...box.children].forEach((b,i)=>b.setAttribute('aria-pressed',i===get()));
+}
+const segY=seg('years',Y.map(String),()=>yi,i=>yi=i);
+const segS=seg('slr',S.map(s=>s.label.replace(/ sea level.*$/,'').replace("Today's flood areas",'Today')),()=>si,i=>si=i);
+
+function kpis(){
+  const id=S[si].id,t=D.total[id][yi],t0=D.total[id][0],base=D.total.none[yi];
+  document.getElementById('k1h').textContent=`Residents in flood areas, ${Y[yi]}`;
+  document.getElementById('k1').textContent=fmt(t[0]);
+  document.getElementById('k1r').textContent=yi?`likely ${fmt(t[1])} – ${fmt(t[2])}`:si?'2021 residents, if the sea were already this high':'2021 Census count';
+  document.getElementById('k2').textContent=yi?sgn(t[0]-D.total.none[0][0]):'—';
+  document.getElementById('k2r').textContent=yi?`${((t[0]/D.total.none[0][0]-1)*100).toFixed(1)}% · ${S[si].label}`:'pick a later year';
+  document.getElementById('k3').textContent=si?sgn(t[0]-base[0]):'—';
+  document.getElementById('k3r').textContent=si?`${S[si].label}, ${Y[yi]}`:'pick a sea-level scenario';
+}
+
+function trend(){
+  const svg=document.getElementById('trend');svg.innerHTML='';
+  // drawn at the card's own pixel width so labels stay readable on a phone
+  const W=Math.max(svg.clientWidth||900,280),H=W<600?240:300,L=W<600?58:70,R=W<600?12:20,T=14,B=30;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.style.height=H+'px';
+  const all=S.flatMap(s=>D.total[s.id].flatMap(r=>[r[1],r[2]]));
+  let lo=Math.min(...all),hi=Math.max(...all);const pad=(hi-lo)*.08;lo-=pad;hi+=pad;
+  const x=i=>L+(W-L-R)*i/(Y.length-1),y=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo));
+  for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4;
+    el('line',{x1:L,x2:W-R,y1:y(v),y2:y(v),stroke:css('--grid')},svg);
+    el('text',{x:L-8,y:y(v)+4,'text-anchor':'end'},svg).textContent=fmt(Math.round(v/100)*100);}
+  Y.forEach((yr,i)=>{el('text',{x:x(i),y:H-8,'text-anchor':i===Y.length-1?'end':'middle','font-weight':i===yi?700:400},svg).textContent=yr;});
+  el('line',{x1:x(yi),x2:x(yi),y1:T,y2:H-B,stroke:css('--rule'),'stroke-dasharray':'3 3'},svg);
+  const r=D.total[S[si].id];
+  el('path',{d:'M'+r.map((v,i)=>`${x(i)},${y(v[2])}`).join('L')+'L'+r.map((v,i)=>`${x(i)},${y(v[1])}`).reverse().join('L')+'Z',fill:css('--band')},svg);
+  S.forEach((s,k)=>{const rr=D.total[s.id],on=k===si;
+    el('path',{d:'M'+rr.map((v,i)=>`${x(i)},${y(v[0])}`).join('L'),fill:'none',stroke:css(COL[k]),'stroke-width':on?3:1.5,opacity:on?1:.55},svg);
+    if(on)rr.forEach((v,i)=>el('circle',{cx:x(i),cy:y(v[0]),r:i===yi?5:3,fill:css(COL[k])},svg));});
+  document.getElementById('tleg').innerHTML=S.map((s,k)=>`<span><i style="background:${css(COL[k])}"></i>${s.label}</span>`).join('');
+}
+
+function areas(){
+  const id=S[si].id;
+  document.getElementById('ah').textContent=`By ${M.unit.toLowerCase()}: ${Y[yi]}, ${S[si].label.toLowerCase()}`;
+  const rows=D.areas.map(a=>({n:a.name,c:a.coastal,v:a.v[id][yi],b:a.v.none[0]})).sort((p,q)=>q.v[0]-p.v[0]);
+  const mx=Math.max(...rows.map(r=>r.v[2]))*1.04,X=v=>100*v/mx;
+  const ink=css('--ink'),acc=css(COL[Math.max(si,2)]);
+  document.getElementById('areas').innerHTML='<thead><tr><th>'+M.unit+'</th><th>2021</th><th>'+Y[yi]+'</th><th>Likely range</th><th>Change</th><th></th></tr></thead><tbody>'+
+    rows.map(r=>`<tr><td>${r.n}${r.c?' <span style="color:var(--muted);font-size:11.5px">coastal</span>':''}</td><td>${fmt(r.b[0])}</td><td><b>${fmt(r.v[0])}</b></td><td>${yi||si?fmt(r.v[1])+' – '+fmt(r.v[2]):'—'}</td><td>${yi||si?sgn(r.v[0]-r.b[0]):'—'}</td>`+
+      `<td class="bar"><svg viewBox="0 0 100 18" preserveAspectRatio="none"><rect x="${X(r.v[1])}" y="6" width="${Math.max(X(r.v[2])-X(r.v[1]),.4)}" height="6" rx="2" fill="${acc}" opacity=".35"/>`+
+      `<line x1="${X(r.b[0])}" x2="${X(r.b[0])}" y1="2" y2="16" stroke="${ink}" stroke-width="1" vector-effect="non-scaling-stroke"/>`+
+      `<rect x="${X(r.v[0])-.6}" y="4" width="1.2" height="10" rx=".6" fill="${acc}"/></svg></td></tr>`).join('')+'</tbody>';
+}
+
+function backtest(){
+  const B=D.backtest,p=v=>v.toFixed(1)+'%';
+  document.getElementById('btsub').textContent=`${B.source}. Each 2021 mesh block's residents predicted from the 2016 Census plus addresses created in between, then compared with the 2021 Census.`;
+  document.getElementById('bt').innerHTML='<thead><tr><th>Method</th><th>Mesh block error</th><th>within</th><th>Growth mesh blocks error</th><th>within</th><th>SA1 error</th><th>within</th></tr></thead><tbody>'+
+    B.rows.map(r=>`<tr class="${r.chosen?'chosen':''}"><td>${r.model}${r.chosen?' ✓':''}</td><td>${p(r.mb[0])}</td><td>${p(r.mb[1])}</td><td>${p(r.growth[0])}</td><td>${p(r.growth[1])}</td><td>${p(r.sa1[0])}</td><td>${p(r.sa1[1])}</td></tr>`).join('')+'</tbody>';
+}
+
+function draw(){segY();segS();kpis();trend();areas();}
+draw();backtest();
+let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(trend,150);});
+window.__ready=true;
+})();
+</script>
+</body>
+</html>

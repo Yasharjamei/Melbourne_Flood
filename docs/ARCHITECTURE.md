@@ -64,6 +64,8 @@ pipeline/
 web/
   template.html      the map page (MapLibre + D3): circles, pyramids, filters, legend
   analysis.html      the analysis page: Table 5, Fig. 4 small multiples, Fig. 7 scatter matrix
+  scenarios.html     the scenarios page (2036 and sea-level rise); not published until approved
+  scenarios_sample.json  invented numbers in the real shape, for designing the page (pipeline/forecast/sample.py)
 .github/
   workflows/pages.yml   CI: fetch -> build -> bundle -> screenshot check -> deploy -> clean-up
   scripts/screenshot.py headless-Chromium check and screenshots of the built pages (a page error fails the run)
@@ -191,6 +193,18 @@ This page reads `D.stats`, which is `null` for metro, and `D.sa1[].ls`. It draws
 - Table 5 and the bandwidth/VIF table
 - the Fig. 4 small multiples: one SVG map per coefficient; grey means not significant
 - the Fig. 7 scatter matrix: canvas points plus SVG labels
+
+### 2.7.1 `web/scenarios.html` (built, not published)
+
+The page shows residents in flood areas by year (2021, 2026, 2031, 2036) and sea-level scenario (today, +0.2, +0.5, +0.8 m), plus the real placement back-test. It has no map library and no D3: plain SVG, so it loads fast on a phone.
+
+**Data shape** (`data/processed/scenarios.json`, or `web/scenarios_sample.json` until the forecast exists):
+- `meta`: `sample` (true shows the "invented numbers" banner), `years`, `base`, `unit` (the area level in the table).
+- `slr`: `[{id, label}]`; `id` `"none"` is today's flood areas.
+- `total[slr_id][year_index]` and `areas[].v[slr_id][year_index]`: `[central, low, high]`. The total carries its own range because area ranges are not independent and cannot be summed.
+- `backtest`: the method table from PROJECT_LOG §25.
+
+**Publishing gate.** `03_bundle.py` writes `dist/scenarios/index.html` only when `data/processed/scenarios.json` exists **and** `PUBLISH_SCENARIOS=1`. A routine or scheduled rebuild therefore never publishes it early. `pipeline/forecast/preview.py` renders it into `preview/` (git-ignored) for review, from the sample when the real file is absent.
 
 ### 2.8 CI: `.github/workflows/pages.yml`
 

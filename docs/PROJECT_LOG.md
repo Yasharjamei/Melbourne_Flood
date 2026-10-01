@@ -555,3 +555,20 @@ A config-driven factor registry (one entry in `config.py` → map variable, pane
 - **SA1:** shown only with a range.
 - **Suburb and SA2:** headline figures, also with ranges.
 
+## 26. Scenarios page built ahead of its data (2026-10-01)
+
+**Why now.** The inputs for a real 2036 forecast are still missing (VIF2023 by council or SA2; the DataShare sea-level-rise and UDP orders). The owner agreed to build the page on invented numbers so the design can be reviewed while those arrive.
+
+**Safeguards against invented numbers escaping.**
+- The sample (`web/scenarios_sample.json`) carries `meta.sample = true`, and the page then shows a banner: invented, do not quote.
+- Area names are "Sample area 1–12", never real councils or suburbs, so a screenshot cannot pin a made-up figure on a real place.
+- The page is not bundled into the site unless the real `data/processed/scenarios.json` exists and `PUBLISH_SCENARIOS=1` is set. The monthly scheduled rebuild cannot publish it.
+- The back-test table is the only real content, labelled as such.
+
+**Design decisions.**
+- Headline unit is the suburb, with ranges, per the §25 publishing decision. SA1 and mesh blocks are not shown.
+- Sea level: today, +0.2 m, +0.5 m, +0.8 m. The year labels (about 2040, about 2070, 2100 benchmark) follow the Victorian planning benchmark of 0.8 m by 2100; they will be checked against the DataShare layer metadata when it arrives.
+- The total gets its own range rather than the sum of area ranges, which would overstate the uncertainty.
+- No map yet: the flood-area geometry for the sea-level scenarios doesn't exist here. A map view is a later step.
+- Plain SVG, no D3 or MapLibre, so it loads quickly on phones. Checked at 1280 px (light and dark) and 390 px: no sideways page scroll, no script errors.
+

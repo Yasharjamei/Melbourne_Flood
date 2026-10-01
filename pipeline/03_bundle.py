@@ -40,3 +40,12 @@ for old, to in {"metro/index.html": "../", "metro/analysis/index.html": "../../a
                              f'<meta http-equiv="refresh" content="0; url={to}"><link rel="canonical" href="{to}">'
                              f'<p>This page has moved: <a href="{to}">open the map</a>.</p>')
         print(f"{dst}: redirect to {to}")
+
+# Scenarios page (2036 forecast and sea-level rise): built only when the real forecast exists AND
+# PUBLISH_SCENARIOS=1, so a routine rebuild never publishes it early. Preview it locally with
+# pipeline/forecast/preview.py.
+if os.path.exists("data/processed/scenarios.json") and os.environ.get("PUBLISH_SCENARIOS") == "1":
+    sdst = "dist/scenarios/index.html"
+    os.makedirs(os.path.dirname(sdst), exist_ok=True)
+    open(sdst, "w").write(open("web/scenarios.html").read().replace("__DATA__", open("data/processed/scenarios.json").read()))
+    print(f"{sdst}: written")

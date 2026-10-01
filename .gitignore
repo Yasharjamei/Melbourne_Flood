@@ -3,3 +3,4 @@ data/interim/
 data/processed/
 dist/
 __pycache__/
+preview/
