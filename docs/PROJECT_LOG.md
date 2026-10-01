@@ -537,3 +537,21 @@ A config-driven factor registry (one entry in `config.py` → map variable, pane
 - **Next test:** D (one metro-wide residents-per-new-address, fitted) and E (D counting only addresses created 12+ months before Census night).
 - **Publishing:** mesh-block forecasts are not publishable on this evidence. SA1 is borderline, so suburb or SA2 it is unless D/E change the picture.
 
+**Run 3 (7c945d8): calibration fixes the failure.** Fitted residents per new address: k = 1.21 using all addresses, 1.51 using those created 12+ months before Census night.
+
+| Model | Mesh block WAPE / within | Growth mesh blocks | SA1 WAPE / within |
+|---|---|---|---|
+| A uniform | 22.5% / 72.9% | 46.4% / 46.8% | 16.7% / 82.3% |
+| D calibrated | 17.8% / 78.5% | 38.2% / 51.4% | 11.9% / 87.0% |
+| **E calibrated + 12-month lag** | **17.1% / 78.9%** | **33.3% / 55.3%** | **11.4% / 87.3%** |
+
+**What it means.**
+- **E is the method.** It cuts error in growth mesh blocks by about 28% relative to uniform (46.4% → 33.3%) and at SA1 from 16.7% to 11.4%. The 12-month lag supports the "addresses come before residents" explanation.
+- **The k values are in-sample** (fitted and scored on 2016–21), so these errors are a little optimistic. Out-of-sample checking will use ERP by SA2 2021–25, which only tests SA2 totals.
+- **These are placement errors only.** Real forecasts add the error of the SA2 projections themselves.
+
+**Publishing decision.**
+- **Mesh block:** not published (17% error even with true totals). Used internally for the overlay intersection only.
+- **SA1:** shown only with a range.
+- **Suburb and SA2:** headline figures, also with ranges.
+
