@@ -1,0 +1,26 @@
+name: Export study-area boundary
+
+# Manual only. Writes the 31-council Greater Melbourne boundary as zipped shapefiles
+# (artifact "boundary"), e.g. to clip DataShare orders. Changes nothing on the site.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python .github/scripts/export_boundary.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: boundary
+          path: boundary/
+          retention-days: 30

@@ -74,6 +74,7 @@ web/
   workflows/forecast.yml manual only: forecast inputs + 2016->2021 placement back-test (never deploys)
   workflows/probe.yml   manual only: checks what candidate data sources offer
   workflows/demo.yml    manual only: records the demo from the live site (no build, no deploy)
+  workflows/boundary.yml manual only: the 31-council boundary as zipped shapefiles (artifact), e.g. to clip DataShare orders
   scripts/demo_gif.py     captioned ~20 s demo of the built map (GIF + MP4) for sharing; never blocks a deploy
 docs/
   ARCHITECTURE.md    this file

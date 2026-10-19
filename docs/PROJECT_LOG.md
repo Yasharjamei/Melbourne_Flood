@@ -582,3 +582,5 @@ The owner shared six DataShare order links. Four (FJU93V, SQYREY, YJA1AQ, PB7TWE
 
 **Storage.** DataShare links expire, so CI cannot fetch from them. Once the full set arrives, the sea-level layers (a few MB each) go in `data/static/` like the Melbourne Water catchments.
 
+**Boundary for DataShare orders (2026-10-19).** The owner asked for the Greater Melbourne shapefile to clip orders with. The manual workflow *Export study-area boundary* (`boundary.yml`, `.github/scripts/export_boundary.py`) dissolves the 31 councils in `config.py` (ABS ASGS 2021 LGAs, the site's own study area) and uploads zipped shapefiles in MGA2020 zone 55 (EPSG:7855, the CRS DataShare delivers in), a 20 m simplified copy for upload forms, the councils separately, and a WGS84 copy. Holes and slivers under 1 ha are removed so a clip never leaves gaps.
+
