@@ -10,11 +10,11 @@ import json, random
 YEARS = [2021, 2026, 2031, 2036]
 SLR = [
     {"id": "none", "label": "Today's flood areas"},
-    {"id": "0.2", "label": "+0.2 m sea level (about 2040)"},
-    {"id": "0.5", "label": "+0.5 m sea level (about 2070)"},
-    {"id": "0.8", "label": "+0.8 m sea level (2100 planning benchmark)"},
+    {"id": "0.2", "label": "+0.20 m sea level (2040)"},
+    {"id": "0.47", "label": "+0.47 m sea level (2070)"},
+    {"id": "0.82", "label": "+0.82 m sea level (2100)"},
 ]
-SLR_GAIN = {"none": 0, "0.2": .04, "0.5": .11, "0.8": .22}   # share added in coastal areas, invented
+SLR_GAIN = {"none": 0, "0.2": .04, "0.47": .11, "0.82": .22}   # share added in coastal areas, invented
 
 rnd = random.Random(2036)
 areas = []

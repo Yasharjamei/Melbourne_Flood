@@ -572,3 +572,13 @@ A config-driven factor registry (one entry in `config.py` → map variable, pane
 - No map yet: the flood-area geometry for the sea-level scenarios doesn't exist here. A map view is a later step.
 - Plain SVG, no D3 or MapLibre, so it loads quickly on phones. Checked at 1280 px (light and dark) and 390 px: no sideways page scroll, no script errors.
 
+## 27. First DataShare delivery checked (2026-10-19)
+
+The owner shared six DataShare order links. Four (FJU93V, SQYREY, YJA1AQ, PB7TWE) return S3 *AccessDenied*: the delivery links had expired or were withdrawn, so their contents are unknown. Two downloaded:
+
+- **LBRN1F: Victorian Coastal Inundation, SLR20CM_2040** (3.6 MB; 1,424 polygons, 101 km², MGA2020 zone 55, clipped to a polygon around Port Phillip and Western Port; CC BY 4.0). The metadata settles the scenario set: **+20 cm by 2040, +47 cm by 2070, +82 cm by 2100**, each also as a 1-in-100-year storm tide version (surge +6%, +13%, +19%), all against 2009 sea level. The page's sample labels said +0.5 and +0.8 m; corrected to 0.47 and 0.82 m.
+  - **Limits that shape the method:** a "bathtub" model (no flow or drainage connectivity), generalised for use at 1:75,000 or coarser, and "NOT suitable for assessments of potential risks at property level". So residents counted by address inside these polygons are reported for suburbs and SA2s only, never for SA1s or mesh blocks, and the page will say it is a bathtub model.
+- **FM70LT: Vicmap Vegetation Tree Urban** (543 MB zip, 2.9 GB unzipped; tree points from 2018–20 aerial imagery by machine learning, F1 0.79). Not an input to the population forecast or the sea-level scenarios; set aside.
+
+**Storage.** DataShare links expire, so CI cannot fetch from them. Once the full set arrives, the sea-level layers (a few MB each) go in `data/static/` like the Melbourne Water catchments.
+

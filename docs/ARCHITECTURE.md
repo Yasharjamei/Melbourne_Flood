@@ -196,7 +196,7 @@ This page reads `D.stats`, which is `null` for metro, and `D.sa1[].ls`. It draws
 
 ### 2.7.1 `web/scenarios.html` (built, not published)
 
-The page shows residents in flood areas by year (2021, 2026, 2031, 2036) and sea-level scenario (today, +0.2, +0.5, +0.8 m), plus the real placement back-test. It has no map library and no D3: plain SVG, so it loads fast on a phone.
+The page shows residents in flood areas by year (2021, 2026, 2031, 2036) and sea-level scenario (today, +0.20, +0.47, +0.82 m: the Victorian Coastal Inundation Dataset's 2040, 2070 and 2100 layers), plus the real placement back-test. It has no map library and no D3: plain SVG, so it loads fast on a phone.
 
 **Data shape** (`data/processed/scenarios.json`, or `web/scenarios_sample.json` until the forecast exists):
 - `meta`: `sample` (true shows the "invented numbers" banner), `years`, `base`, `unit` (the area level in the table).
