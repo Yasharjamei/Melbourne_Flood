@@ -656,3 +656,19 @@ All geometries valid; extent grows with each scenario as it should. ICA0IN super
 **Still missing:** the 2009 baseline (needed to count residents *added* by sea-level rise, not those already in today's coastal extent) and the four storm-tide layers.
 - **2009 baseline arrived** (order 21WL2D, SLR00CM_2009): 492 polygons, 20.8 km², clipped to the 31 councils; committed as `SLR00CM_2009.zip`. Area beyond the baseline: 8.5 km² (2040), 18.0 km² (2070), 41.8 km² (2100). The layers don't nest perfectly (1.13 km² of 2009 outside the 2070 layer, 0.08 and 0.03 km² for 2040 and 2100), so each future extent is taken as its union with 2009. A link `Order_QBY4LJ.zip?orderid=ELE0Q1` returned the 2070 file already held (S3 ignores the query); `Order_ELE0Q1.zip` is AccessDenied. Storm-tide layers still missing.
 
+## 31. Planned: Urban Development Program pipeline in the housing-unit model (2026-10-20)
+
+The owner pointed to the UDP 2025 methods page (planning.vic.gov.au; blocked to this environment and to CI, so read through search summaries; to verify against the page itself).
+
+**What UDP provides (as summarised):**
+- **Major redevelopment:** projects of 10+ dwellings in the established urban area, from aerial imagery, planning permits, real-estate and developer sites. Each has a status: Completed, Under Construction, Firm (approved and/or taking sales), Likely, Possible (early indicator, or inactive for years). UDP itself warns that some proposed projects are abandoned or delayed.
+- **Greenfield:** proposed lots, zoned englobo land and unzoned englobo land (growth corridor plans, usually Urban Growth Zone). As at January 2025: 39,812 proposed lots, 165,671 lots from zoned englobo, 128,536 from unzoned englobo.
+- **Not covered:** minor infill (under 10 dwellings).
+
+**How it fits the forecast.** §29 showed that knowing where homes will be built halves the 14-year SA2 error (HUK 7.8% vs HU 17.0%). UDP is the best available forward-looking stand-in for that. Planned model:
+1. Expected new dwellings per piece by year = Σ over sites of (dwellings × probability the site is built by then), with the probability set by status. Greenfield lots are staged in order: proposed, then zoned englobo, then unzoned.
+2. Minor infill (not in UDP) continues at the recent address-creation rate (the current HU model).
+3. Rescaled to VIF2023 council dwellings, converted to residents with VIF's household size and occupancy, and rescaled to VIF council population.
+
+**The probabilities must be measured, not assumed.** An older UDP edition (2016, or the earliest available) lets each status's realisation rate be measured against addresses created at those sites since. Without an old edition, the rates would be guesses, and the page would have to say so. This is why the order asks for both 2025 and the oldest year.
+
