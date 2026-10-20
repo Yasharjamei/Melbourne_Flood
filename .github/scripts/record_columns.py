@@ -12,7 +12,7 @@ import geopandas as gpd
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
-W, H, VW, VH, FPS = 1280, 720, 1600, 900, 20
+W, H, VW, VH, FPS = 1280, 720, 1280, 720, 20   # browser at output size: no resize, less to render
 GIF_W, GIF_EVERY = 800, 2
 OUT = "shots"
 CALM, STORM = "none", ["st", "st0.2", "st0.47", "st0.82"]
@@ -80,12 +80,20 @@ def main():
             pg.route(lambda u: "cartocdn.com" in u or "amazonaws.com" in u, lambda r: r.abort())
         pg.goto("file://" + page, wait_until="load", timeout=120000)
         pg.wait_for_function("window.__ready === true", timeout=120000)
-        idle = "() => new Promise(r => { map.once('idle', r); map.triggerRepaint(); setTimeout(r, 6000); })"
-        pg.evaluate(idle); pg.wait_for_timeout(1500 if nm else 6000)          # first tiles
+        # First view: wait for the tiles properly. Per frame only the columns change and the camera turns a
+        # fraction of a degree, so one rendered frame is enough (capped at 1.5 s, not 'idle' with 6 s: the
+        # first CI recording spent ~10 s a frame waiting for idle).
+        idle = "() => new Promise(r => { map.once('idle', r); map.triggerRepaint(); setTimeout(r, 15000); })"
+        frame = "() => new Promise(r => { map.once('render', () => requestAnimationFrame(() => r())); map.triggerRepaint(); setTimeout(r, 1500); })"
+        pg.evaluate(idle); pg.wait_for_timeout(1500 if nm else 4000)
         for i, st in enumerate(frames):
             pg.evaluate("st => window.setFrame(st)", st)
-            pg.evaluate(idle)
-            im = Image.open(io.BytesIO(pg.screenshot())).convert("RGB").resize((W, H), Image.LANCZOS)
+            pg.evaluate(frame)
+            if i % 60 == 0:
+                pg.evaluate(idle)                                        # let any newly visible tiles in
+            im = Image.open(io.BytesIO(pg.screenshot())).convert("RGB")
+            if im.size != (W, H):
+                im = im.resize((W, H), Image.LANCZOS)
             im.save(f"{OUT}/colframes/{i:04d}.png")
             if i % GIF_EVERY == 0:
                 gif.append(im.resize((GIF_W, int(H * GIF_W / W)), Image.LANCZOS).quantize(colors=128))
