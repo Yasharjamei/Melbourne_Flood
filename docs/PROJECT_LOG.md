@@ -603,3 +603,16 @@ The owner supplied the four VIF2023 workbooks (committed to `data/static/vif2023
 
 **Licence.** The workbooks state no licence; the publisher's open data is generally CC BY 4.0. To confirm before the page is published.
 
+## 29. Ensemble back-test: council totals to SA2s (2026-10-20)
+
+**Question from the owner:** is there modelling from the literature that projects population with high confidence and less error? **Answer given:** no method gives high confidence at small-area level; error grows as areas shrink and horizons lengthen, and complex models (land-use, agent-based, cellular automata, cohort-component at SA2) have not shown lower error than simple ones. What the literature supports is combining simple models (Wilson 2015; Wilson et al. 2022), optionally with a machine-learning combiner (Grossman, Bandara, Wilson & Kirley 2022), and ranges from measured past errors. Neither source paper projects population; Lama & Sun list future development and climate change as a limitation and future work. The owner approved building and testing this.
+
+**Design** (`pipeline/forecast/ensemble.py`, run by `forecast.yml`):
+- Units are SA2 x council pieces, because SA2s do not nest exactly in councils. Each SA2's ERP is split across councils by its 2021 Census residents.
+- Council totals are held at their true values, so the tests measure the council -> SA2 split alone, the step VIF2023's council-only totals add.
+- Models: constant share, share of growth, linear, exponential, housing unit (addresses created in the previous five years), their mean (ENS), a gradient-boosting model trained only on earlier windows (ML), and ENS+ML. HUK uses addresses created after the base year: a near-term best case, not usable for 2036.
+- Tests: 2011->2016, 2016->2021, 2021->2025 (h = 4-5) and 2011->2021, 2011->2025 (h = 10, 14; 2036 is 15 years from 2021). SA2 error is reported as WAPE, median, 80th and 90th percentile, and by SA2 size and growth class, for the page's ranges.
+- VIF2023 is checked against actual 2025 council ERP (VIF interpolated between 2021 and 2026), and end to end: VIF council totals plus the split, against actual SA2 ERP 2025.
+- Inputs extended: ERP by SA2 from 2001 (was 2016) and addresses created since 2006 (was 2016). Pre-2012 address dates are unverified; the run prints addresses per creation year to check for bulk-load spikes before HU on the 2011 base is trusted.
+- Tested here on synthetic inputs in the real file formats (SDMX csv with labels, ABS xlsx with title rows, both with and without council ERP rows); the real numbers come from the CI run.
+

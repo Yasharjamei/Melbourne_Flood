@@ -46,12 +46,18 @@ jobs:
         run: |
           set -o pipefail   # without this, tee hides a failing back-test and the run shows green
           python pipeline/forecast/backtest.py | tee backtest.txt
+      - name: Ensemble back-test (council -> SA2) and VIF2023 check
+        run: |
+          set -o pipefail
+          python pipeline/forecast/ensemble.py | tee ensemble.txt
       - run: |
-          echo '```' >> "$GITHUB_STEP_SUMMARY"; cat backtest.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"; cat backtest.txt ensemble.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: forecast-backtest
           path: |
             backtest.txt
+            ensemble.txt
             data/processed/forecast_backtest.json
+            data/processed/forecast_ensemble.json
           retention-days: 30

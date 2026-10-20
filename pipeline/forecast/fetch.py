@@ -7,8 +7,9 @@ data/raw/forecast/; delete a file there to refetch it. Run from the repository r
 
   mb_counts_2016.csv     2016 Census Mesh Block Counts (ABS)            -> back-test baseline
   cg_mb2016_mb2021.csv   ABS correspondence, 2016 -> 2021 mesh blocks   -> back-test baseline
-  erp_sa2.csv            ABS Estimated Resident Population by SA2       -> actual 2021-2025 totals
-  addresses_new.npy      Vicmap addresses created since Census 2016,     -> observed new homes
+  erp_sa2.csv            ABS Estimated Resident Population by SA2,      -> history 2001-2025 for the
+                         2001 onwards (2021 boundaries)                     ensemble back-test (ensemble.py)
+  addresses_new.npy      Vicmap addresses created since 2006,            -> observed new homes
                          as lon, lat, days since 1970-01-01
 """
 import importlib.util, io, json, os, re, sys, urllib.parse
@@ -21,13 +22,14 @@ f01 = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(f01)   # 
 OUT = "data/raw/forecast"
 BBOX = (144.33, -38.50, 145.88, -37.40)            # Greater Melbourne, lon/lat (as the address fetch)
 CENSUS_2016 = "2016-08-09"
+ADDR_FROM = "2006-01-01"                           # history for the ensemble back-test
 STRICT = os.environ.get("STRICT_FETCH") == "1"
 
 MB2016_URL = ("https://www.abs.gov.au/AUSSTATS/subscriber.nsf/log?openagent&2016%20census%20mesh%20block%20counts.csv"
               "&2074.0&Data%20Cubes&1DED88080198D6C6CA2581520083D113&0&2016&04.07.2017&Latest")
 CG_URL = ("https://www.abs.gov.au/statistics/standards/australian-statistical-geography-standard-asgs/"
           "edition-3-july-2021-june-2026/access-and-downloads/correspondences/CG_MB_2016_MB_2021.csv")
-ERP_URL = "https://data.api.abs.gov.au/rest/data/ABS_ANNUAL_ERP_ASGS2021/all?startPeriod=2016&format=csvfilewithlabels"
+ERP_URL = "https://data.api.abs.gov.au/rest/data/ABS_ANNUAL_ERP_ASGS2021/all?startPeriod=2001&format=csvfilewithlabels"
 
 
 def save(url, dst, check=None):
@@ -42,12 +44,12 @@ def save(url, dst, check=None):
 
 
 def addresses_new(dst):
-    """Every current Vicmap address in Greater Melbourne created on or after Census night 2016.
-    Retired addresses are not in the layer, so the 2016-2021 count is a slight undercount."""
+    """Every current Vicmap address in Greater Melbourne created on or after ADDR_FROM.
+    Retired addresses are not in the layer, so past counts are slight undercounts."""
     if os.path.exists(dst):
         print("  addresses_new.npy: cached"); return
     cql = (f"BBOX(geom,{BBOX[1]},{BBOX[0]},{BBOX[3]},{BBOX[2]},'urn:ogc:def:crs:EPSG::4326') "
-           f"AND pfi_created >= '{CENSUS_2016}T00:00:00Z'")
+           f"AND pfi_created >= '{ADDR_FROM}T00:00:00Z'")
     base = {"service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": "open-data-platform:address",
             "CQL_FILTER": cql}
     hits = f01.get(f01.WFS + "?" + urllib.parse.urlencode({**base, "resultType": "hits"}))
@@ -79,7 +81,7 @@ def addresses_new(dst):
     np.save(dst, a)
     days = a[:, 2].astype("int64").astype("datetime64[D]")
     yrs = {str(y): int(n) for y, n in zip(*np.unique(days.astype("datetime64[Y]").astype(str), return_counts=True))}
-    print(f"  addresses_new.npy: {len(a):,} addresses created since {CENSUS_2016}; by year {yrs}")
+    print(f"  addresses_new.npy: {len(a):,} addresses created since {ADDR_FROM}; by year {yrs}")
 
 
 def main():
@@ -88,7 +90,7 @@ def main():
     steps = [("2016 mesh-block counts", lambda: save(MB2016_URL, f"{OUT}/mb_counts_2016.csv", csv_like)),
              ("2016 -> 2021 mesh-block correspondence", lambda: save(CG_URL, f"{OUT}/cg_mb2016_mb2021.csv", csv_like)),
              ("ERP by SA2", lambda: save(ERP_URL, f"{OUT}/erp_sa2.csv", csv_like)),
-             ("addresses created since 2016", lambda: addresses_new(f"{OUT}/addresses_new.npy"))]
+             ("addresses created since 2006", lambda: addresses_new(f"{OUT}/addresses_new.npy"))]
     failed = []
     for label, fn in steps:
         print(label)
