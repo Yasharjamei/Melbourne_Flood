@@ -7,13 +7,14 @@ Usage (after pipeline/forecast/forecast.py):
     python .github/scripts/record_columns.py   ->  shots/columns.mp4, shots/columns.gif, shots/columns.html
 Optional env: CHROMIUM (browser binary), LIBS (local node_modules, for offline runs without basemap tiles).
 """
-import io, json, os, shutil, subprocess
+import io, json, math, os, shutil, subprocess, time
 import geopandas as gpd
 from PIL import Image
 from playwright.sync_api import sync_playwright
 
 W, H, VW, VH, FPS = 1280, 720, 1280, 720, 20   # browser at output size: no resize, less to render
 GIF_W, GIF_EVERY = 800, 2
+BUDGET_S = 12 * 60          # if frames render slowly (software GL on CI), keep every k-th frame to fit this
 OUT = "shots"
 CALM, STORM = "none", ["st", "st0.2", "st0.47", "st0.82"]
 LABELS = {"none": "Today's flood areas", "st": "1-in-100-year storm tide, today's sea level",
@@ -38,7 +39,7 @@ def data():
                "Exposure, not flood depth. Data: ABS, DataVic, DEECA. yasharjamei.github.io/Melbourne_Flood")
     return {"years": sc["meta"]["years"], "areas": areas, "total": {k: [t[0] for t in sc["total"][k]] for k in ids},
             "labels": LABELS, "credit": credit, "metres_per_resident": 14000 / top, "radius_m": 520,
-            "center": [145.02, -37.93], "zoom": 8.9, "pitch": 60, "bearing": -25}
+            "center": [145.02, -37.93], "zoom": 8.9, "pitch": 55, "bearing": -25}
 
 
 def story(y0, y1):
@@ -86,7 +87,10 @@ def main():
         idle = "() => new Promise(r => { map.once('idle', r); map.triggerRepaint(); setTimeout(r, 15000); })"
         frame = "() => new Promise(r => { map.once('render', () => requestAnimationFrame(() => r())); map.triggerRepaint(); setTimeout(r, 1500); })"
         pg.evaluate(idle); pg.wait_for_timeout(1500 if nm else 4000)
+        t0, stride, n_out = time.time(), 1, 0
         for i, st in enumerate(frames):
+            if i % stride:
+                continue
             pg.evaluate("st => window.setFrame(st)", st)
             pg.evaluate(frame)
             if i % 60 == 0:
@@ -94,13 +98,19 @@ def main():
             im = Image.open(io.BytesIO(pg.screenshot())).convert("RGB")
             if im.size != (W, H):
                 im = im.resize((W, H), Image.LANCZOS)
-            im.save(f"{OUT}/colframes/{i:04d}.png")
-            if i % GIF_EVERY == 0:
+            im.save(f"{OUT}/colframes/{n_out:04d}.png"); n_out += 1
+            if n_out == 1:
+                t1 = time.time()                                         # time from frame 2: frame 1 waits for tiles
+            if n_out == 9 and stride == 1:                               # decide once, from the first frames
+                per = (time.time() - t1) / 8
+                stride = max(1, math.ceil(per * len(frames) / BUDGET_S))
+                print(f"  {per:.2f} s per frame; keeping every {stride} frame(s)", flush=True)
+            if n_out % GIF_EVERY == 0:
                 gif.append(im.resize((GIF_W, int(H * GIF_W / W)), Image.LANCZOS).quantize(colors=128))
-            if i % 50 == 0:
-                print(f"  frame {i} of {len(frames)}")
+            if n_out % 25 == 0:
+                print(f"  frame {i} of {len(frames)}, {time.time() - t0:.0f} s", flush=True)
         b.close()
-    gif[0].save(f"{OUT}/columns.gif", save_all=True, append_images=gif[1:], duration=int(1000 * GIF_EVERY / FPS), loop=0, optimize=True)
+    gif[0].save(f"{OUT}/columns.gif", save_all=True, append_images=gif[1:], duration=int(1000 * GIF_EVERY * stride / FPS), loop=0, optimize=True)
     print(f"{OUT}/columns.gif: {len(gif)} frames, {os.path.getsize(f'{OUT}/columns.gif') / 1e6:.1f} MB")
     ffmpeg = shutil.which("ffmpeg")
     if not ffmpeg:
@@ -109,9 +119,9 @@ def main():
         except ImportError:
             print("no ffmpeg: MP4 skipped (pip install imageio-ffmpeg)")
     if ffmpeg:
-        subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-framerate", str(FPS), "-i", f"{OUT}/colframes/%04d.png",
+        subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-framerate", f"{FPS / stride:g}", "-i", f"{OUT}/colframes/%04d.png",
                         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-movflags", "+faststart", f"{OUT}/columns.mp4"], check=True)
-        print(f"{OUT}/columns.mp4: {len(frames) / FPS:.1f} s, {os.path.getsize(f'{OUT}/columns.mp4') / 1e6:.1f} MB")
+        print(f"{OUT}/columns.mp4: {n_out * stride / FPS:.1f} s, {n_out} frames, {os.path.getsize(f'{OUT}/columns.mp4') / 1e6:.1f} MB")
     shutil.rmtree(f"{OUT}/colframes")
 
 

@@ -83,7 +83,7 @@ window.setFrame=function(st){
 };
 const style={version:8,sources:{
     base:{type:'raster',tiles:['https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png','https://b.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png'],tileSize:256},
-    dem:{type:'raster-dem',tiles:['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],encoding:'terrarium',tileSize:256,maxzoom:12},
+    dem:{type:'raster-dem',tiles:['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],encoding:'terrarium',tileSize:256,maxzoom:10},
     cols:{type:'geojson',data:{type:'FeatureCollection',features:[]}}},
   layers:[{id:'bg',type:'background',paint:{'background-color':'#0d1114'}},
     {id:'base',type:'raster',source:'base',paint:{'raster-opacity':.9}},
