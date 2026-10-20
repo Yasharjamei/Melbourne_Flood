@@ -54,4 +54,28 @@ save(gpd.GeoDataFrame(attrs, geometry=[whole], crs=7855), "greater_melbourne_MGA
 save(gpd.GeoDataFrame(attrs, geometry=[no_holes(whole.simplify(20))], crs=7855), "greater_melbourne_MGA2020_z55_simple")
 save(lga.reset_index(drop=True), "greater_melbourne_councils_MGA2020_z55")
 save(gpd.GeoDataFrame(attrs, geometry=[whole], crs=7855).to_crs(4326), "greater_melbourne_WGS84")
+# SA2 x council pieces (ABS SA2s cut by the councils), for placing data that arrives without SA2 codes.
+# Also printed to the log as gzip+base64 GeoJSON between markers, so a session that can read logs but
+# not artifacts can still get them.
+import base64, gzip, json
+sa2_src = os.path.join(tempfile.mkdtemp(), "sa2.geojson")
+lon0, lat0, lon1, lat1 = lga.to_crs(4326).total_bounds
+f01.arcgis("SA2", "state_code_2021='2'", (lon0, lat0, lon1, lat1), 0.00002, sa2_src)
+sa2 = gpd.read_file(sa2_src).to_crs(7855)
+sa2 = sa2[["sa2_code_2021", "sa2_name_2021", "geometry"]]
+pc = gpd.overlay(sa2, lga[["name", "lga_code", "geometry"]], how="intersection", keep_geom_type=True)
+pc = pc[pc.area > 1e4].copy()
+pc["geometry"] = pc.geometry.simplify(10)
+save(pc.reset_index(drop=True), "greater_melbourne_sa2_council_pieces_MGA2020_z55")
+gj = json.loads(pc.to_json(drop_id=True))
+for f in gj["features"]:
+    def rnd(c):
+        return [rnd(x) for x in c] if isinstance(c[0], list) else [round(c[0]), round(c[1])]
+    f["geometry"]["coordinates"] = rnd(f["geometry"]["coordinates"])
+blob = base64.b64encode(gzip.compress(json.dumps(gj, separators=(",", ":")).encode())).decode()
+print(f"PIECES {len(pc)} pieces, {pc['sa2_code_2021'].nunique()} SA2s, {len(blob):,} chars (EPSG:7855, gzip+base64 GeoJSON)")
+print("BEGIN_PIECES")
+for i in range(0, len(blob), 8000):
+    print(blob[i:i + 8000])
+print("END_PIECES")
 print(f"area {whole.area / 1e6:,.0f} km², bounds (lon/lat) {gpd.GeoSeries([whole], crs=7855).to_crs(4326).total_bounds.round(3)}")
