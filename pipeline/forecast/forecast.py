@@ -143,7 +143,10 @@ def main():
         pin = inside(pts, z)
         share = pd.Series(pin, index=pts.index).groupby(pts["m"]).mean().reindex(mb.index)
         no = share.index[share.isna()]                                       # no address: area share instead
-        share.loc[no] = (mb.loc[no].geometry.intersection(z).area / mb.loc[no].area.where(mb.loc[no].area > 0, 1)).values
+        if len(no):                                                          # (spatial-indexed overlay, not one big intersection each)
+            parts = gpd.GeoDataFrame(geometry=list(getattr(z, "geoms", [z])), crs=CRS)
+            cut = gpd.overlay(mb.loc[no, ["geometry"]].reset_index(names="m"), parts, how="intersection", keep_geom_type=True)
+            share.loc[no] = (cut.area.groupby(cut["m"]).sum().reindex(no).fillna(0) / mb.loc[no].area.where(mb.loc[no].area > 0, 1)).values
         mb[f"s_{k}"] = share.values
         mb[f"n_{k}"] = pd.Series(inside(npts, z), index=npts.index).groupby(npts["m"]).sum().reindex(mb.index).fillna(0).values
     print(f"addresses: {len(pts):,} in study mesh blocks; {int(mb['new'].sum()):,} created mid-2016 to mid-{BASE}, "
