@@ -11,6 +11,8 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 
 - **One-page overview of the whole project:** `docs/HOW_IT_WORKS.md` (pipeline diagram, every dataset and how it refreshes, every method with its measured accuracy, how to rebuild locally).
 
+- **2036 forecast for the scenarios page.** `pipeline/forecast/forecast.py`: ERP 2025 base, VIF2023 council growth, new homes placed by the Urban Development Program 2025 (DEECA licence; per-area totals only) plus recent address creation for small infill, residents in today's flood areas and under +0.20/+0.47/+0.82 m sea level, with measured ranges. The page now shows SA2s (top 25) or councils. Not on the site until approved.
+
 ### Changed
 - **The demo tours the most exposed councils.** It no longer shows the papers' two councils. It picks the three councils with the highest share of residents in flood overlays from the data (by share, not total, so dense inner-city apartment counts don't dominate), and drags circle A to the most exposed mesh block. A new manual workflow, *Record demo from the live site*, records it from the published page without rebuilding anything.
 

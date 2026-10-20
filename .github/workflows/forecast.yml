@@ -35,7 +35,7 @@ jobs:
 
       - name: Main inputs, only if the cache was empty
         run: |
-          if [ ! -f data/raw/metro/mb.geojson ] || [ ! -f data/raw/shared/mb_counts_2021.xlsx ]; then
+          if [ ! -f data/raw/metro/mb.geojson ] || [ ! -f data/raw/shared/mb_counts_2021.xlsx ] || [ ! -f data/raw/metro/flood.geojson ] || [ ! -f data/raw/metro/addr.npy ]; then
             python pipeline/01_fetch.py --study metro
           fi
       - name: Forecast inputs
@@ -50,8 +50,13 @@ jobs:
         run: |
           set -o pipefail
           python pipeline/forecast/ensemble.py | tee ensemble.txt
+      - name: Forecast to 2036 and residents in flood areas
+        run: |
+          set -o pipefail
+          python pipeline/forecast/forecast.py | tee forecast.txt
+          python pipeline/forecast/preview.py
       - run: |
-          echo '```' >> "$GITHUB_STEP_SUMMARY"; cat backtest.txt ensemble.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"; cat backtest.txt ensemble.txt forecast.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: forecast-backtest
@@ -60,4 +65,7 @@ jobs:
             ensemble.txt
             data/processed/forecast_backtest.json
             data/processed/forecast_ensemble.json
+            forecast.txt
+            data/processed/scenarios.json
+            preview/
           retention-days: 30

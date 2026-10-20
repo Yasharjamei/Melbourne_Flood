@@ -192,7 +192,7 @@ Run these after the live-map steps above, because they reuse its downloads.
 python pipeline/forecast/fetch.py      # 2016 counts, ERP by SA2, address dates (~5-10 min)
 python pipeline/forecast/backtest.py   # placement back-test  -> data/processed/forecast_backtest.json
 python pipeline/forecast/ensemble.py   # council->SA2 tests and VIF check -> data/processed/forecast_ensemble.json
-python pipeline/forecast/sample.py     # sample numbers for the page (until the real forecast exists)
+python pipeline/forecast/forecast.py   # the 2036 forecast and residents in flood areas -> data/processed/scenarios.json
 python pipeline/forecast/preview.py    # -> preview/scenarios/index.html
 ```
 

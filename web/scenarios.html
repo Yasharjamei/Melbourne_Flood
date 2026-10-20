@@ -78,6 +78,7 @@ ul.plain li{margin:4px 0}
     <nav style="display:flex;gap:8px"><a href="../">← Back to the map</a><button class="theme" id="theme"></button></nav>
   </header>
 
+  <div class="sample" id="restricted" hidden style="border-color:var(--focus);background:color-mix(in srgb,var(--focus) 8%,transparent)"><b style="color:var(--focus)">Data licence.</b> Where new homes go uses the Urban Development Program 2025 (Department of Transport and Planning), supplied by DEECA under a Data Access Licence; only totals per area are used.</div>
   <div class="sample" id="sample" hidden><b>Preview with invented numbers.</b> Every figure in the scenario sections below is made up to test the layout, and the area names are placeholders. Only the accuracy table is real. Do not quote or share.</div>
 
   <section>
@@ -87,7 +88,7 @@ ul.plain li{margin:4px 0}
     </div>
     <div class="kpis">
       <div class="kpi"><div class="k" id="k1h"></div><div class="v" id="k1"></div><div class="r" id="k1r"></div></div>
-      <div class="kpi"><div class="k">Change since 2021</div><div class="v" id="k2"></div><div class="r" id="k2r"></div></div>
+      <div class="kpi"><div class="k" id="k2h">Change</div><div class="v" id="k2"></div><div class="r" id="k2r"></div></div>
       <div class="kpi"><div class="k">Added by sea-level rise</div><div class="v" id="k3"></div><div class="r" id="k3r"></div></div>
     </div>
   </section>
@@ -101,7 +102,8 @@ ul.plain li{margin:4px 0}
 
   <section>
     <h2 id="ah"></h2>
-    <p class="sub">Dot: central estimate. Bar: likely range. Tick: 2021 Census count. Sorted by the central estimate.</p>
+    <div class="controls" style="margin-bottom:10px"><div><span class="lab">Show</span><span class="seg" id="unit"></span></div></div>
+    <p class="sub" id="asub"></p>
     <div class="scroll"><table id="areas"></table></div>
   </section>
 
@@ -115,20 +117,20 @@ ul.plain li{margin:4px 0}
   <section>
     <h2>Method</h2>
     <ul class="plain">
-      <li><b>Totals:</b> Victoria in Future 2023 projections, checked against ABS Estimated Resident Population by SA2 up to 2025.</li>
-      <li><b>Placement:</b> each SA2's growth goes to the mesh blocks where Vicmap addresses were created at least 12 months earlier, at a fitted residents-per-new-address rate; existing homes keep their 2021 count. Planned redevelopment and greenfield sites carry the trend forward to 2036.</li>
-      <li><b>Cross-check:</b> GHSL built-up and population grids (1975–2030, 100 m, from satellite imagery) flag SA2s where the address-based growth and the satellite trend disagree.</li>
-      <li><b>Flood areas:</b> today's planning flood overlays, as on the main map, plus the sea-level-rise inundation extents for each scenario.</li>
-      <li><b>Ranges:</b> from the back-test error at each scale, widened by the spread between projection sources.</li>
+      <li><b>Starting point:</b> ABS Estimated Resident Population by SA2, mid-2025.</li>
+      <li><b>Council totals:</b> Victoria in Future 2023 growth from mid-2025, added to the actual 2025 population (VIF was within 0.6% of the 2025 total, but slightly short on growth).</li>
+      <li><b>Where growth goes:</b> new homes in the Urban Development Program (major redevelopment projects and greenfield land, weighted by how likely each is to be built by then), capped at each council's projected new dwellings. The remaining small infill follows where addresses were created in the last five years. Tested on past years: 2.7–6% error over 4–5 years, 17% over 14 years, much higher in small and fast-growing areas.</li>
+      <li><b>Today's flood areas:</b> the planning-scheme flood overlays (LSIO, FO, SBO) plus the present-day coastal inundation extent. Existing residents are counted by where address points fall; new residents by where homes built since 2016 fall in the same area.</li>
+      <li><b>Sea-level rise:</b> the Victorian Coastal Inundation Dataset's +0.20, +0.47 and +0.82 m extents (2040, 2070, 2100). It is a bathtub model, made for 1:75,000 scale, and not suitable for single properties. Shown here with 2036 population: the population is held at each year's forecast, and the sea level is a what-if.</li>
+      <li><b>Ranges:</b> from measured past error at each horizon and for each SA2's size and growth class; council and total ranges from VIF's measured error, growing with the horizon.</li>
     </ul>
   </section>
 
   <section>
-    <h2>Inputs still missing<span class="tag todo">pending</span></h2>
+    <h2>Not yet included<span class="tag todo">pending</span></h2>
     <ul class="plain">
-      <li>Victoria in Future 2023 by council or SA2 (only the statewide workbook is in hand).</li>
-      <li>Sea-level-rise and storm-tide inundation extents, by DataShare order.</li>
-      <li>Urban Development Program redevelopment and greenfield sites, by DataShare order.</li>
+      <li>Storm-tide versions of the sea-level layers (a 1-in-100-year storm on top of each sea level).</li>
+      <li>Flood depth: the overlays and coastal extents say where water may reach, not how deep.</li>
     </ul>
   </section>
 </main>
@@ -144,11 +146,13 @@ const DARK=document.documentElement.dataset.theme==='dark'||(!document.documentE
 const tb=document.getElementById('theme');tb.textContent=DARK?'☀ Light mode':'☾ Dark mode';
 tb.onclick=()=>{try{localStorage.setItem('theme',DARK?'light':'dark');}catch(e){}location.reload();};
 document.getElementById('sample').hidden=!M.sample;
+document.getElementById('restricted').hidden=!M.restricted;
 const fmt=v=>Math.round(v).toLocaleString('en-AU'),sgn=v=>(v>=0?'+':'−')+fmt(Math.abs(v));
 const NS='http://www.w3.org/2000/svg';
 const el=(tag,attrs,parent)=>{const e=document.createElementNS(NS,tag);for(const k in attrs)e.setAttribute(k,attrs[k]);if(parent)parent.appendChild(e);return e;};
 const COL=['--s0','--s1','--s2','--s3'];
-let yi=Y.length-1,si=0;
+let yi=Y.length-1,si=0,ui=0;
+const UNITS=D.councils&&D.councils.length?[M.unit+'s','Councils']:[M.unit];
 
 function seg(id,items,get,set){
   const box=document.getElementById(id);
@@ -156,13 +160,15 @@ function seg(id,items,get,set){
   return()=>[...box.children].forEach((b,i)=>b.setAttribute('aria-pressed',i===get()));
 }
 const segY=seg('years',Y.map(String),()=>yi,i=>yi=i);
+const segU=seg('unit',UNITS,()=>ui,i=>ui=i);
 const segS=seg('slr',S.map(s=>s.label.replace(/ sea level.*$/,'').replace("Today's flood areas",'Today')),()=>si,i=>si=i);
 
 function kpis(){
   const id=S[si].id,t=D.total[id][yi],t0=D.total[id][0],base=D.total.none[yi];
   document.getElementById('k1h').textContent=`Residents in flood areas, ${Y[yi]}`;
   document.getElementById('k1').textContent=fmt(t[0]);
-  document.getElementById('k1r').textContent=yi?`likely ${fmt(t[1])} – ${fmt(t[2])}`:si?'2021 residents, if the sea were already this high':'2021 Census count';
+  document.getElementById('k1r').textContent=yi?`likely ${fmt(t[1])} – ${fmt(t[2])}`:si?`${M.base} residents, if the sea were already this high`:(M.sample?`${M.base} Census count`:`${M.base} estimate (ABS ERP, mid-year)`);
+  document.getElementById('k2h').textContent=`Change since ${M.base}`;
   document.getElementById('k2').textContent=yi?sgn(t[0]-D.total.none[0][0]):'—';
   document.getElementById('k2r').textContent=yi?`${((t[0]/D.total.none[0][0]-1)*100).toFixed(1)}% · ${S[si].label}`:'pick a later year';
   document.getElementById('k3').textContent=si?sgn(t[0]-base[0]):'—';
@@ -176,7 +182,7 @@ function trend(){
   svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.style.height=H+'px';
   const all=S.flatMap(s=>D.total[s.id].flatMap(r=>[r[1],r[2]]));
   let lo=Math.min(...all),hi=Math.max(...all);const pad=(hi-lo)*.08;lo-=pad;hi+=pad;
-  const x=i=>L+(W-L-R)*i/(Y.length-1),y=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo));
+  const x=i=>L+(W-L-R)*(Y[i]-Y[0])/(Y[Y.length-1]-Y[0]),y=v=>T+(H-T-B)*(1-(v-lo)/(hi-lo));
   for(let k=0;k<=4;k++){const v=lo+(hi-lo)*k/4;
     el('line',{x1:L,x2:W-R,y1:y(v),y2:y(v),stroke:css('--grid')},svg);
     el('text',{x:L-8,y:y(v)+4,'text-anchor':'end'},svg).textContent=fmt(Math.round(v/100)*100);}
@@ -192,11 +198,14 @@ function trend(){
 
 function areas(){
   const id=S[si].id;
-  document.getElementById('ah').textContent=`By ${M.unit.toLowerCase()}: ${Y[yi]}, ${S[si].label.toLowerCase()}`;
-  const rows=D.areas.map(a=>({n:a.name,c:a.coastal,v:a.v[id][yi],b:a.v.none[0]})).sort((p,q)=>q.v[0]-p.v[0]);
+  const council=UNITS[ui]==='Councils',src=council?D.councils:D.areas,TOP=25;
+  document.getElementById('ah').textContent=`Residents in flood areas by ${council?'council':M.unit}: ${Y[yi]}, ${S[si].label.toLowerCase()}`;
+  const all=src.map(a=>({n:a.name,c:a.coastal,v:a.v[id][yi],b:a.v.none[0]})).filter(r=>r.v[2]>0||r.b[0]>0).sort((p,q)=>q.v[0]-p.v[0]);
+  const rows=council?all:all.slice(0,TOP);
+  document.getElementById('asub').textContent=`${council?'All '+all.length+' councils':'The '+Math.min(TOP,all.length)+' of '+all.length+' '+M.unit+'s with the most'}. Dot: central estimate. Bar: likely range. Tick: ${M.base} ${M.sample?'Census count':'estimate'}. ${council?'':'Small and fast-growing areas carry wider ranges (measured in the back-test).'}`;
   const mx=Math.max(...rows.map(r=>r.v[2]))*1.04,X=v=>100*v/mx;
   const ink=css('--ink'),acc=css(COL[Math.max(si,2)]);
-  document.getElementById('areas').innerHTML='<thead><tr><th>'+M.unit+'</th><th>2021</th><th>'+Y[yi]+'</th><th>Likely range</th><th>Change</th><th></th></tr></thead><tbody>'+
+  document.getElementById('areas').innerHTML='<thead><tr><th>'+(council?'Council':M.unit)+'</th><th>'+M.base+'</th><th>'+Y[yi]+'</th><th>Likely range</th><th>Change</th><th></th></tr></thead><tbody>'+
     rows.map(r=>`<tr><td>${r.n}${r.c?' <span style="color:var(--muted);font-size:11.5px">coastal</span>':''}</td><td>${fmt(r.b[0])}</td><td><b>${fmt(r.v[0])}</b></td><td>${yi||si?fmt(r.v[1])+' – '+fmt(r.v[2]):'—'}</td><td>${yi||si?sgn(r.v[0]-r.b[0]):'—'}</td>`+
       `<td class="bar"><svg viewBox="0 0 100 18" preserveAspectRatio="none"><rect x="${X(r.v[1])}" y="6" width="${Math.max(X(r.v[2])-X(r.v[1]),.4)}" height="6" rx="2" fill="${acc}" opacity=".35"/>`+
       `<line x1="${X(r.b[0])}" x2="${X(r.b[0])}" y1="2" y2="16" stroke="${ink}" stroke-width="1" vector-effect="non-scaling-stroke"/>`+
@@ -210,7 +219,7 @@ function backtest(){
     B.rows.map(r=>`<tr class="${r.chosen?'chosen':''}"><td>${r.model}${r.chosen?' ✓':''}</td><td>${p(r.mb[0])}</td><td>${p(r.mb[1])}</td><td>${p(r.growth[0])}</td><td>${p(r.growth[1])}</td><td>${p(r.sa1[0])}</td><td>${p(r.sa1[1])}</td></tr>`).join('')+'</tbody>';
 }
 
-function draw(){segY();segS();kpis();trend();areas();}
+function draw(){segY();segS();segU();kpis();trend();areas();}
 draw();backtest();
 let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(trend,150);});
 window.__ready=true;

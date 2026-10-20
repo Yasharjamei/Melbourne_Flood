@@ -1,0 +1,291 @@
+"""Population forecast to 2036 and residents in flood areas, for the scenarios page.
+
+Method (docs/PROJECT_LOG.md §29-31):
+  1. Base: ABS ERP 2025 by SA2, split into SA2 x council pieces by 2021 Census residents (mesh blocks).
+  2. Council totals: VIF2023 growth from mid-2025 (VIF interpolated) added to the actual 2025 ERP, so
+     VIF's level error to date is removed and its growth kept. Dwellings likewise.
+  3. Where each council's growth goes (housing-unit model):
+       - Urban Development Program 2025 supply, if data/static/udp2025/udp2025_pieces.csv exists:
+         major-redevelopment dwellings and greenfield lots, each weighted by an ASSUMED probability
+         of being built by the year (STATUS below). Capped at the council's projected new dwellings.
+       - the rest (minor infill, not in UDP) by where addresses were created in the last 5 years.
+     Without the UDP file only the second part runs (the open-data method).
+  4. Residents in flood areas: existing residents by each mesh block's share of address points inside
+     the area (as the live map); new residents by the share of addresses created since 2016 in that
+     piece that fall inside it (new housing has largely avoided the overlays).
+     Areas: "today" = planning overlays (LSIO, FO, SBO) + present-day (2009) coastal extent;
+     each sea-level scenario adds its coastal extent (taken as its union with 2009).
+  5. Ranges: SA2 from the back-test (housing-unit model's 80th-percentile SA2 error, interpolated by
+     horizon, widened or narrowed by SA2 size and growth class); councils and the total from VIF's
+     2021-25 council error, grown linearly with the horizon.
+
+Run after fetch.py, ensemble.py and the main 01_fetch.py:
+    python pipeline/forecast/forecast.py  ->  data/processed/scenarios.json (the page's data), prints a report
+"""
+import glob, json, os, re, sys, zipfile
+import numpy as np, pandas as pd, geopandas as gpd
+from shapely.ops import unary_union
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..")); sys.path.insert(0, HERE)
+from config import STUDIES, norm_lga
+from backtest import table, codes
+from ensemble import read_erp
+
+RAW, FC, ST = "data/raw/metro", "data/raw/forecast", "data/static"
+CRS = 7855
+BASE, YEARS = 2025, [2025, 2026, 2031, 2036]
+SLR = [("none", "Today's flood areas", None), ("0.2", "+0.20 m sea level (2040)", "SLR20CM_2040"),
+       ("0.47", "+0.47 m sea level (2070)", "SLR47CM_2070"), ("0.82", "+0.82 m sea level (2100)", "SLR82CM_2100")]
+# ASSUMED share of each UDP category built by the end of the ramp, and the ramp length in years from
+# mid-2025. Not measured: UDP 2025 has no history (completions 2023-24 only). Council caps limit how
+# much these matter; they mainly decide WHERE inside a council the growth goes.
+STATUS = {"mrs_under_construction": (0.95, 2), "mrs_firm": (0.80, 5), "mrs_likely": (0.50, 8),
+          "mrs_possible": (0.25, 11), "gf_titled": (0.95, 2), "gf_proposed": (0.85, 5),
+          "gf_zoned": (0.60, 11), "gf_unzoned": (0.15, 11)}
+
+
+def ramp(y, p, T, start=0):
+    return p * float(np.clip((y - BASE - start) / T, 0, 1))
+
+
+def vif(sheet):
+    t = pd.read_excel(f"{ST}/vif2023/VIF2023_LGA_Pop_Hhold_Dwelling_Projections_to_2036.xlsx", sheet_name=sheet, header=None)
+    h = t.index[t.iloc[:, 0].astype(str).str.contains("LGA", case=False) & t.iloc[:, 2].astype(str).str.startswith("2021")][0]
+    d = t.loc[h + 1:, :5].dropna(subset=[0]); d.columns = ["code", "name", 2021, 2026, 2031, 2036]
+    d["code"] = codes(d["code"]); d = d[d["code"].str.fullmatch(r"\d{5}")]
+    d["name"] = d["name"].astype(str).str.replace(r"\s*\(.*\)$", "", regex=True)
+    for y in (2021, 2026, 2031, 2036):
+        d[y] = d[y].astype(float)
+    d[BASE] = d[2021] + (BASE - 2021) / 5 * (d[2026] - d[2021])
+    return d.set_index("code")
+
+
+def slr_layer(name):
+    z = f"{ST}/coastal_inundation/{name}.zip"
+    inner = next(n for n in zipfile.ZipFile(z).namelist() if n.endswith(f"/{name}.shp"))
+    return gpd.read_file(f"zip://{z}!{inner}").to_crs(CRS).geometry.union_all()
+
+
+def inside(pts, zone):
+    parts = gpd.GeoDataFrame(geometry=list(getattr(zone, "geoms", [zone])), crs=CRS)
+    parts = parts[~parts.is_empty]
+    if parts.empty:
+        return np.zeros(len(pts), bool)
+    return pts.index.isin(gpd.sjoin(pts, parts, predicate="within", how="inner").index.unique())
+
+
+def main():
+    lgas = {norm_lga(n) for n in STUDIES["metro"]["lgas"]}
+    # ---------------- mesh blocks, councils, pieces
+    mb = gpd.read_file(f"{RAW}/mb.geojson").to_crs(CRS)
+    code = next(c for c in mb.columns if re.fullmatch(r"mb_code_2021|mb_code.*", c, re.I))
+    sa1c = next(c for c in mb.columns if re.fullmatch(r"sa1_code_2021|sa1_code.*", c, re.I))
+    mb["mb21"], mb["sa1"] = codes(mb[code]), codes(mb[sa1c])
+    mb = mb[mb["sa1"].str.fullmatch(r"\d{11}")].reset_index(drop=True)
+    mb["sa2"] = mb["sa1"].str[:9]
+    c21 = table("data/raw/shared/mb_counts_2021.xlsx", "MB_CODE_2021", ["MB_CODE_2021", "PERSON"])
+    c21["mb21"] = codes(c21["MB_CODE_2021"])
+    c21 = c21[c21["mb21"].str.fullmatch(r"\d{11}")].drop_duplicates("mb21").set_index("mb21")
+    mb["p21"] = pd.to_numeric(mb["mb21"].map(c21["PERSON"]), errors="coerce").fillna(0)
+    lga = gpd.read_file(f"{RAW}/lga.geojson").to_crs(CRS)
+    lga = lga[lga["lga_name_2021"].map(norm_lga).isin(lgas)]
+    pt = mb.set_geometry(mb.geometry.representative_point())[["geometry"]]
+    j = gpd.sjoin(pt, lga[["lga_code_2021", "geometry"]], predicate="within", how="inner")
+    mb["lga"] = j[~j.index.duplicated()]["lga_code_2021"].astype(str).reindex(mb.index)
+    sa2_p21 = mb.groupby("sa2")["p21"].sum()
+    mb = mb.dropna(subset=["lga"]).reset_index(drop=True)
+    mb["key"] = mb["sa2"] + "|" + mb["lga"]
+    study = lga.geometry.union_all()
+
+    # ---------------- flood areas
+    fl = gpd.read_file(f"{RAW}/flood.geojson").to_crs(CRS)
+    ov = unary_union(fl[fl.scheme_code.isin(["LSIO", "FO", "SBO"])].geometry).intersection(study)
+    c09 = slr_layer("SLR00CM_2009")
+    zones = {"none": unary_union([ov, c09])}
+    for k, _, name in SLR[1:]:
+        zones[k] = unary_union([ov, c09, slr_layer(name)])
+    print(f"flood areas (km2): " + ", ".join(f"{k} {z.area / 1e6:,.1f}" for k, z in zones.items()))
+
+    # ---------------- address shares per mesh block: all addresses, and those created 2016-2025
+    a = np.load(f"{RAW}/addr.npy")
+    pts = gpd.GeoDataFrame(geometry=gpd.points_from_xy(a[:, 0], a[:, 1]), crs=4326).to_crs(CRS)
+    pts = gpd.sjoin(pts, mb[["geometry"]], predicate="within", how="inner")
+    pts = pts[~pts.index.duplicated()].rename(columns={"index_right": "m"})[["m", "geometry"]]
+    n_all = pts.groupby("m").size().reindex(mb.index).fillna(0)
+    an = np.load(f"{FC}/addresses_new.npy")
+    day = an[:, 2].astype("int64").astype("datetime64[D]")
+    sel = (day >= np.datetime64("2016-07-01")) & (day < np.datetime64(f"{BASE}-07-01"))
+    npts = gpd.GeoDataFrame(geometry=gpd.points_from_xy(an[sel, 0], an[sel, 1]), crs=4326).to_crs(CRS)
+    npts = gpd.sjoin(npts, mb[["geometry"]], predicate="within", how="inner")
+    npts = npts[~npts.index.duplicated()].rename(columns={"index_right": "m"})[["m", "geometry"]]
+    recent = (day[sel] >= np.datetime64(f"{BASE - 5}-07-01"))[npts.index.values]
+    mb["new"] = npts.groupby("m").size().reindex(mb.index).fillna(0).values
+    mb["recent"] = npts[recent].groupby("m").size().reindex(mb.index).fillna(0).values
+    for k, z in zones.items():
+        pin = inside(pts, z)
+        share = pd.Series(pin, index=pts.index).groupby(pts["m"]).mean().reindex(mb.index)
+        no = share.index[share.isna()]                                       # no address: area share instead
+        share.loc[no] = (mb.loc[no].geometry.intersection(z).area / mb.loc[no].area.where(mb.loc[no].area > 0, 1)).values
+        mb[f"s_{k}"] = share.values
+        mb[f"n_{k}"] = pd.Series(inside(npts, z), index=npts.index).groupby(npts["m"]).sum().reindex(mb.index).fillna(0).values
+    print(f"addresses: {len(pts):,} in study mesh blocks; {int(mb['new'].sum()):,} created mid-2016 to mid-{BASE}, "
+          f"{int(mb['recent'].sum()):,} in the last 5 years")
+
+    # ---------------- pieces: ERP 2025, exposure shares, recent addresses
+    g = mb.groupby("key")
+    p = g.agg(sa2=("sa2", "first"), lga=("lga", "first"), p21=("p21", "sum"), new=("new", "sum"), recent=("recent", "sum")).reset_index()
+    for k in zones:
+        se = (mb["p21"] * mb[f"s_{k}"]).groupby(mb["key"]).sum() / g["p21"].sum().where(g["p21"].sum() > 0, np.nan)
+        se = se.fillna(g[f"s_{k}"].mean())
+        p[f"se_{k}"] = p["key"].map(se).values
+        sn = g[f"n_{k}"].sum() / g["new"].sum().where(g["new"].sum() >= 20, np.nan)
+        p[f"sn_{k}"] = p["key"].map(sn).fillna(p[f"se_{k}"]).values
+    erp = read_erp(f"{FC}/erp_sa2.csv")
+    e = erp[next(k for k in erp if re.fullmatch(r"SA2.*", k, re.I))]
+    e = e[e["year"] == BASE].drop_duplicates("code").set_index("code")["erp"]
+    p["w"] = p["p21"] / p["sa2"].map(sa2_p21).clip(lower=1)
+    p["P"] = p["sa2"].map(e).fillna(0).values * p["w"].values
+    miss = p["sa2"].map(e).isna()
+    print(f"pieces: {len(p)} in {p['lga'].nunique()} councils; ERP {BASE} {p['P'].sum():,.0f}; "
+          f"{int(miss.sum())} pieces without ERP ({p.loc[miss, 'p21'].sum():,.0f} 2021 residents)")
+
+    # ---------------- council targets from VIF2023, rebased to ERP 2025
+    vp, vd = vif("Total_Population"), vif("Total_Dwellings")
+    act = p.groupby("lga")["P"].sum()
+    tgt = {y: act + (vp.reindex(act.index)[y] - vp.reindex(act.index)[BASE]) for y in YEARS if y != BASE}
+    need = {y: (vd.reindex(act.index)[y] - vd.reindex(act.index)[BASE]).clip(lower=0) for y in YEARS if y != BASE}
+
+    # ---------------- UDP supply (optional)
+    udp_path = f"{ST}/udp2025/udp2025_pieces.csv"
+    use_udp = os.path.exists(udp_path)
+    p["key2"] = p["sa2"] + "|" + p["lga"]
+    if use_udp:
+        u = pd.read_csv(udp_path, dtype={"sa2_code_2021": str, "lga_code": str})
+        u["key2"] = u["sa2_code_2021"] + "|" + u["lga_code"]
+        cols = [c for c in STATUS if c in u.columns]
+        u = u.groupby("key2")[cols].sum()
+        unmatched = u[~u.index.isin(p["key2"])][cols].sum().sum()
+        p = p.join(u, on="key2").fillna({c: 0 for c in cols})
+        print(f"UDP 2025: {u[cols].sum().sum():,.0f} dwellings/lots in {len(u)} pieces; {unmatched:,.0f} in pieces "
+              f"not found here (dropped)")
+    else:
+        cols = []
+        print("UDP 2025: not present, open-data method only")
+
+    def allocate(y, udp=True):
+        """Population of each piece in year y."""
+        lg = p["lga"].values
+        E = np.zeros(len(p))
+        if udp and cols:
+            for c in cols:
+                pr, T = STATUS[c]
+                E += p[c].values * ramp(y, pr, T)
+        E_l = pd.Series(E).groupby(lg).transform("sum").values
+        N_l = pd.Series(lg).map(need[y]).fillna(0).values
+        scale = np.where(E_l > N_l, N_l / np.where(E_l > 0, E_l, 1), 1.0)
+        E = E * scale
+        R_l = np.clip(N_l - E_l, 0, None)                                    # infill not covered by UDP
+        rc = p["recent"].values.astype(float)
+        rc_l = pd.Series(rc).groupby(lg).transform("sum").values
+        P = p["P"].values
+        P_l = pd.Series(P).groupby(lg).transform("sum").values
+        infill = np.where(rc_l > 0, R_l * rc / np.where(rc_l > 0, rc_l, 1), R_l * P / np.where(P_l > 0, P_l, 1))
+        D = E + infill
+        D_l = pd.Series(D).groupby(lg).transform("sum").values
+        dL = pd.Series(lg).map(tgt[y] - act).fillna(0).values
+        return P + np.where(D_l > 0, dL * D / np.where(D_l > 0, D_l, 1), dL * P / np.where(P_l > 0, P_l, 1))
+
+    pop = {BASE: p["P"].values}
+    pop_open = {BASE: p["P"].values}
+    for y in YEARS[1:]:
+        pop[y] = allocate(y, True); pop_open[y] = allocate(y, False)
+
+    def exposure(P, k):
+        P0 = p["P"].values; d = P - P0
+        return P0 * p[f"se_{k}"].values + np.where(d > 0, d * p[f"sn_{k}"].values, d * p[f"se_{k}"].values)
+
+    # ---------------- ranges
+    ens = json.load(open("data/processed/forecast_ensemble.json")) if os.path.exists("data/processed/forecast_ensemble.json") else {}
+    hu = {}
+    for name, models in ens.get("tests", {}).items():
+        h = int(re.search(r"h=(\d+)", name).group(1)); hu.setdefault(h, []).append(models["HU"]["p80_ape"])
+    hs = sorted(hu); hv = [float(np.mean(hu[h])) for h in hs]
+    sa2_rel = (lambda h: float(np.interp(h, [0] + hs, [0] + hv))) if hs else (lambda h: 0.03 * h)
+    cls = ens.get("ens_error_by_class", {})
+    ens14 = next((m["ENS"]["p80_ape"] for n, m in ens.get("tests", {}).items() if "h=14" in n), None)
+    def class_factor(size, growth):
+        if not cls or not ens14:
+            return 1.0
+        s = cls["size"].get("<5k" if size < 5000 else "5-10k" if size < 10000 else "10-15k" if size < 15000 else "15k+", {}).get("p80_ape", ens14)
+        gr = cls["growth"].get("<10%" if growth < 1.1 else "10-30%" if growth < 1.3 else "30-60%" if growth < 1.6 else "60%+", {}).get("p80_ape", ens14)
+        return float(np.sqrt(s * gr) / ens14)
+    vif_err = ens.get("vif_check", {}).get("wape", 0.013)
+    council_rel = lambda h: vif_err * h / 4
+
+    # ---------------- outputs: SA2s, councils, total
+    names = gpd.read_file(f"{ST}/sa2_council_pieces_7855.geojson")[["sa2_code_2021", "sa2_name_2021"]].drop_duplicates("sa2_code_2021")
+    sa2_name = names.set_index("sa2_code_2021")["sa2_name_2021"]
+    sid = p["sa2"].values
+    def by(groups, P_dict):
+        return {y: pd.Series(P_dict[y]).groupby(groups).sum() for y in YEARS}
+    pop_sa2 = by(sid, pop)
+    growth11 = (pop_sa2[2036] / pop_sa2[BASE].clip(lower=1))
+    out = {"meta": {"sample": False, "years": YEARS, "base": BASE, "unit": "SA2",
+                    "method": "udp" if use_udp else "open", "restricted": bool(use_udp),
+                    "note": ("Housing-unit model with Urban Development Program 2025 supply (DEECA licence) and "
+                             "VIF2023 council totals rebased to ERP 2025." if use_udp else
+                             "Housing-unit model (recent address creation) with VIF2023 council totals rebased to ERP 2025."),
+                    "status_assumptions": {k: {"share_built": v[0], "years": v[1]} for k, v in STATUS.items()} if use_udp else None},
+           "slr": [{"id": k, "label": lab} for k, lab, _ in SLR], "total": {}, "areas": [], "councils": [], "population": {}}
+    lo_hi = lambda v, r: [round(v), round(v * (1 - r)), round(v * (1 + r))]
+    for k, _, _ in SLR:
+        ex = {y: exposure(pop[y], k) for y in YEARS}
+        tot = [lo_hi(ex[y].sum(), council_rel(y - BASE)) for y in YEARS]
+        out["total"][k] = tot
+        ex_sa2 = {y: pd.Series(ex[y]).groupby(sid).sum() for y in YEARS}
+        ex_lga = {y: pd.Series(ex[y]).groupby(p["lga"].values).sum() for y in YEARS}
+        for s in pop_sa2[BASE].index:
+            rel = class_factor(pop_sa2[BASE][s], growth11[s])
+            row = next((r for r in out["areas"] if r["code"] == s), None)
+            if row is None:
+                row = {"code": s, "name": sa2_name.get(s, s), "v": {}, "pop": [lo_hi(pop_sa2[y][s], sa2_rel(y - BASE) * class_factor(pop_sa2[BASE][s], growth11[s])) for y in YEARS]}
+                out["areas"].append(row)
+            row["v"][k] = [lo_hi(ex_sa2[y][s], sa2_rel(y - BASE) * rel) for y in YEARS]
+        for c in ex_lga[BASE].index:
+            row = next((r for r in out["councils"] if r["code"] == c), None)
+            if row is None:
+                row = {"code": c, "name": vp["name"].get(c, c), "v": {},
+                       "pop": [lo_hi(pd.Series(pop[y]).groupby(p["lga"].values).sum()[c], council_rel(y - BASE)) for y in YEARS]}
+                out["councils"].append(row)
+            row["v"][k] = [lo_hi(ex_lga[y][c], council_rel(y - BASE)) for y in YEARS]
+    for a_ in out["areas"]:
+        a_["coastal"] = bool(a_["v"]["0.82"][-1][0] > a_["v"]["none"][-1][0] + 5)
+    out["population"] = {"total": [lo_hi(pop[y].sum(), council_rel(y - BASE)) for y in YEARS],
+                         "open_method_total": [round(pop_open[y].sum()) for y in YEARS]}
+    out["backtest"] = json.load(open("web/scenarios_sample.json"))["backtest"]     # the real §25 table
+    out["split_test"] = {str(h): round(v, 4) for h, v in zip(hs, hv)}              # HU p80 SA2 error by horizon
+    os.makedirs("data/processed", exist_ok=True)
+    json.dump(out, open("data/processed/scenarios.json", "w"), separators=(",", ":"))
+
+    # ---------------- report
+    print(f"\nPopulation, 31 councils ({out['meta']['method']} method): " +
+          ", ".join(f"{y} {pop[y].sum():,.0f}" for y in YEARS) + f"; open-data method 2036 {pop_open[2036].sum():,.0f}")
+    print("Residents in flood areas (central, low-high):")
+    for k, lab, _ in SLR:
+        print(f"  {lab:44} " + "  ".join(f"{y}: {t[0]:,} ({t[1]:,}-{t[2]:,})" for y, t in zip(YEARS, out['total'][k])))
+    d36 = sorted(out["areas"], key=lambda r: -(r["v"]["none"][-1][0] - r["v"]["none"][0][0]))[:10]
+    print("SA2s adding the most residents in today's flood areas by 2036:")
+    for r in d36:
+        print(f"  {r['name']:32} {r['v']['none'][0][0]:>7,} -> {r['v']['none'][-1][0]:>7,} (range {r['v']['none'][-1][1]:,}-{r['v']['none'][-1][2]:,})")
+    s82 = sorted(out["areas"], key=lambda r: -(r["v"]["0.82"][-1][0] - r["v"]["none"][-1][0]))[:8]
+    print("SA2s where +0.82 m sea level adds the most residents (2036 population):")
+    for r in s82:
+        print(f"  {r['name']:32} +{r['v']['0.82'][-1][0] - r['v']['none'][-1][0]:,}")
+    if use_udp:
+        dd = pd.Series(pop[2036] - pop_open[2036]).groupby(sid).sum().abs().sum() / 2
+        print(f"UDP moves {dd:,.0f} of 2036 residents between SA2s compared with the open-data method")
+
+
+if __name__ == "__main__":
+    main()

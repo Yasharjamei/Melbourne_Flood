@@ -684,3 +684,13 @@ The owner pointed to the UDP 2025 methods page (planning.vic.gov.au; blocked to 
 - Tested on synthetic data in the DataShare zip layout: dwellings and lots are conserved exactly (9,869 and 1,040), including a greenfield polygon split across pieces.
 - **Council check (for the owner, not published):** VIF2023 needs 471,864 new dwellings in the 31 councils from mid-2025 to 2036. UDP identifies 158,080 in the redevelopment pipeline, 55,617 titled or proposed greenfield lots, 153,946 on zoned englobo land and 88,552 on unzoned land. Growth-area and inner councils are fully covered; middle-ring councils are not (Monash ~24%, Boroondara ~30%, Merri-bek ~38%, Mornington Peninsula ~11%), where small infill under 10 dwellings dominates.
 
+## 32. The 2036 forecast (2026-10-20)
+
+`pipeline/forecast/forecast.py`, run by `forecast.yml` after the back-tests; writes `data/processed/scenarios.json` for the page.
+- **Base:** ABS ERP 2025 by SA2, split into SA2 x council pieces by 2021 Census residents.
+- **Council totals:** VIF2023 growth from mid-2025 (interpolated) added to actual ERP 2025, keeping VIF's growth and removing its level error. Council dwelling need from VIF dwellings the same way.
+- **Placement:** UDP 2025 supply per piece weighted by assumed build-out shares (under construction 95% in 2 years; firm 80% in 5; likely 50% in 8; possible 25% in 11; greenfield titled 95% in 2, proposed 85% in 5, zoned 60% in 11, unzoned 15% in 11), capped at each council's projected new dwellings; the remainder (small infill) by addresses created in the last 5 years. **The build-out shares are assumptions**: UDP 2025 has no history to measure them. The cap means they mainly decide where inside a council growth goes, not how much. An open-data-only run (no UDP) is computed alongside for comparison.
+- **Flood areas:** "today" = planning overlays (LSIO, FO, SBO) plus the 2009 coastal extent; sea-level scenarios add the 2040/2070/2100 extents (each unioned with 2009). Existing residents by mesh-block address shares (as the live map); new residents by the share of 2016-2025 addresses in the same piece that fall inside.
+- **Ranges:** SA2s from the housing-unit model's back-tested 80th-percentile error, interpolated by horizon and scaled by size and growth class; councils and total from VIF's 2021-25 council error grown linearly (about ±3.6% at 2036).
+- **Page:** base year 2025, SA2 (top 25) / council toggle, proportional time axis, DEECA licence note when UDP is used, method text rewritten. Tested on synthetic inputs in this environment (desktop and phone, no script errors); real numbers come from the CI run.
+
