@@ -196,7 +196,16 @@ python pipeline/forecast/sample.py     # sample numbers for the page (until the 
 python pipeline/forecast/preview.py    # -> preview/scenarios/index.html
 ```
 
-Open `preview/scenarios/index.html` in a browser. It never goes into `dist/` unless the real forecast exists **and** `PUBLISH_SCENARIOS=1` is set.
+Open `preview/scenarios/index.html` in a browser.
+
+**Urban Development Program (your laptop only).** UDP 2025 is under a DEECA licence, so the raw files never go to GitHub:
+
+```powershell
+# put Order_KR7TGF.zip and Order_EQKZCF.zip, as delivered by DataShare, in data\private\udp\
+python pipeline/forecast/udp_aggregate.py   # -> data/static/udp2025/udp2025_pieces.csv (per-SA2 totals only)
+```
+
+Committing that summary file is your decision under the licence. Once it is in the repository, the forecast in GitHub uses it automatically. It never goes into `dist/` unless the real forecast exists **and** `PUBLISH_SCENARIOS=1` is set.
 
 ### Faster: let GitHub do it
 
