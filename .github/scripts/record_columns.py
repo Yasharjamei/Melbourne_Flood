@@ -1,0 +1,111 @@
+"""Record the 3D column animation for sharing: one column per SA2, height = residents in flood areas,
+colour = change since 2025. Story: 2025 -> 2036 in today's flood areas, then (2036 population) the
+1-in-100-year storm tide at today's sea level, +0.20 m, +0.47 m and +0.82 m. Same style idea as
+column maps of stream gauges; the numbers are this project's forecast (data/processed/scenarios.json).
+
+Usage (after pipeline/forecast/forecast.py):
+    python .github/scripts/record_columns.py   ->  shots/columns.mp4, shots/columns.gif, shots/columns.html
+Optional env: CHROMIUM (browser binary), LIBS (local node_modules, for offline runs without basemap tiles).
+"""
+import io, json, os, shutil, subprocess
+import geopandas as gpd
+from PIL import Image
+from playwright.sync_api import sync_playwright
+
+W, H, VW, VH, FPS = 1280, 720, 1600, 900, 20
+GIF_W, GIF_EVERY = 800, 2
+OUT = "shots"
+CALM, STORM = "none", ["st", "st0.2", "st0.47", "st0.82"]
+LABELS = {"none": "Today's flood areas", "st": "1-in-100-year storm tide, today's sea level",
+          "st0.2": "Storm tide + 0.20 m sea level (2040)", "st0.47": "Storm tide + 0.47 m sea level (2070)",
+          "st0.82": "Storm tide + 0.82 m sea level (2100)"}
+
+
+def data():
+    sc = json.load(open("data/processed/scenarios.json"))
+    pc = gpd.read_file("data/static/sa2_council_pieces_7855.geojson")
+    pc["geometry"] = pc.geometry.make_valid()
+    pc = pc.loc[pc.area.groupby(pc["sa2_code_2021"]).idxmax()]       # largest part of each SA2 (no merge needed)
+    pt = pc.set_geometry(pc.geometry.representative_point()).to_crs(4326)
+    xy = {r.sa2_code_2021: (round(r.geometry.x, 5), round(r.geometry.y, 5)) for r in pt.itertuples()}
+    ids = [CALM] + STORM
+    areas = [{"code": a["code"], "lon": xy[a["code"]][0], "lat": xy[a["code"]][1],
+              "v": {k: [row[0] for row in a["v"][k]] for k in ids}} for a in sc["areas"] if a["code"] in xy]
+    top = max(max(a["v"][k]) for a in areas for k in ids)
+    credit = ("Forecast: housing-unit model, VIF2023 council totals, Urban Development Program 2025 (DTP; DEECA licence). "
+              if sc["meta"].get("restricted") else "Forecast: housing-unit model, VIF2023 council totals. ")
+    credit += ("Flood areas: Vicmap planning overlays (LSIO, FO, SBO) + Victorian Coastal Inundation Dataset (bathtub model). "
+               "Exposure, not flood depth. Data: ABS, DataVic, DEECA. yasharjamei.github.io/Melbourne_Flood")
+    return {"years": sc["meta"]["years"], "areas": areas, "total": {k: [t[0] for t in sc["total"][k]] for k in ids},
+            "labels": LABELS, "credit": credit, "metres_per_resident": 14000 / top, "radius_m": 520,
+            "center": [145.02, -37.93], "zoom": 8.9, "pitch": 60, "bearing": -25}
+
+
+def story(y0, y1):
+    """Frame states: (year, from-scenario, to-scenario, blend)."""
+    seq = []
+    ease = lambda f: f * f * (3 - 2 * f)
+    def add(n, fn):
+        for i in range(n):
+            seq.append(fn(i / max(n - 1, 1)))
+    add(30, lambda f: (y0, CALM, CALM, 0))
+    add(120, lambda f: (y0 + (y1 - y0) * ease(f), CALM, CALM, 0))
+    add(25, lambda f: (y1, CALM, CALM, 0))
+    prev = CALM
+    for k in STORM:
+        add(40 if k != "st" else 30, lambda f, a=prev, b=k: (y1, a, b, ease(f)))
+        add(12, lambda f, b=k: (y1, b, b, 0))
+        prev = k
+    add(45, lambda f: (y1, prev, prev, 0))
+    n = len(seq)
+    return [{"year": y, "a": a, "b": b, "t": t, "bearing": -25 + 40 * i / (n - 1)} for i, (y, a, b, t) in enumerate(seq)]
+
+
+def main():
+    os.makedirs(f"{OUT}/colframes", exist_ok=True)
+    d = data()
+    html = open("web/columns.html").read().replace("__DATA__", json.dumps(d, separators=(",", ":")))
+    page = os.path.abspath(f"{OUT}/columns.html")
+    open(page, "w").write(html)
+    frames = story(d["years"][0], d["years"][-1])
+    gif = []
+    with sync_playwright() as p:
+        b = p.chromium.launch(executable_path=os.environ.get("CHROMIUM") or None,
+                              args=["--use-gl=angle", "--use-angle=swiftshader", "--ignore-gpu-blocklist"])
+        pg = b.new_page(viewport={"width": VW, "height": VH})
+        pg.on("console", lambda m: m.type in ("error", "warning") and print("  page:", m.text[:160]))
+        nm = os.environ.get("LIBS")
+        if nm:
+            pg.route("**/cdn.jsdelivr.net/**", lambda r: r.fulfill(path=os.path.join(nm, "maplibre-gl/dist/" + r.request.url.rsplit("/", 1)[1])))
+            pg.route(lambda u: "cartocdn.com" in u or "amazonaws.com" in u, lambda r: r.abort())
+        pg.goto("file://" + page, wait_until="load", timeout=120000)
+        pg.wait_for_function("window.__ready === true", timeout=120000)
+        idle = "() => new Promise(r => { map.once('idle', r); map.triggerRepaint(); setTimeout(r, 6000); })"
+        pg.evaluate(idle); pg.wait_for_timeout(1500 if nm else 6000)          # first tiles
+        for i, st in enumerate(frames):
+            pg.evaluate("st => window.setFrame(st)", st)
+            pg.evaluate(idle)
+            im = Image.open(io.BytesIO(pg.screenshot())).convert("RGB").resize((W, H), Image.LANCZOS)
+            im.save(f"{OUT}/colframes/{i:04d}.png")
+            if i % GIF_EVERY == 0:
+                gif.append(im.resize((GIF_W, int(H * GIF_W / W)), Image.LANCZOS).quantize(colors=128))
+            if i % 50 == 0:
+                print(f"  frame {i} of {len(frames)}")
+        b.close()
+    gif[0].save(f"{OUT}/columns.gif", save_all=True, append_images=gif[1:], duration=int(1000 * GIF_EVERY / FPS), loop=0, optimize=True)
+    print(f"{OUT}/columns.gif: {len(gif)} frames, {os.path.getsize(f'{OUT}/columns.gif') / 1e6:.1f} MB")
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        try:
+            import imageio_ffmpeg; ffmpeg = imageio_ffmpeg.get_ffmpeg_exe()
+        except ImportError:
+            print("no ffmpeg: MP4 skipped (pip install imageio-ffmpeg)")
+    if ffmpeg:
+        subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-framerate", str(FPS), "-i", f"{OUT}/colframes/%04d.png",
+                        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-movflags", "+faststart", f"{OUT}/columns.mp4"], check=True)
+        print(f"{OUT}/columns.mp4: {len(frames) / FPS:.1f} s, {os.path.getsize(f'{OUT}/columns.mp4') / 1e6:.1f} MB")
+    shutil.rmtree(f"{OUT}/colframes")
+
+
+if __name__ == "__main__":
+    main()

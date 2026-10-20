@@ -66,6 +66,11 @@ jobs:
           set -o pipefail
           python pipeline/forecast/forecast.py | tee forecast.txt
           python pipeline/forecast/preview.py
+      - name: 3D column animation for sharing (shots/columns.mp4, .gif)
+        continue-on-error: true      # a recording problem never hides the forecast results
+        run: |
+          pip install playwright pillow imageio-ffmpeg && python -m playwright install --with-deps chromium
+          python .github/scripts/record_columns.py
       - run: |
           echo '```' >> "$GITHUB_STEP_SUMMARY"; cat backtest.txt ensemble.txt forecast.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
@@ -79,4 +84,6 @@ jobs:
             forecast.txt
             data/processed/scenarios.json
             preview/
+            shots/columns.mp4
+            shots/columns.gif
           retention-days: 30

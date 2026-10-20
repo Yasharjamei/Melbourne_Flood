@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flood columns</title>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
+<style>
+html,body{margin:0;height:100%;background:#0d1114;color:#eef2f3;font-family:"Segoe UI",system-ui,-apple-system,sans-serif}
+#map{position:absolute;inset:0}
+.box{position:absolute;pointer-events:none;text-shadow:0 1px 3px rgba(0,0,0,.6)}
+#title{top:22px;left:28px}
+#title h1{margin:0;font-size:30px;font-weight:700;letter-spacing:-.01em}
+#title p{margin:4px 0 0;font-size:17px;color:#b9c4c8}
+#state{top:22px;right:28px;text-align:right}
+#state .yr{font-size:40px;font-weight:700;line-height:1}
+#state .sc{font-size:16px;color:#b9c4c8;margin-top:4px}
+#count{bottom:64px;right:28px;text-align:right}
+#count .n{font-size:38px;font-weight:700;font-variant-numeric:tabular-nums}
+#count .l{font-size:14px;color:#b9c4c8}
+#leg{bottom:64px;left:28px;font-size:13px;color:#cfd8db}
+#leg .ramp{width:230px;height:10px;border-radius:3px;margin:6px 0 3px;
+  background:linear-gradient(90deg,#29d3e0 0%,#3d7fd9 25%,#f0a020 55%,#e8384a 80%,#ff4fb0 100%)}
+#leg .ticks{display:flex;justify-content:space-between;width:230px;font-size:12px;color:#9fb0b5}
+#credit{bottom:16px;left:28px;right:28px;font-size:12px;color:#8fa0a6}
+.maplibregl-ctrl-attrib{display:none}
+</style>
+</head>
+<body>
+<div id="map"></div>
+<div class="box" id="title"><h1>Who lives in Melbourne's flood areas</h1><p>Residents in flood areas by SA2, as the city grows and the sea rises</p></div>
+<div class="box" id="state"><div class="yr" id="yr"></div><div class="sc" id="sc"></div></div>
+<div class="box" id="count"><div class="n" id="n"></div><div class="l">residents in flood areas, 31 councils</div></div>
+<div class="box" id="leg">Change since 2025<div class="ramp"></div><div class="ticks"><span>0%</span><span>+50%</span><span>+150%</span><span>+300%</span><span>+600%</span></div>
+  <div style="margin-top:8px">Column height: residents in flood areas</div></div>
+<div class="box" id="credit"></div>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+// Column animation for sharing: one column per SA2 (height = residents in flood areas, colour = change
+// since 2025), driven frame by frame by .github/scripts/record_columns.py through window.setFrame().
+const D=JSON.parse(document.getElementById('data').textContent),Y=D.years,A=D.areas,T=D.total,LAB=D.labels;
+document.getElementById('credit').textContent=D.credit;
+const HM=D.metres_per_resident,R=D.radius_m;
+function interpYear(arr,yr){             // arr: values at Y
+  if(yr<=Y[0])return arr[0];
+  for(let i=1;i<Y.length;i++)if(yr<=Y[i]){const f=(yr-Y[i-1])/(Y[i]-Y[i-1]);return arr[i-1]+f*(arr[i]-arr[i-1]);}
+  return arr[arr.length-1];
+}
+function val(a,s){return a.v[s]?a.v[s]:null}
+function value(a,st){                   // st: {year, a, b, t}
+  const va=interpYear(a.v[st.a],st.year),vb=interpYear(a.v[st.b],st.year);return va+(vb-va)*st.t;
+}
+function colour(p){                     // change since 2025 -> the post's cyan-blue-orange-red-pink ramp
+  const stops=[[0,[41,211,224]],[.5,[61,127,217]],[1.5,[240,160,32]],[3,[232,56,74]],[6,[255,79,176]]];
+  if(p<=0)return'rgb(41,211,224)';
+  for(let i=1;i<stops.length;i++)if(p<=stops[i][0]){const[a,ca]=stops[i-1],[b,cb]=stops[i],f=(p-a)/(b-a);
+    return`rgb(${ca.map((c,k)=>Math.round(c+f*(cb[k]-c))).join(',')})`;}
+  return'rgb(255,79,176)';
+}
+function octagon(lon,lat){
+  const dy=R/111320,dx=R/(111320*Math.cos(lat*Math.PI/180)),ring=[];
+  for(let k=0;k<=8;k++){const t=(k%8)*Math.PI/4+Math.PI/8;ring.push([lon+dx*Math.cos(t),lat+dy*Math.sin(t)]);}
+  return[ring];
+}
+const geom=A.map(a=>octagon(a.lon,a.lat));
+function features(st){
+  return{type:'FeatureCollection',features:A.map((a,i)=>{
+    const v=value(a,st),b=a.v.none[0],p=(v-b)/Math.max(b,50);
+    return{type:'Feature',geometry:{type:'Polygon',coordinates:geom[i]},properties:{h:Math.max(v,0)*HM,c:colour(p)}};}).filter(f=>f.properties.h>1)};
+}
+function total(st){const ta=interpYear(T[st.a],st.year),tb=interpYear(T[st.b],st.year);return ta+(tb-ta)*st.t;}
+const fmt=v=>Math.round(v).toLocaleString('en-AU');
+let map,ready=false;
+window.setFrame=function(st){
+  if(!ready)return false;
+  map.getSource('cols').setData(features(st));
+  document.getElementById('yr').textContent=Math.floor(st.year+1e-6);
+  document.getElementById('sc').textContent=st.t<0.5?LAB[st.a]:LAB[st.b];
+  document.getElementById('n').textContent=fmt(total(st));
+  if(st.bearing!=null)map.jumpTo({bearing:st.bearing,pitch:st.pitch??map.getPitch(),zoom:st.zoom??map.getZoom()});
+  return true;
+};
+const style={version:8,sources:{
+    base:{type:'raster',tiles:['https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png','https://b.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png'],tileSize:256},
+    dem:{type:'raster-dem',tiles:['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],encoding:'terrarium',tileSize:256,maxzoom:12},
+    cols:{type:'geojson',data:{type:'FeatureCollection',features:[]}}},
+  layers:[{id:'bg',type:'background',paint:{'background-color':'#0d1114'}},
+    {id:'base',type:'raster',source:'base',paint:{'raster-opacity':.9}},
+    {id:'shade',type:'hillshade',source:'dem',paint:{'hillshade-exaggeration':.55,'hillshade-shadow-color':'#000000','hillshade-highlight-color':'#3a4a50','hillshade-accent-color':'#101418'}},
+    {id:'cols',type:'fill-extrusion',source:'cols',paint:{'fill-extrusion-height':['get','h'],'fill-extrusion-color':['get','c'],'fill-extrusion-opacity':.92,'fill-extrusion-vertical-gradient':true}}]};
+map=new maplibregl.Map({container:'map',style,center:D.center,zoom:D.zoom,pitch:D.pitch,bearing:D.bearing,
+  interactive:false,fadeDuration:0,preserveDrawingBuffer:true,attributionControl:false});
+function init(){if(ready)return;ready=true;window.setFrame({year:Y[0],a:'none',b:'none',t:0});window.__ready=true;}
+map.on('load',init);
+// 'load' waits for every tile; if a tile server fails it may never come, so start from the style alone
+map.once('style.load',()=>setTimeout(init,5000));
+map.on('error',e=>console.warn('map error',e&&e.error&&e.error.message));
+</script>
+</body>
+</html>
