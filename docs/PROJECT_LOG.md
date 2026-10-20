@@ -644,3 +644,14 @@ The owner supplied the four VIF2023 workbooks (committed to `data/static/vif2023
 
 **Owner decisions (2026-10-20).** The main site's downloads stay on the councils' bounding box for now (clip them together with the scenarios launch, one rebuild instead of two). The monthly scheduled rebuild on 2 November stays on.
 
+## 30. Sea-level layers 2040, 2070, 2100 in hand (2026-10-20)
+
+Three DataShare orders, all clipped to the 31-council boundary (8,831 km², matching `boundary.yml`), committed to `data/static/coastal_inundation/`:
+- ICA0IN: SLR20CM_2040, 631 polygons, 29.2 km² inside the study councils.
+- QBY4LJ: SLR47CM_2070, 657 polygons, 37.7 km².
+- K0XLIZ: SLR82CM_2100, 840 polygons, 62.6 km².
+
+All geometries valid; extent grows with each scenario as it should. ICA0IN supersedes LBRN1F (§27), whose clip polygon reached beyond the councils (101 km²). Earlier order 84AZJS (SLR00CM_2009) came back empty because it was clipped to Banyule only.
+
+**Still missing:** the 2009 baseline (needed to count residents *added* by sea-level rise, not those already in today's coastal extent) and the four storm-tide layers.
+
