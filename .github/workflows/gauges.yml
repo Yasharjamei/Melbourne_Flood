@@ -1,0 +1,20 @@
+name: Probe river-gauge data
+
+# Manual only. Checks whether October 2022 river flows around Melbourne can be downloaded
+# (Bureau of Meteorology Water Data Online, Victoria's WMIS). Changes nothing on the site.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python .github/scripts/probe_gauges.py
