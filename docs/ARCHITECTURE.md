@@ -78,6 +78,7 @@ web/
   scripts/demo_gif.py     captioned ~20 s demo of the built map (GIF + MP4) for sharing; never blocks a deploy
 docs/
   ARCHITECTURE.md    this file
+  HOW_IT_WORKS.md    one-page overview: diagram, datasets, accuracy, local rebuild
   PROJECT_LOG.md     decisions and history
 papers/              the two source papers (PDF)
 data/static/         inputs with no stable download link, committed: Melbourne Water river basins and

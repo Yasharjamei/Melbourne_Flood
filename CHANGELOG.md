@@ -9,6 +9,8 @@ Notable changes to the explorer and its pipeline. Dates are when a change landed
 
 - **Scenarios page, layout only.** `web/scenarios.html` shows residents in flood areas for 2021–2036 under today's flood areas and three sea-level rises, by suburb with likely ranges, plus the real back-test accuracy table. It runs on invented sample numbers (`pipeline/forecast/sample.py`) with a warning banner, until the VIF2023 and sea-level inputs arrive. It is not built into the site: `03_bundle.py` adds it only when the real forecast exists and `PUBLISH_SCENARIOS=1`. Preview it with `pipeline/forecast/preview.py`.
 
+- **One-page overview of the whole project:** `docs/HOW_IT_WORKS.md` (pipeline diagram, every dataset and how it refreshes, every method with its measured accuracy, how to rebuild locally).
+
 ### Changed
 - **The demo tours the most exposed councils.** It no longer shows the papers' two councils. It picks the three councils with the highest share of residents in flood overlays from the data (by share, not total, so dense inner-city apartment counts don't dominate), and drags circle A to the most exposed mesh block. A new manual workflow, *Record demo from the live site*, records it from the published page without rebuilding anything.
 

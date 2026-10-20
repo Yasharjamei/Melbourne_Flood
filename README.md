@@ -14,6 +14,7 @@ The project applies two flood-resilience papers to the same 474 SA1 "urban units
 > **Status (v0.5):**
 > - Live at **https://yasharjamei.github.io/Melbourne_Flood/** (analysis at `/analysis/`).
 > - Flood exposure is measured on **residents**: each dwelling is placed at its Vicmap Address point, so a flooded park no longer counts as exposure (see [Method](#method), step 3).
+> - **New here?** [`docs/HOW_IT_WORKS.md`](docs/HOW_IT_WORKS.md) explains the whole project on one page: data sources, pipeline diagram, every method with its measured accuracy, and how to rebuild it.
 > - **Working on the code?** Start with [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) (how it fits together, data contract, gotchas) and [`CONTRIBUTING.md`](CONTRIBUTING.md) (setup, checks, how changes reach `main`).
 > - The first prototype, which used even spreading, is kept at [`snapshots/2026-09-25-prototype.html`](snapshots/2026-09-25-prototype.html).
 > - Changes are listed in [`CHANGELOG.md`](CHANGELOG.md), and the history and decisions in [`docs/PROJECT_LOG.md`](docs/PROJECT_LOG.md).
