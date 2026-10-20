@@ -584,3 +584,22 @@ The owner shared six DataShare order links. Four (FJU93V, SQYREY, YJA1AQ, PB7TWE
 
 **Boundary for DataShare orders (2026-10-19).** The owner asked for the Greater Melbourne shapefile to clip orders with. The manual workflow *Export study-area boundary* (`boundary.yml`, `.github/scripts/export_boundary.py`) dissolves the 31 councils in `config.py` (ABS ASGS 2021 LGAs, the site's own study area) and uploads zipped shapefiles in MGA2020 zone 55 (EPSG:7855, the CRS DataShare delivers in), a 20 m simplified copy for upload forms, the councils separately, and a WGS84 copy. Holes and slivers under 1 ha are removed so a clip never leaves gaps.
 
+## 28. VIF2023 council projections in hand (2026-10-20)
+
+The owner supplied the four VIF2023 workbooks (committed to `data/static/vif2023/`; the publisher's site refuses CI).
+
+**What they give.**
+- **LGA files (to 2036):** population, households, dwellings, persons per household and occupancy for all 79 councils, 2021/26/31/36, plus five-year age by sex. All 31 study councils match by name and code.
+- **Region files (to 2051):** the same measures for the metropolitan regions only (five in Melbourne), five-yearly to 2051.
+- **No SA2s.** VIF models SA2s internally but publishes councils. The control totals are therefore council totals, not SA2 totals.
+
+**First numbers (31 councils).** Population 4,890,910 (2021) → 6,378,550 (2036), +30.4%; dwellings 2,028,360 → 2,667,440, +31.5%. Growth concentrates in the growth areas: Wyndham +175,930, Melton +168,170 (+93%), Casey +158,030, Hume +109,150, Whittlesea +103,570, Melbourne +88,420. Nillumbik grows least (+3,970, +6%).
+
+**What it changes in the method.**
+- The §25 back-test held SA2 totals at their true values. With council totals only, a council → SA2 step is added, which adds error. Next: re-run the back-test with only council totals known (2016 → 2021) to measure it.
+- An honest out-of-sample check is now possible: VIF2023's 2026 figures against ABS ERP by council for 2024–25, as those years were future when VIF was made (base ERP 2022).
+- Dwellings are projected too, which suits the address-based placement: projected new dwellings per council, placed where addresses are being created, converted to residents with VIF's own household size and occupancy.
+- Population years (2026–2036) don't reach the sea-level years (2040, 2070, 2100). The region files reach 2051 at region level only; the page should pair 2036 population with the 2040 sea level and say so, rather than extrapolate councils past 2036.
+
+**Licence.** The workbooks state no licence; the publisher's open data is generally CC BY 4.0. To confirm before the page is published.
+
