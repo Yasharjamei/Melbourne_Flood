@@ -20,7 +20,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 _spec = importlib.util.spec_from_file_location("f01", os.path.join(HERE, "..", "01_fetch.py"))
 f01 = importlib.util.module_from_spec(_spec); _spec.loader.exec_module(f01)   # reuse get/get_json/optional
 OUT = "data/raw/forecast"
-BBOX = (144.33, -38.50, 145.88, -37.40)            # Greater Melbourne, lon/lat (as the address fetch)
+BUFFER_M = 1000                                     # around the 31 councils, so edge mesh blocks keep their addresses
+CELL = 0.1                                          # degrees; only grid cells touching the study area are requested
 CENSUS_2016 = "2016-08-09"
 ADDR_FROM = "2006-01-01"                           # history for the ensemble back-test
 STRICT = os.environ.get("STRICT_FETCH") == "1"
@@ -43,41 +44,87 @@ def save(url, dst, check=None):
     print(f"  {os.path.basename(dst)}: {len(b) / 1e6:.1f} MB")
 
 
+def study_area():
+    """The 31 study councils dissolved and buffered in MGA2020 zone 55 (EPSG:7855), returned in
+    lon/lat with the request cells that touch it. Uses the main build's council file, else fetches it."""
+    import tempfile
+    import geopandas as gpd
+    from shapely.geometry import box
+    from shapely.prepared import prep
+    sys.path.insert(0, os.path.join(HERE, ".."))
+    from config import STUDIES, norm_lga
+    src = "data/raw/metro/lga.geojson"
+    if not os.path.exists(src):
+        src = os.path.join(tempfile.mkdtemp(), "lga.geojson")
+        f01.arcgis("LGA", "state_code_2021='2'", None, 0.00001, src, page_max=10)
+    lga = gpd.read_file(src)
+    want = {norm_lga(n) for n in STUDIES["metro"]["lgas"]}
+    lga = lga[lga["lga_name_2021"].map(norm_lga).isin(want)]
+    if lga["lga_name_2021"].map(norm_lga).nunique() != len(want):
+        raise RuntimeError(f"study area: found {lga['lga_name_2021'].nunique()} of {len(want)} councils")
+    area = gpd.GeoSeries([lga.to_crs(7855).union_all().buffer(BUFFER_M)], crs=7855).to_crs(4326).iloc[0]
+    x0, y0, x1, y1 = area.bounds
+    pa = prep(area)
+    cells = []
+    for i in range(int((x1 - x0) / CELL) + 1):
+        for j in range(int((y1 - y0) / CELL) + 1):
+            c = (x0 + i * CELL, y0 + j * CELL, min(x0 + (i + 1) * CELL, x1), min(y0 + (j + 1) * CELL, y1))
+            if pa.intersects(box(*c)):
+                cells.append(c)
+    print(f"  study area: 31 councils + {BUFFER_M} m in EPSG:7855, {gpd.GeoSeries([area], crs=4326).to_crs(7855).area.iloc[0] / 1e6:,.0f} km2; "
+          f"{len(cells)} cells of {CELL} deg")
+    return area, cells
+
+
 def addresses_new(dst):
     """Every current Vicmap address in Greater Melbourne created on or after ADDR_FROM.
     Retired addresses are not in the layer, so past counts are slight undercounts."""
     if os.path.exists(dst):
         print("  addresses_new.npy: cached"); return
-    cql = (f"BBOX(geom,{BBOX[1]},{BBOX[0]},{BBOX[3]},{BBOX[2]},'urn:ogc:def:crs:EPSG::4326') "
-           f"AND pfi_created >= '{ADDR_FROM}T00:00:00Z'")
-    base = {"service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": "open-data-platform:address",
-            "CQL_FILTER": cql}
-    hits = f01.get(f01.WFS + "?" + urllib.parse.urlencode({**base, "resultType": "hits"}))
-    total = int(re.search(r'numberMatched="(\d+)"', hits).group(1))
+    from shapely import contains_xy
+    area, cells = study_area()
 
-    def page(start):
-        q = {**base, "outputFormat": "application/json", "srsName": "EPSG:4326", "propertyName": "geom,pfi_created",
-             "sortBy": "ufi", "count": 5000, "startIndex": start}
-        rows = []
-        for f in f01.get_json(f01.WFS, q).get("features", []):
-            c = (f.get("geometry") or {}).get("coordinates"); d = (f.get("properties") or {}).get("pfi_created")
-            if not c or not d:
-                continue
-            while isinstance(c[0], list):
-                c = c[0]
-            rows.append((c[0], c[1], np.datetime64(d[:10], "D").astype(int)))
-        return rows
+    def cql(c):
+        return (f"BBOX(geom,{c[1]},{c[0]},{c[3]},{c[2]},'urn:ogc:def:crs:EPSG::4326') "
+                f"AND pfi_created >= '{ADDR_FROM}T00:00:00Z'")
 
-    first = page(0); step = len(first) or 5000
-    rows = list(first)
+    def cell(c):
+        """Every page of one cell: (ufi, lon, lat, day) rows, and the server's own count."""
+        base = {"service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": "open-data-platform:address",
+                "CQL_FILTER": cql(c)}
+        hits = f01.get(f01.WFS + "?" + urllib.parse.urlencode({**base, "resultType": "hits"}))
+        total = int(re.search(r'numberMatched="(\d+)"', hits).group(1))
+        rows, start = [], 0
+        while start < total:
+            q = {**base, "outputFormat": "application/json", "srsName": "EPSG:4326",
+                 "propertyName": "geom,pfi_created,ufi", "sortBy": "ufi", "count": 5000, "startIndex": start}
+            feats = f01.get_json(f01.WFS, q).get("features", [])
+            if not feats:
+                break
+            for f in feats:
+                g, pr = (f.get("geometry") or {}).get("coordinates"), f.get("properties") or {}
+                if not g or not pr.get("pfi_created"):
+                    continue
+                while isinstance(g[0], list):
+                    g = g[0]
+                rows.append((pr.get("ufi") or 0, g[0], g[1], np.datetime64(pr["pfi_created"][:10], "D").astype(int)))
+            start += len(feats)
+        if len(rows) < 0.98 * total:
+            raise RuntimeError(f"cell {c}: got {len(rows):,} of {total:,}")
+        return rows, total
+
+    rows, matched = [], 0
     with ThreadPoolExecutor(max_workers=8) as ex:
-        for k, got in enumerate(ex.map(page, range(step, total, step)), 1):
-            rows += got
-            if k % 40 == 0:
-                print(f"  new addresses: {len(rows):,} of {total:,}")
-    if len(rows) < 0.98 * total:
-        raise RuntimeError(f"new addresses: got {len(rows):,} of {total:,}")
-    a = np.array(rows, dtype="float64")
+        for k, (got, n) in enumerate(ex.map(cell, cells), 1):
+            rows += got; matched += n
+            if k % 20 == 0:
+                print(f"  new addresses: {k} of {len(cells)} cells, {len(rows):,} so far")
+    r = np.array(rows, dtype="float64")
+    _, first = np.unique(r[:, 0], return_index=True)            # a point on a cell edge comes back twice
+    r = r[np.sort(first)] if (r[:, 0] > 0).all() else r
+    keep = contains_xy(area, r[:, 1], r[:, 2])
+    print(f"  new addresses: {matched:,} matched in the cells, {len(r):,} unique, {int(keep.sum()):,} inside the study area kept")
+    a = r[keep][:, 1:]
     np.save(dst, a)
     days = a[:, 2].astype("int64").astype("datetime64[D]")
     yrs = {str(y): int(n) for y, n in zip(*np.unique(days.astype("datetime64[Y]").astype(str), return_counts=True))}
