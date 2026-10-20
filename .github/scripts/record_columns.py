@@ -13,7 +13,7 @@ from PIL import Image
 from playwright.sync_api import sync_playwright
 
 W, H, VW, VH, FPS = 1280, 720, 1280, 720, 20   # browser at output size: no resize, less to render
-GIF_W, GIF_EVERY = 800, 2
+GIF_W, GIF_EVERY = 640, 3      # the first real GIF was 48.7 MB at 800 px every 2nd frame; the MP4 is the one to share
 BUDGET_S = 12 * 60          # if frames render slowly (software GL on CI), keep every k-th frame to fit this
 OUT = "shots"
 CALM, STORM = "none", ["st", "st0.2", "st0.47", "st0.82"]
