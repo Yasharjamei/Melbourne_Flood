@@ -21,23 +21,34 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
 
+      - id: month
+        run: echo "m=$(date +%Y-%m)" >> "$GITHUB_OUTPUT"
       - name: Restore the main build's raw inputs (read-only)
         uses: actions/cache/restore@v4
         with:
           path: data/raw
           key: raw-v2-${{ hashFiles('pipeline/01_fetch.py', 'pipeline/config.py') }}-none
           restore-keys: raw-v2-
+      - name: Main inputs the forecast needs (own cache, refreshed monthly like the site's)
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/raw/metro/lga.geojson
+            data/raw/metro/mb.geojson
+            data/raw/metro/flood.geojson
+            data/raw/metro/addr.npy
+            data/raw/shared/mb_counts_2021.xlsx
+          key: forecast-main-v1-${{ steps.month.outputs.m }}
       - name: Forecast inputs cache
         uses: actions/cache@v4
         with:
           path: data/raw/forecast
           key: forecast-v1-${{ hashFiles('pipeline/forecast/fetch.py') }}
 
-      - name: Main inputs, only if the cache was empty
-        run: |
-          if [ ! -f data/raw/metro/mb.geojson ] || [ ! -f data/raw/shared/mb_counts_2021.xlsx ] || [ ! -f data/raw/metro/flood.geojson ] || [ ! -f data/raw/metro/addr.npy ]; then
-            python pipeline/01_fetch.py --study metro
-          fi
+      - name: Main inputs, only those missing
+        run: python pipeline/forecast/fetch.py --main
+        env:
+          STRICT_FETCH: "1"
       - name: Forecast inputs
         run: python pipeline/forecast/fetch.py
         env:

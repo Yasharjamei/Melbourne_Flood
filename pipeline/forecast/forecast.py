@@ -35,8 +35,16 @@ from ensemble import read_erp
 RAW, FC, ST = "data/raw/metro", "data/raw/forecast", "data/static"
 CRS = 7855
 BASE, YEARS = 2025, [2025, 2026, 2031, 2036]
-SLR = [("none", "Today's flood areas", None), ("0.2", "+0.20 m sea level (2040)", "SLR20CM_2040"),
-       ("0.47", "+0.47 m sea level (2070)", "SLR47CM_2070"), ("0.82", "+0.82 m sea level (2100)", "SLR82CM_2100")]
+# (id, label, short label, layers added to the planning overlays; storm-tide extents are cumulative because
+# the published layers don't nest: 12.8 km2 of the 2040 storm tide lies outside the 2070 one)
+SLR = [("none", "Today's flood areas", "Today", ["SLR00CM_2009"]),
+       ("0.2", "+0.20 m sea level (2040)", "+0.20 m", ["SLR00CM_2009", "SLR20CM_2040"]),
+       ("0.47", "+0.47 m sea level (2070)", "+0.47 m", ["SLR00CM_2009", "SLR47CM_2070"]),
+       ("0.82", "+0.82 m sea level (2100)", "+0.82 m", ["SLR00CM_2009", "SLR82CM_2100"]),
+       ("st", "Today, with a 1-in-100-year storm tide", "Today", ["SLR00CM_2009", "SLR00CM_ST_2009"]),
+       ("st0.2", "+0.20 m sea level (2040) with a storm tide", "+0.20 m", ["SLR00CM_2009", "SLR20CM_2040", "SLR00CM_ST_2009", "SLR20CM_ST_2040"]),
+       ("st0.47", "+0.47 m sea level (2070) with a storm tide", "+0.47 m", ["SLR00CM_2009", "SLR47CM_2070", "SLR00CM_ST_2009", "SLR20CM_ST_2040", "SLR47CM_ST_2070"]),
+       ("st0.82", "+0.82 m sea level (2100) with a storm tide", "+0.82 m", ["SLR00CM_2009", "SLR82CM_2100", "SLR00CM_ST_2009", "SLR20CM_ST_2040", "SLR47CM_ST_2070", "SLR82CM_ST_2100"])]
 # ASSUMED share of each UDP category built by the end of the ramp, and the ramp length in years from
 # mid-2025. Not measured: UDP 2025 has no history (completions 2023-24 only). Council caps limit how
 # much these matter; they mainly decide WHERE inside a council the growth goes.
@@ -61,10 +69,22 @@ def vif(sheet):
     return d.set_index("code")
 
 
+def polys(g):
+    """Repair, then keep only the polygonal parts (Vicmap overlays include self-intersecting rings,
+    which made a plain union fail with a GEOS TopologyException in the first CI run)."""
+    from shapely.geometry import MultiPolygon, Polygon
+    g = gpd.GeoSeries(g if isinstance(g, (list, gpd.GeoSeries)) else [g], crs=CRS).make_valid()
+    parts = [q for x in g for q in getattr(x, "geoms", [x]) if isinstance(q, (Polygon, MultiPolygon)) and not q.is_empty]
+    return unary_union(parts) if parts else MultiPolygon()
+
+
+_layers = {}
 def slr_layer(name):
-    z = f"{ST}/coastal_inundation/{name}.zip"
-    inner = next(n for n in zipfile.ZipFile(z).namelist() if n.endswith(f"/{name}.shp"))
-    return gpd.read_file(f"zip://{z}!{inner}").to_crs(CRS).geometry.union_all()
+    if name not in _layers:
+        z = f"{ST}/coastal_inundation/{name}.zip"
+        inner = next(n for n in zipfile.ZipFile(z).namelist() if n.endswith(f"/{name}.shp"))
+        _layers[name] = polys(gpd.read_file(f"zip://{z}!{inner}").to_crs(CRS).geometry)
+    return _layers[name]
 
 
 def inside(pts, zone):
@@ -96,15 +116,12 @@ def main():
     sa2_p21 = mb.groupby("sa2")["p21"].sum()
     mb = mb.dropna(subset=["lga"]).reset_index(drop=True)
     mb["key"] = mb["sa2"] + "|" + mb["lga"]
-    study = lga.geometry.union_all()
+    study = polys(lga.geometry)
 
     # ---------------- flood areas
     fl = gpd.read_file(f"{RAW}/flood.geojson").to_crs(CRS)
-    ov = unary_union(fl[fl.scheme_code.isin(["LSIO", "FO", "SBO"])].geometry).intersection(study)
-    c09 = slr_layer("SLR00CM_2009")
-    zones = {"none": unary_union([ov, c09])}
-    for k, _, name in SLR[1:]:
-        zones[k] = unary_union([ov, c09, slr_layer(name)])
+    ov = polys(polys(fl[fl.scheme_code.isin(["LSIO", "FO", "SBO"])].geometry).intersection(study))
+    zones = {k: polys([ov] + [slr_layer(n) for n in names]) for k, _, _, names in SLR}
     print(f"flood areas (km2): " + ", ".join(f"{k} {z.area / 1e6:,.1f}" for k, z in zones.items()))
 
     # ---------------- address shares per mesh block: all addresses, and those created 2016-2025
@@ -237,9 +254,9 @@ def main():
                              "VIF2023 council totals rebased to ERP 2025." if use_udp else
                              "Housing-unit model (recent address creation) with VIF2023 council totals rebased to ERP 2025."),
                     "status_assumptions": {k: {"share_built": v[0], "years": v[1]} for k, v in STATUS.items()} if use_udp else None},
-           "slr": [{"id": k, "label": lab} for k, lab, _ in SLR], "total": {}, "areas": [], "councils": [], "population": {}}
+           "slr": [{"id": k, "label": lab, "short": sh, "storm": k.startswith("st")} for k, lab, sh, _ in SLR], "total": {}, "areas": [], "councils": [], "population": {}}
     lo_hi = lambda v, r: [round(v), round(v * (1 - r)), round(v * (1 + r))]
-    for k, _, _ in SLR:
+    for k, _, _, _ in SLR:
         ex = {y: exposure(pop[y], k) for y in YEARS}
         tot = [lo_hi(ex[y].sum(), council_rel(y - BASE)) for y in YEARS]
         out["total"][k] = tot
@@ -272,7 +289,7 @@ def main():
     print(f"\nPopulation, 31 councils ({out['meta']['method']} method): " +
           ", ".join(f"{y} {pop[y].sum():,.0f}" for y in YEARS) + f"; open-data method 2036 {pop_open[2036].sum():,.0f}")
     print("Residents in flood areas (central, low-high):")
-    for k, lab, _ in SLR:
+    for k, lab, _, _ in SLR:
         print(f"  {lab:44} " + "  ".join(f"{y}: {t[0]:,} ({t[1]:,}-{t[2]:,})" for y, t in zip(YEARS, out['total'][k])))
     d36 = sorted(out["areas"], key=lambda r: -(r["v"]["none"][-1][0] - r["v"]["none"][0][0]))[:10]
     print("SA2s adding the most residents in today's flood areas by 2036:")

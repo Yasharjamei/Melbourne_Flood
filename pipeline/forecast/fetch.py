@@ -131,7 +131,36 @@ def addresses_new(dst):
     print(f"  addresses_new.npy: {len(a):,} addresses created since {ADDR_FROM}; by year {yrs}")
 
 
+def main_inputs():
+    """Only the main build's inputs the forecast reads (councils, mesh blocks, mesh-block counts, flood
+    overlays, address points), each skipped if present. A full 01_fetch.py takes ~70 min; these are a part."""
+    sys.path.insert(0, os.path.join(HERE, ".."))
+    from config import STUDIES, norm_lga
+    st, raw = STUDIES["metro"], "data/raw/metro"
+    os.makedirs(raw, exist_ok=True); os.makedirs("data/raw/shared", exist_ok=True)
+    wanted = {norm_lga(n) for n in st["lgas"]}
+    print("Councils"); f01.arcgis("LGA", "state_code_2021='2'", None, 0.00001, f"{raw}/lga.geojson", page_max=10)
+    bbox = f01.lga_bbox(f"{raw}/lga.geojson", wanted)
+    print("Mesh blocks"); f01.arcgis("MB", "state_code_2021='2'", bbox, 0.00006, f"{raw}/mb.geojson")
+    print("Flood overlays"); f01.wfs_overlays(bbox, st["lgas"], f"{raw}/flood.geojson")
+    print("Address points"); f01.wfs_points(bbox, f"{raw}/addr.npy")
+    dst = "data/raw/shared/mb_counts_2021.xlsx"
+    print("Mesh-block counts")
+    if os.path.exists(dst):
+        print("  cached"); return
+    for u in f01.MB_COUNT_URLS:
+        try:
+            b = f01.get(u, binary=True, tries=2)
+            if b[:2] == b"PK":
+                open(dst, "wb").write(b); print(f"  -> {dst}"); return
+        except Exception as e:
+            print(f"  {u[:60]}...: {e}")
+    raise SystemExit("mesh-block counts unavailable")
+
+
 def main():
+    if "--main" in sys.argv:
+        return main_inputs()
     os.makedirs(OUT, exist_ok=True)
     csv_like = lambda b: not b.lstrip()[:15].lower().startswith((b"<!doctype", b"<html"))
     steps = [("2016 mesh-block counts", lambda: save(MB2016_URL, f"{OUT}/mb_counts_2016.csv", csv_like)),
