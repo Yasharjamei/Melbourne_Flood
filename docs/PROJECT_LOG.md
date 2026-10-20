@@ -617,3 +617,30 @@ The owner supplied the four VIF2023 workbooks (committed to `data/static/vif2023
 - Tested here on synthetic inputs in the real file formats (SDMX csv with labels, ABS xlsx with title rows, both with and without council ERP rows); the real numbers come from the CI run.
 - **Downloads clipped to the study area** (owner's request). The address download used a fixed rectangle (~16,600 km², taking in Geelong's edge and West Gippsland, and cutting off the eastern edge of Yarra Ranges and Cardinia past 145.88°E). It now builds the 31 councils dissolved and buffered 1 km in MGA2020 zone 55 (EPSG:7855), requests only the 0.1° cells touching that, removes duplicates on cell edges by `ufi`, and keeps only points inside. The main site's downloads (`01_fetch.py`) still use the councils' bounding box; changing them needs a site rebuild to validate, so that waits for the owner's approval.
 
+**Run 1 results (forecast.yml run 39351825006, commit a391c2e).**
+- Inputs: 1,336,712 addresses created since 2006 inside the study area (1,363,671 matched in 136 cells; edge duplicates and points outside removed). Per year 39,682-85,712, no bulk-load spike, so pre-2016 dates are usable. ERP by SA2 2001-2025 (no council rows in this dataflow, so council actuals are SA2s split by 2021 residents). 371 SA2 x council pieces, 349 SA2s scored.
+- Study-area ERP: 4,108,837 (2011), 4,642,177 (2016), 4,890,099 (2021), 5,338,153 (2025).
+
+| SA2 WAPE, council totals true | 2011->16 | 2016->21 | 2021->25 | 2011->21 (h=10) | 2011->25 (h=14) |
+|---|---|---|---|---|---|
+| CS constant share | 8.5% | 9.8% | 6.6% | 16.9% | 22.7% |
+| SG / LIN / EXP | 5.9-7.2% | 8.2-9.9% | 4.7-6.8% | 15.2-16.8% | 21.1-23.8% |
+| **HU housing unit** | **4.3%** | **6.0%** | **2.7%** | **11.7%** | **17.0%** |
+| ENS (mean of five) | 5.3% | 7.3% | 3.9% | 14.2% | 19.5% |
+| ML / ENS+ML | - | 7.3% / 7.2% | 2.9% / 3.6% | - | - |
+| HUK (future addresses known) | 4.0% | 4.8% | 3.2% | 7.0% | 7.8% |
+
+**Findings.**
+- **The housing-unit model beats the ensemble in every test.** The literature's "combine simple models" result does not hold here: averaging dilutes the one model with real information about where homes are being built. ML trained on one or two windows adds nothing yet.
+- **Error is concentrated.** At h = 14 (ENS): SA2s under 5,000 residents median 53% error; SA2s that grew 60%+ median 34%; established SA2s of 15,000+ median 4%.
+- **Knowing where homes will be built halves the long-horizon error** (HUK 7.8% vs HU 17.0% at h = 14). Land-supply data (UDP greenfield and redevelopment sites) is the lever for the growth areas.
+- **VIF2023 is close so far.** Interpolated to 2025: 5,303,910 vs actual 5,338,153 (-0.6%); council WAPE 1.3%; it under-projected growth (413,000 vs 448,054 since 2021). Largest misses: Melbourne -5.5%, Monash and Glen Eira -3.4%, Maribyrnong +3.4%.
+- **End to end 2021->2025** (VIF council totals + split, against actual SA2 ERP): CS 6.7%, ENS 3.9%, ENS+ML 3.6%, HUK 3.3% WAPE.
+
+**Decisions.**
+- Primary method: housing unit, with VIF council totals rebased to ERP 2025 (VIF is short on growth so far). Others stay as checks; ML is dropped until more training windows exist.
+- Ranges on the page come from the measured error by SA2 size and growth class at h = 10-14, not one figure for all SA2s. Small and fast-growing SA2s get wide ranges and a flag; headline totals stay at council and study-area level.
+- UDP land-supply data is now the highest-value missing input.
+
+**Owner decisions (2026-10-20).** The main site's downloads stay on the councils' bounding box for now (clip them together with the scenarios launch, one rebuild instead of two). The monthly scheduled rebuild on 2 November stays on.
+
