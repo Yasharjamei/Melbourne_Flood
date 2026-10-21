@@ -57,8 +57,8 @@ tr.chosen td{font-weight:600}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 #mapwrap{position:relative}
 #smap{height:600px;border-radius:10px;overflow:hidden;border:1px solid var(--rule)}
-#mstate{position:absolute;top:10px;left:12px;font-weight:700;font-size:17px;background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--rule);border-radius:8px;padding:5px 10px;pointer-events:none}
-#mhelp{position:absolute;top:52px;left:12px;width:330px;max-height:calc(100% - 70px);overflow:auto;background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--rule);border-radius:10px;padding:8px 12px;font-size:12.5px;line-height:1.45}
+#mstate{position:absolute;z-index:3;max-width:calc(100% - 70px);top:10px;left:12px;font-weight:700;font-size:17px;background:color-mix(in srgb,var(--panel) 88%,transparent);border:1px solid var(--rule);border-radius:8px;padding:5px 10px;pointer-events:none}
+#mhelp{position:absolute;z-index:3;top:52px;left:12px;width:330px;max-height:calc(100% - 70px);overflow:auto;background:color-mix(in srgb,var(--panel) 94%,transparent);border:1px solid var(--rule);border-radius:10px;padding:8px 12px;font-size:12.5px;line-height:1.45}
 #mhelp summary{cursor:pointer;font-weight:600;font-size:13px}
 #mhelp p{margin:6px 0}
 #mhelp .kb{color:#2a6fdb}#mhelp .kt{color:#0f9b8e}#mhelp .mute{color:var(--muted)}
@@ -74,7 +74,10 @@ ul.plain li{margin:4px 0}
 .tag.todo{background:var(--warnbg);color:var(--warn)}
 @media (max-width:700px){
   #smap{height:66svh}
-  #mhelp{width:auto;right:12px;font-size:12px}
+  /* phones: the help sits under the map instead of over it, the state label is smaller, names shorter */
+  #mhelp{position:static;width:auto;max-height:none;margin-top:8px;font-size:13px}
+  #mstate{font-size:13.5px;top:8px;left:8px;padding:4px 8px}
+  .mplace{font-size:11px;padding:1px 5px}
   main{padding:16px max(12px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom))}
   section{padding:14px 12px;border-radius:10px}
   h1{font-size:21px}
@@ -121,7 +124,7 @@ ul.plain li{margin:4px 0}
         <p><b>Coloured areas</b> are neighbourhoods (ABS SA2s, about suburb size). The colour shows the measure chosen above, for the year and sea level chosen at the top of the page.</p>
         <p><b class="kb">Blue</b>: planning-scheme flood overlays (LSIO, FO for rivers; SBO for overland flow): land councils have mapped as flood-prone.</p>
         <p><b class="kt">Teal</b>: land under the sea at the chosen sea level, calm or with a 1-in-100-year storm tide (Victorian Coastal Inundation Dataset, a "bathtub" model).</p>
-        <p><b>Names</b> mark the five places with the highest values on the current view.</p>
+        <p><b>Names</b> mark the five places (three on a phone) with the highest values on the current view.</p>
         <p class="mute">Living in a flood-prone area is exposure, not damage: newer buildings must sit above the flood level, and most apartment residents live above it. Tap a neighbourhood for its numbers.</p>
       </details>
     </div>
@@ -291,19 +294,23 @@ function updateMap(){
   document.getElementById('mstate').textContent=`${Y[yi]} · ${S[si].label}`;
   marks.forEach(mk=>mk.remove());marks=[];
   D.areas.map(a=>[a,m.val(a,id)]).filter(([a,v])=>ctr[a.code]&&(m.key!=='s'||(a.pop&&a.pop[yi][0]>1000))).sort((p,q)=>q[1]-p[1]).filter(([a],_,arr)=>true).reduce((keep,[a,v])=>{   // skip names within ~3 km of one already shown
-      if(keep.length<5&&!keep.some(([k])=>Math.hypot((ctr[k.code][0]-ctr[a.code][0])*88,(ctr[k.code][1]-ctr[a.code][1])*111)<3))keep.push([a,v]);return keep;},[]).forEach(([a,v])=>{
+      if(keep.length<(innerWidth<700?3:5)&&!keep.some(([k])=>Math.hypot((ctr[k.code][0]-ctr[a.code][0])*88,(ctr[k.code][1]-ctr[a.code][1])*111)<3))keep.push([a,v]);return keep;},[]).forEach(([a,v])=>{
     const el=document.createElement('div');el.className='mplace';el.textContent=`${a.name.split(' - ')[0]}: ${m.f(v)}`;
-    marks.push(new maplibregl.Marker({element:el,anchor:'bottom'}).setLngLat(ctr[a.code].slice(0,2)).addTo(smap));});
+    // anchor names on the right-hand third of the map to their right edge, so they don't run off the screen
+    const px=smap.project(ctr[a.code].slice(0,2)).x,anchor=px>smap.getContainer().clientWidth*0.66?'bottom-right':px<smap.getContainer().clientWidth*0.2?'bottom-left':'bottom';
+    marks.push(new maplibregl.Marker({element:el,anchor}).setLngLat(ctr[a.code].slice(0,2)).addTo(smap));});
   legend();
 }
 if(G&&window.maplibregl){
   document.getElementById('mapsec').hidden=false;
   const t=D.total.none;
   document.getElementById('bridge').innerHTML=`The <a href="../">main map</a> counted <b>185,536</b> residents in planning flood overlays at the 2021 Census. Counted the same way (address points), with ${M.base} population and present-day coastal flooding added, it is <b>${fmt(t[0][0])}</b> in ${M.base}, and <b>${fmt(t[t.length-1][0])}</b> by ${Y[Y.length-1]} (likely ${fmt(t[t.length-1][1])} – ${fmt(t[t.length-1][2])}). The main map shows <i>who</i> they are; this page shows <i>how many, where, and when</i>.`;
-  if(innerWidth<700)document.getElementById('mhelp').open=false;
+  const PHONE=innerWidth<700;
+  if(PHONE)document.getElementById('mhelp').open=false;
   const STYLE=DARK?'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json':'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
-  smap=new maplibregl.Map({container:'smap',style:STYLE,center:[145.0,-37.86],zoom:8.6,attributionControl:{compact:true,customAttribution:'ABS, DataVic, DEECA'},dragRotate:false,pitchWithRotate:false});
-  smap.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
+  smap=new maplibregl.Map({container:'smap',style:STYLE,center:[145.0,-37.86],zoom:8.6,attributionControl:{compact:true,customAttribution:'ABS, DataVic, DEECA'},dragRotate:false,pitchWithRotate:false,
+    cooperativeGestures:PHONE});                        // phones: one finger scrolls the page, two fingers move the map
+  if(!PHONE)smap.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
   smap.on('load',()=>{
     // data under the basemap's labels, as on the main map
     const L=smap.getStyle().layers,lastGeom=L.map(l=>l.type!=='symbol').lastIndexOf(true),sym=L.slice(lastGeom+1).find(l=>l.type==='symbol'),before=sym?sym.id:undefined;
