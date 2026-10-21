@@ -87,6 +87,22 @@ def slr_layer(name):
     return _layers[name]
 
 
+def to_geojson(geoms, props=None, tol=20, min_m2=0, grid=1e-5):
+    """Simplified lon/lat GeoJSON for the page's map. Parts under min_m2 are dropped (when no properties)."""
+    import shapely
+    g = gpd.GeoSeries(geoms, crs=CRS).make_valid()
+    if min_m2 and props is None:
+        g = g[g.area >= min_m2]
+    g = g.simplify(tol).to_crs(4326)
+    g = gpd.GeoSeries(shapely.set_precision(g.values, grid), crs=4326)
+    feats = []
+    for i, x in enumerate(g):
+        if x is None or x.is_empty:
+            continue
+        feats.append({"type": "Feature", "properties": (props[i] if props else {}), "geometry": shapely.geometry.mapping(x)})
+    return {"type": "FeatureCollection", "features": feats}
+
+
 def inside(pts, zone):
     parts = gpd.GeoDataFrame(geometry=list(getattr(zone, "geoms", [zone])), crs=CRS)
     parts = parts[~parts.is_empty]
@@ -286,6 +302,14 @@ def main():
     out["backtest"] = json.load(open("web/scenarios_sample.json"))["backtest"]     # the real §25 table
     out["split_test"] = {str(h): round(v, 4) for h, v in zip(hs, hv)}              # HU p80 SA2 error by horizon
     os.makedirs("data/processed", exist_ok=True)
+    # ---------------- map layers for the page: SA2 x council pieces, overlays, each scenario's coastal extent
+    pcs = gpd.read_file(f"{ST}/sa2_council_pieces_7855.geojson")
+    coast = {k: polys([slr_layer(n) for n in names]) for k, _, _, names in SLR}
+    out["geo"] = {"sa2": to_geojson(list(pcs.geometry), [{"c": c} for c in pcs["sa2_code_2021"]], tol=30),
+                  "overlay": to_geojson(list(getattr(ov, "geoms", [ov])), tol=15, min_m2=2000),
+                  "coast": {k: to_geojson(list(getattr(z, "geoms", [z])), tol=40, min_m2=5000, grid=1e-4) for k, z in coast.items()}}   # the dataset is 1:75,000 (~75 m)
+    sz = {k: len(json.dumps(v, separators=(",", ":"))) // 1000 for k, v in out["geo"].items()}
+    print(f"map layers (kB): {sz}")
     json.dump(out, open("data/processed/scenarios.json", "w"), separators=(",", ":"))
 
     # ---------------- report

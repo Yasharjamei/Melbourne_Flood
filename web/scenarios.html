@@ -8,6 +8,8 @@
 <meta name="theme-color" content="#1b3a5c">
 <title>Flood scenarios to 2036</title>
 <script>try{const t=localStorage.getItem('theme');if(t)document.documentElement.dataset.theme=t;}catch(e){}</script>
+<link href="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -53,12 +55,18 @@ td.bar{width:38%;padding:4px 10px}
 td.bar svg{display:block;width:100%;height:18px}
 tr.chosen td{font-weight:600}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+#smap{height:560px;border-radius:10px;overflow:hidden;border:1px solid var(--rule)}
+.mleg{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:12px;color:var(--muted);margin-top:8px}
+.mleg i{display:inline-block;width:14px;height:10px;border-radius:2px;vertical-align:middle;margin-right:4px}
+.maplibregl-popup-content{background:var(--panel);color:var(--ink);font:13px/1.45 inherit;border:1px solid var(--rule);border-radius:8px}
+.maplibregl-popup-tip{display:none}
 ul.plain{margin:6px 0 0;padding-left:18px;max-width:90ch}
 ul.plain li{margin:4px 0}
 .tag{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;margin-left:6px;vertical-align:1px}
 .tag.real{background:color-mix(in srgb,var(--focus) 15%,transparent);color:var(--focus)}
 .tag.todo{background:var(--warnbg);color:var(--warn)}
 @media (max-width:700px){
+  #smap{height:62svh}
   main{padding:16px max(12px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom))}
   section{padding:14px 12px;border-radius:10px}
   h1{font-size:21px}
@@ -92,6 +100,13 @@ ul.plain li{margin:4px 0}
       <div class="kpi"><div class="k" id="k2h">Change</div><div class="v" id="k2"></div><div class="r" id="k2r"></div></div>
       <div class="kpi"><div class="k">Added by sea-level rise</div><div class="v" id="k3"></div><div class="r" id="k3r"></div></div>
     </div>
+  </section>
+
+  <section id="mapsec" hidden>
+    <h2 id="mh">Map</h2>
+    <p class="sub">Neighbourhoods (ABS SA2s) coloured by residents living inside flood-prone areas, for the year and sea level chosen above. Blue: planning-scheme flood overlays. Teal: the coastal inundation extent for the chosen sea level. Tap a neighbourhood for its numbers.</p>
+    <div id="smap"></div>
+    <div class="mleg" id="mleg"></div>
   </section>
 
   <section>
@@ -224,7 +239,49 @@ function backtest(){
     B.rows.map(r=>`<tr class="${r.chosen?'chosen':''}"><td>${r.model}${r.chosen?' ✓':''}</td><td>${p(r.mb[0])}</td><td>${p(r.mb[1])}</td><td>${p(r.growth[0])}</td><td>${p(r.growth[1])}</td><td>${p(r.sa1[0])}</td><td>${p(r.sa1[1])}</td></tr>`).join('')+'</tbody>';
 }
 
-function draw(){segY();segS();segU();segT();kpis();trend();areas();}
+// ---------------- map (only when the data carries geometry; the sample has none)
+const G=D.geo,BRK=[1,100,500,1000,2500,5000,10000],RAMP=['#fde9c8','#fbc98a','#f7a35c','#ef7740','#d9482b','#b02a1f','#7a1414'];
+let smap=null,popup=null;
+const byCode={};D.areas.forEach(a=>byCode[a.code]=a);
+function fillExpr(id){
+  const e=['match',['get','c']];
+  for(const a of D.areas){const v=a.v[id][yi][0];let k=-1;for(let i=0;i<BRK.length;i++)if(v>=BRK[i])k=i;e.push(a.code,k<0?'rgba(0,0,0,0)':RAMP[k]);}
+  e.push('rgba(0,0,0,0)');return e;
+}
+function updateMap(){
+  if(!smap||!smap.getSource('sa2'))return;
+  const id=S[si].id;
+  smap.setPaintProperty('sa2-fill','fill-color',fillExpr(id));
+  smap.getSource('coast').setData(G.coast[id]||{type:'FeatureCollection',features:[]});
+  document.getElementById('mh').textContent=`Map: ${Y[yi]}, ${S[si].label.toLowerCase()}`;
+}
+if(G&&window.maplibregl){
+  document.getElementById('mapsec').hidden=false;
+  const STYLE=DARK?'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json':'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
+  smap=new maplibregl.Map({container:'smap',style:STYLE,center:[145.0,-37.85],zoom:8.6,attributionControl:{compact:true,customAttribution:'ABS, DataVic, DEECA'},dragRotate:false,pitchWithRotate:false});
+  smap.addControl(new maplibregl.NavigationControl({showCompass:false}));
+  smap.on('load',()=>{
+    // data under the basemap's labels, as on the main map
+    const L=smap.getStyle().layers,lastGeom=L.map(l=>l.type!=='symbol').lastIndexOf(true),sym=L.slice(lastGeom+1).find(l=>l.type==='symbol'),before=sym?sym.id:undefined;
+    smap.addSource('sa2',{type:'geojson',data:G.sa2});
+    smap.addSource('ov',{type:'geojson',data:G.overlay});
+    smap.addSource('coast',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+    smap.addLayer({id:'sa2-fill',type:'fill',source:'sa2',paint:{'fill-color':'rgba(0,0,0,0)','fill-opacity':.72}},before);
+    smap.addLayer({id:'ov-fill',type:'fill',source:'ov',paint:{'fill-color':'#2a6fdb','fill-opacity':.35}},before);
+    smap.addLayer({id:'coast-fill',type:'fill',source:'coast',paint:{'fill-color':'#14b8a6','fill-opacity':.55}},before);
+    smap.addLayer({id:'sa2-line',type:'line',source:'sa2',paint:{'line-color':DARK?'#55636a':'#9aa5a1','line-width':.5}},before);
+    smap.on('click','sa2-fill',e=>{const a=byCode[e.features[0].properties.c];if(!a)return;const id=S[si].id,v=a.v[id][yi],b=a.v[S[0].id][0];
+      if(popup)popup.remove();
+      popup=new maplibregl.Popup({closeButton:false,maxWidth:'260px'}).setLngLat(e.lngLat).setHTML(`<b>${a.name}</b><br>${fmt(v[0])} residents in flood areas, ${Y[yi]}${yi||si?`<br><span style="color:var(--muted)">likely ${fmt(v[1])} – ${fmt(v[2])} · ${M.base}: ${fmt(b[0])}</span>`:''}`).addTo(smap);});
+    smap.on('mouseenter','sa2-fill',()=>smap.getCanvas().style.cursor='pointer');
+    smap.on('mouseleave','sa2-fill',()=>smap.getCanvas().style.cursor='');
+    updateMap();
+  });
+  document.getElementById('mleg').innerHTML='<span>Residents in flood areas:</span>'+BRK.map((b,i)=>`<span><i style="background:${RAMP[i]}"></i>${fmt(b)}${i<BRK.length-1?'–'+fmt(BRK[i+1]-1):'+'}</span>`).join('')+
+    '<span><i style="background:#2a6fdb;opacity:.6"></i>flood overlays</span><span><i style="background:#14b8a6;opacity:.8"></i>coastal extent</span>';
+}
+
+function draw(){segY();segS();segU();segT();updateMap();kpis();trend();areas();}
 draw();backtest();
 let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(trend,150);});
 window.__ready=true;
