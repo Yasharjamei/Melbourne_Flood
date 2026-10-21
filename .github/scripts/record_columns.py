@@ -41,7 +41,7 @@ def data():
     seen, places = set(), []
     for a in grow + storm:
         n = rename.get(nm[a["code"]], nm[a["code"]].split(" - ")[0])
-        near = any(((p["lon"] - a["lon"]) * 88) ** 2 + ((p["lat"] - a["lat"]) * 111) ** 2 < 4 for p in places)   # within 2 km
+        near = any(((p["lon"] - a["lon"]) * 88) ** 2 + ((p["lat"] - a["lat"]) * 111) ** 2 < 16 for p in places)   # within 4 km (2 km still let Docklands, Southbank and Fishermans Bend overlap)
         if n not in seen and not near:
             seen.add(n); places.append({"name": n, "lon": a["lon"], "lat": a["lat"]})
     credit = ("Forecast: housing-unit model, VIF2023 council totals, Urban Development Program 2025 (DTP; DEECA licence). "
@@ -49,8 +49,8 @@ def data():
     credit += ("Flood areas: Vicmap planning overlays (LSIO, FO, SBO) + Victorian Coastal Inundation Dataset (bathtub model). "
                "Exposure, not flood depth. Data: ABS, DataVic, DEECA. yasharjamei.github.io/Melbourne_Flood")
     return {"years": sc["meta"]["years"], "areas": areas, "total": {k: [t[0] for t in sc["total"][k]] for k in ids},
-            "labels": LABELS, "credit": credit, "places": places, "metres_per_resident": 14000 / top, "radius_m": 520,
-            "center": [145.02, -37.93], "zoom": 8.9, "pitch": 55, "bearing": -25}
+            "labels": LABELS, "credit": credit, "places": places, "metres_per_resident": 9000 / top, "radius_m": 520,
+            "center": [145.0, -37.95], "zoom": 9.6, "pitch": 55, "bearing": -25}
 
 
 def story(y0, y1, tot):
