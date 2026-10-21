@@ -33,33 +33,53 @@ def data():
     areas = [{"code": a["code"], "lon": xy[a["code"]][0], "lat": xy[a["code"]][1],
               "v": {k: [row[0] for row in a["v"][k]] for k in ids}} for a in sc["areas"] if a["code"] in xy]
     top = max(max(a["v"][k]) for a in areas for k in ids)
+    # name the places the story is about: largest 2025->2036 increases, and largest storm-tide additions
+    nm = {a["code"]: a["name"] for a in sc["areas"]}
+    rename = {"Port Melbourne Industrial": "Fishermans Bend"}
+    grow = sorted(areas, key=lambda a: -(a["v"][CALM][-1] - a["v"][CALM][0]))[:5]
+    storm = sorted(areas, key=lambda a: -(a["v"]["st0.82"][-1] - a["v"][CALM][-1]))[:3]
+    seen, places = set(), []
+    for a in grow + storm:
+        n = rename.get(nm[a["code"]], nm[a["code"]].split(" - ")[0])
+        near = any(((p["lon"] - a["lon"]) * 88) ** 2 + ((p["lat"] - a["lat"]) * 111) ** 2 < 4 for p in places)   # within 2 km
+        if n not in seen and not near:
+            seen.add(n); places.append({"name": n, "lon": a["lon"], "lat": a["lat"]})
     credit = ("Forecast: housing-unit model, VIF2023 council totals, Urban Development Program 2025 (DTP; DEECA licence). "
               if sc["meta"].get("restricted") else "Forecast: housing-unit model, VIF2023 council totals. ")
     credit += ("Flood areas: Vicmap planning overlays (LSIO, FO, SBO) + Victorian Coastal Inundation Dataset (bathtub model). "
                "Exposure, not flood depth. Data: ABS, DataVic, DEECA. yasharjamei.github.io/Melbourne_Flood")
     return {"years": sc["meta"]["years"], "areas": areas, "total": {k: [t[0] for t in sc["total"][k]] for k in ids},
-            "labels": LABELS, "credit": credit, "metres_per_resident": 14000 / top, "radius_m": 520,
+            "labels": LABELS, "credit": credit, "places": places, "metres_per_resident": 14000 / top, "radius_m": 520,
             "center": [145.02, -37.93], "zoom": 8.9, "pitch": 55, "bearing": -25}
 
 
-def story(y0, y1):
-    """Frame states: (year, from-scenario, to-scenario, blend)."""
+def story(y0, y1, tot):
+    """Frame states: (year, from-scenario, to-scenario, blend, caption, explanation card shown)."""
     seq = []
+    f = lambda v: f"{round(v, -2):,.0f}"
+    grow_cap = f"{y0} \u2192 {y1}: new homes go into flood-prone areas"
+    hold_cap = f"{y1}: about {f(tot[CALM][-1])} residents in flood-prone areas (from {f(tot[CALM][0])})"
+    storm_cap = {"st": "Then a 1-in-100-year storm tide, at today's sea level",
+                 "st0.2": "Storm tide with +0.20 m sea level (2040)", "st0.47": "Storm tide with +0.47 m sea level (2070)",
+                 "st0.82": "Storm tide with +0.82 m sea level (2100)"}
+    end_cap = f"{y1} population, +0.82 m sea and a storm tide: about {f(tot['st0.82'][-1])} residents"
     ease = lambda f: f * f * (3 - 2 * f)
     def add(n, fn):
         for i in range(n):
             seq.append(fn(i / max(n - 1, 1)))
-    add(30, lambda f: (y0, CALM, CALM, 0))
-    add(120, lambda f: (y0 + (y1 - y0) * ease(f), CALM, CALM, 0))
-    add(25, lambda f: (y1, CALM, CALM, 0))
+    add(80, lambda f: (y0, CALM, CALM, 0, "", 1))                                  # how to read it
+    add(20, lambda f: (y0, CALM, CALM, 0, f"{y0}: today", 0))
+    add(120, lambda f: (y0 + (y1 - y0) * ease(f), CALM, CALM, 0, grow_cap, 0))
+    add(40, lambda f: (y1, CALM, CALM, 0, hold_cap, 0))
     prev = CALM
     for k in STORM:
-        add(40 if k != "st" else 30, lambda f, a=prev, b=k: (y1, a, b, ease(f)))
-        add(12, lambda f, b=k: (y1, b, b, 0))
+        add(40 if k != "st" else 30, lambda f, a=prev, b=k: (y1, a, b, ease(f), storm_cap[b], 0))
+        add(14, lambda f, b=k: (y1, b, b, 0, storm_cap[b], 0))
         prev = k
-    add(45, lambda f: (y1, prev, prev, 0))
+    add(60, lambda f: (y1, prev, prev, 0, end_cap, 0))
     n = len(seq)
-    return [{"year": y, "a": a, "b": b, "t": t, "bearing": -25 + 40 * i / (n - 1)} for i, (y, a, b, t) in enumerate(seq)]
+    return [{"year": y, "a": a, "b": b, "t": t, "caption": c, "explain": e, "bearing": -25 + 40 * i / (n - 1)}
+            for i, (y, a, b, t, c, e) in enumerate(seq)]
 
 
 def main():
@@ -68,7 +88,7 @@ def main():
     html = open("web/columns.html").read().replace("__DATA__", json.dumps(d, separators=(",", ":")))
     page = os.path.abspath(f"{OUT}/columns.html")
     open(page, "w").write(html)
-    frames = story(d["years"][0], d["years"][-1])
+    frames = story(d["years"][0], d["years"][-1], d["total"])
     gif = []
     with sync_playwright() as p:
         b = p.chromium.launch(executable_path=os.environ.get("CHROMIUM") or None,
@@ -122,6 +142,12 @@ def main():
         subprocess.run([ffmpeg, "-y", "-loglevel", "error", "-framerate", f"{FPS / stride:g}", "-i", f"{OUT}/colframes/%04d.png",
                         "-c:v", "libx264", "-pix_fmt", "yuv420p", "-crf", "20", "-movflags", "+faststart", f"{OUT}/columns.mp4"], check=True)
         print(f"{OUT}/columns.mp4: {n_out * stride / FPS:.1f} s, {n_out} frames, {os.path.getsize(f'{OUT}/columns.mp4') / 1e6:.1f} MB")
+    # Sample frames into the log as small JPEGs (gzip+base64), so a reviewer who cannot download artifacts
+    # can still see what the video shows before anyone shares it.
+    import base64, gzip
+    for k in sorted({0, n_out // 4, n_out // 2, 3 * n_out // 4, n_out - 1}):
+        buf = io.BytesIO(); Image.open(f"{OUT}/colframes/{k:04d}.png").convert("RGB").resize((640, 360)).save(buf, "JPEG", quality=70)
+        print(f"BEGIN_FRAME {k}"); print(base64.b64encode(gzip.compress(buf.getvalue())).decode()); print("END_FRAME")
     shutil.rmtree(f"{OUT}/colframes")
 
 

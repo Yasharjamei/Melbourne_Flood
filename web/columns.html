@@ -25,11 +25,24 @@ html,body{margin:0;height:100%;background:#0d1114;color:#eef2f3;font-family:"Seg
 #leg .ticks{display:flex;justify-content:space-between;width:230px;font-size:12px;color:#9fb0b5}
 #credit{bottom:16px;left:28px;right:28px;font-size:12px;color:#8fa0a6}
 .maplibregl-ctrl-attrib{display:none}
+#explain{top:50%;left:50%;transform:translate(-50%,-50%);width:640px;background:rgba(10,14,17,.86);border:1px solid #2c3a40;border-radius:14px;padding:26px 30px;text-align:left;transition:opacity .4s}
+#explain h2{margin:0 0 12px;font-size:26px}
+#explain p{margin:8px 0;font-size:18px;line-height:1.45;color:#dbe3e6}
+#explain .sw{display:inline-block;width:70px;height:10px;border-radius:3px;vertical-align:middle;margin-right:8px;background:linear-gradient(90deg,#29d3e0,#3d7fd9,#f0a020,#e8384a,#ff4fb0)}
+#caption{bottom:120px;left:50%;transform:translateX(-50%);font-size:22px;font-weight:600;background:rgba(10,14,17,.72);padding:8px 18px;border-radius:10px;white-space:nowrap}
+.place{color:#fff;font-size:14px;font-weight:600;text-shadow:0 1px 3px #000,0 0 6px #000;white-space:nowrap;pointer-events:none}
+.place:before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#fff;margin-right:5px;vertical-align:middle}
 </style>
 </head>
 <body>
 <div id="map"></div>
-<div class="box" id="title"><h1>Who lives in Melbourne's flood areas</h1><p>Residents in flood areas by SA2, as the city grows and the sea rises</p></div>
+<div class="box" id="title"><h1>Who lives in Melbourne's flood areas</h1><p>People living in flood-prone areas, neighbourhood by neighbourhood</p></div>
+<div class="box" id="explain"><h2>How to read this</h2>
+  <p><b>Each column is one neighbourhood</b> (an ABS SA2, about the size of a suburb) in Greater Melbourne's 31 councils.</p>
+  <p><b>Height:</b> how many residents live inside flood-prone areas: planning-scheme flood overlays and the coastal inundation extent.</p>
+  <p><span class="sw"></span><b>Colour:</b> change since 2025, from no change (cyan) to six times more (pink).</p>
+  <p>First the city grows to 2036. Then a 1-in-100-year storm tide arrives as the sea rises.</p></div>
+<div class="box" id="caption"></div>
 <div class="box" id="state"><div class="yr" id="yr"></div><div class="sc" id="sc"></div></div>
 <div class="box" id="count"><div class="n" id="n"></div><div class="l">residents in flood areas, 31 councils</div></div>
 <div class="box" id="leg">Change since 2025<div class="ramp"></div><div class="ticks"><span>0%</span><span>+50%</span><span>+150%</span><span>+300%</span><span>+600%</span></div>
@@ -78,23 +91,31 @@ window.setFrame=function(st){
   document.getElementById('yr').textContent=Math.floor(st.year+1e-6);
   document.getElementById('sc').textContent=st.t<0.5?LAB[st.a]:LAB[st.b];
   document.getElementById('n').textContent=fmt(total(st));
+  document.getElementById('explain').style.opacity=st.explain?1:0;
+  const cap=document.getElementById('caption');cap.textContent=st.caption||'';cap.style.display=st.caption?'block':'none';
   if(st.bearing!=null)map.jumpTo({bearing:st.bearing,pitch:st.pitch??map.getPitch(),zoom:st.zoom??map.getZoom()});
   return true;
 };
-const style={version:8,sources:{
-    base:{type:'raster',tiles:['https://a.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png','https://b.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}.png'],tileSize:256},
-    dem:{type:'raster-dem',tiles:['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],encoding:'terrarium',tileSize:256,maxzoom:10},
-    cols:{type:'geojson',data:{type:'FeatureCollection',features:[]}}},
-  layers:[{id:'bg',type:'background',paint:{'background-color':'#0d1114'}},
-    {id:'base',type:'raster',source:'base',paint:{'raster-opacity':.9}},
-    {id:'shade',type:'hillshade',source:'dem',paint:{'hillshade-exaggeration':.55,'hillshade-shadow-color':'#000000','hillshade-highlight-color':'#3a4a50','hillshade-accent-color':'#101418'}},
-    {id:'cols',type:'fill-extrusion',source:'cols',paint:{'fill-extrusion-height':['get','h'],'fill-extrusion-color':['get','c'],'fill-extrusion-opacity':.92,'fill-extrusion-vertical-gradient':true}}]};
-map=new maplibregl.Map({container:'map',style,center:D.center,zoom:D.zoom,pitch:D.pitch,bearing:D.bearing,
+// Basemap: CARTO's dark vector style, the same service as the main map (the raster tile address used in the
+// first video returned an "API key" image instead of a map). Labels are hidden; our own place names are added.
+const BASE='https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json';
+function addLayers(){
+  for(const l of map.getStyle().layers)if(l.type==='symbol')map.setLayoutProperty(l.id,'visibility','none');
+  map.addSource('dem',{type:'raster-dem',tiles:['https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{z}/{x}/{y}.png'],encoding:'terrarium',tileSize:256,maxzoom:10});
+  map.addLayer({id:'shade',type:'hillshade',source:'dem',paint:{'hillshade-exaggeration':.5,'hillshade-shadow-color':'#000000','hillshade-highlight-color':'#3a4a50','hillshade-accent-color':'#101418'}});
+  map.addSource('cols',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
+  map.addLayer({id:'cols',type:'fill-extrusion',source:'cols',paint:{'fill-extrusion-height':['get','h'],'fill-extrusion-color':['get','c'],'fill-extrusion-opacity':.92,'fill-extrusion-vertical-gradient':true}});
+  for(const pl of D.places||[]){const el=document.createElement('div');el.className='place';el.textContent=pl.name;
+    new maplibregl.Marker({element:el,anchor:'left',offset:[8,0]}).setLngLat([pl.lon,pl.lat]).addTo(map);}
+}
+map=new maplibregl.Map({container:'map',style:BASE,center:D.center,zoom:D.zoom,pitch:D.pitch,bearing:D.bearing,
   interactive:false,fadeDuration:0,preserveDrawingBuffer:true,attributionControl:false});
-function init(){if(ready)return;ready=true;window.setFrame({year:Y[0],a:'none',b:'none',t:0});window.__ready=true;}
-map.on('load',init);
-// 'load' waits for every tile; if a tile server fails it may never come, so start from the style alone
-map.once('style.load',()=>setTimeout(init,5000));
+function init(){if(ready)return;ready=true;window.setFrame({year:Y[0],a:'none',b:'none',t:0,explain:1});window.__ready=true;}
+map.once('style.load',()=>{addLayers();setTimeout(init,5000);});
+map.on('load',()=>{if(map.getSource('cols'))init();});
+// if the basemap service is unreachable, fall back to a plain dark background rather than no video
+setTimeout(()=>{if(!map.getSource('cols')){map.setStyle({version:8,sources:{},layers:[{id:'bg',type:'background',paint:{'background-color':'#0d1114'}}]});
+  map.once('style.load',()=>{addLayers();init();});}},20000);
 map.on('error',e=>console.warn('map error',e&&e.error&&e.error.message));
 </script>
 </body>
