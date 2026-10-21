@@ -90,7 +90,7 @@ def slr_layer(name):
 def to_geojson(geoms, props=None, tol=20, min_m2=0, grid=1e-5):
     """Simplified lon/lat GeoJSON for the page's map. Parts under min_m2 are dropped (when no properties)."""
     import shapely
-    g = gpd.GeoSeries(geoms, crs=CRS).make_valid()
+    g = gpd.GeoSeries([polys(x) for x in geoms], crs=CRS)                   # polygonal parts only, no collections
     if min_m2 and props is None:
         g = g[g.area >= min_m2]
     g = g.simplify(tol).to_crs(4326)
