@@ -150,8 +150,14 @@ def finer(out, p, mb, pop, exposure, zones, sa2_rel):
             e = P0[mi] * w_old * s_old + np.where(d > 0, d * w_new * s_new, d * w_old * s_old)
             tot = np.bincount(mi, weights=e, minlength=len(p))
             E = exposure(pop[y], k)
-            f = np.where(tot > 0, E / np.where(tot > 0, tot, 1), 0)
-            sa1_ex[k][y] = pd.Series(e * f[mi]).groupby(sa1_of).sum()
+            # A piece can have residents in a flood area while none of its mesh blocks does on its own
+            # (new homes counted at piece level from mesh blocks with too few new addresses to judge).
+            # There, spread the piece's figure over its mesh blocks by population, so SA1s add up exactly.
+            mbpop = np.maximum(P0[mi] * w_old + grow, 0)
+            ptot = np.bincount(mi, weights=mbpop, minlength=len(p))
+            e = np.where((tot > 0)[mi], e * np.where(tot > 0, E / np.where(tot > 0, tot, 1), 0)[mi],
+                         np.where((ptot > 0)[mi], E[mi] * mbpop / np.where(ptot > 0, ptot, 1)[mi], E[mi] / n_mb[mi]))
+            sa1_ex[k][y] = pd.Series(e).groupby(sa1_of).sum()
     s1 = pd.Index(sorted(sa1_pop[YEARS[0]].index))
     lga_of = m2.groupby("sa1")["lga"].agg(lambda x: x.value_counts().index[0]).reindex(s1)
     out["rel"] = {"suburb": [round(sa2_rel(y - BASE), 4) for y in YEARS],
@@ -186,7 +192,7 @@ def finer(out, p, mb, pop, exposure, zones, sa2_rel):
     txt = json.dumps(d1, separators=(",", ":"))
     open("data/processed/scenarios_sa1.js", "w").write("window.SA1DATA=" + txt + ";")
     print(f"finer levels: {len(subs)} suburbs; {len(rows):,} SA1s ({len(txt) / 1e6:.1f} MB, loaded on demand); "
-          f"SA1 sums match pieces: {abs(sum(sa1_ex['none'][YEARS[-1]]) - exposure(pop[YEARS[-1]], 'none').sum()) < 1}")
+          "SA1 sums vs pieces: " + ", ".join(f"{k} {sa1_ex[k][YEARS[-1]].sum() - exposure(pop[YEARS[-1]], k).sum():+.1f}" for k in ids))
 
 
 def main():
