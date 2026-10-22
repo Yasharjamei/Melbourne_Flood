@@ -111,6 +111,84 @@ def inside(pts, zone):
     return pts.index.isin(gpd.sjoin(pts, parts, predicate="within", how="inner").index.unique())
 
 
+SA1_ERR = 1.9     # SA1 placement error / SA2 split error in the 2016->2021 back-tests (11.6% vs 6.0%, §25 and §29)
+
+
+def finer(out, p, mb, pop, exposure, zones, sa2_rel):
+    """Suburbs and SA1s for the map's area-level switch. Each piece's forecast is spread over its mesh blocks
+    (existing residents by 2021 Census share, growth where addresses were created in the last 5 years), the
+    residents in each flood area follow the mesh blocks' address shares, and everything is rescaled so mesh
+    blocks add back to the piece totals. Suburbs go into scenarios.json; SA1s into a separate file loaded only
+    when chosen (scenarios_sa1.js), to keep the page light."""
+    ids = list(zones)
+    sa1g = gpd.read_file(f"{RAW}/sa1.geojson").to_crs(CRS)
+    sa1g["c"] = codes(sa1g[next(c for c in sa1g.columns if re.fullmatch(r"sa1_code_2021|sa1_code.*", c, re.I))])
+    sal = gpd.read_file(f"{RAW}/sal.geojson").to_crs(CRS)
+    sal["c"] = codes(sal[next(c for c in sal.columns if re.fullmatch(r"sal_code_2021|sal_code.*", c, re.I))])
+    sal["name"] = sal[next(c for c in sal.columns if re.fullmatch(r"sal_name_2021|sal_name.*", c, re.I))].str.replace(r" \(Vic\.\)", "", regex=True)
+    rp = sa1g.set_geometry(sa1g.geometry.representative_point())[["c", "geometry"]]
+    js = gpd.sjoin(rp, sal[["c", "geometry"]].rename(columns={"c": "sal"}), predicate="within", how="left")
+    sa1_sal = js[~js.index.duplicated()].set_index("c")["sal"]
+
+    kidx = pd.Series(np.arange(len(p)), index=p["key"].values)
+    mi = mb["key"].map(kidx)
+    keep = mi.notna().values
+    m2, mi = mb[keep], mi[keep].astype(int).values
+    n_mb = np.bincount(mi, minlength=len(p))
+    p21p, rcp = p["p21"].values[mi], p["recent"].values[mi].astype(float)
+    w_old = np.where(p21p > 0, m2["p21"].values / np.where(p21p > 0, p21p, 1), 1 / n_mb[mi])
+    w_new = np.where(rcp > 0, m2["recent"].values / np.where(rcp > 0, rcp, 1), w_old)
+    sa1_of, P0 = m2["sa1"].values, p["P"].values
+    sa1_pop, sa1_ex = {}, {k: {} for k in ids}
+    for y in YEARS:
+        d = (pop[y] - P0)[mi]
+        grow = np.where(d > 0, d * w_new, d * w_old)
+        sa1_pop[y] = pd.Series(P0[mi] * w_old + grow).groupby(sa1_of).sum()
+        for k in ids:
+            s_old = m2[f"s_{k}"].values
+            s_new = np.where(m2["new"].values >= 5, m2[f"n_{k}"].values / np.maximum(m2["new"].values, 1), s_old)
+            e = P0[mi] * w_old * s_old + np.where(d > 0, d * w_new * s_new, d * w_old * s_old)
+            tot = np.bincount(mi, weights=e, minlength=len(p))
+            E = exposure(pop[y], k)
+            f = np.where(tot > 0, E / np.where(tot > 0, tot, 1), 0)
+            sa1_ex[k][y] = pd.Series(e * f[mi]).groupby(sa1_of).sum()
+    s1 = pd.Index(sorted(sa1_pop[YEARS[0]].index))
+    lga_of = m2.groupby("sa1")["lga"].agg(lambda x: x.value_counts().index[0]).reindex(s1)
+    out["rel"] = {"suburb": [round(sa2_rel(y - BASE), 4) for y in YEARS],
+                  "sa1": [round(min(0.9, SA1_ERR * sa2_rel(y - BASE)), 4) for y in YEARS]}
+
+    # suburbs: sums of their SA1s
+    sl = sa1_sal.reindex(s1)
+    subs = []
+    for c, idx in pd.Series(s1, index=s1).groupby(sl.values):
+        names = sal.loc[sal["c"] == c, "name"]
+        subs.append({"code": c, "name": names.iloc[0] if len(names) else c,
+                     "lga": lga_of.reindex(idx).value_counts().index[0],
+                     "pop": [round(sa1_pop[y].reindex(idx).sum()) for y in YEARS],
+                     "v": {k: [round(sa1_ex[k][y].reindex(idx).sum()) for y in YEARS] for k in ids}})
+    out["suburbs"] = subs
+    keep_sal = sal[sal["c"].isin([x["code"] for x in subs])]
+    out["geo"]["sal"] = to_geojson(list(keep_sal.geometry), [{"c": c} for c in keep_sal["c"]], tol=25)
+    # SA2 -> council (majority of 2021 residents), for the council filter
+    sa2_lga = m2.groupby("sa2").apply(lambda g: g.groupby("lga")["p21"].sum().idxmax())
+    for a in out["areas"]:
+        a["lga"] = sa2_lga.get(a["code"], "")
+
+    # SA1s: separate lazily loaded file
+    g1 = sa1g.set_index("c").reindex(s1)
+    has = g1.geometry.notna().values
+    rows = s1[has]
+    d1 = {"years": YEARS, "codes": list(rows), "sa2": [c[:9] for c in rows], "lga": list(lga_of.reindex(rows).fillna("")),
+          "sal": list(sa1_sal.reindex(rows).fillna("")),
+          "pop": [[round(sa1_pop[y].get(c, 0)) for y in YEARS] for c in rows],
+          "v": {k: [[round(sa1_ex[k][y].get(c, 0)) for y in YEARS] for c in rows] for k in ids},
+          "geo": to_geojson(list(g1.geometry[has]), [{"i": i} for i in range(len(rows))], tol=12)}
+    txt = json.dumps(d1, separators=(",", ":"))
+    open("data/processed/scenarios_sa1.js", "w").write("window.SA1DATA=" + txt + ";")
+    print(f"finer levels: {len(subs)} suburbs; {len(rows):,} SA1s ({len(txt) / 1e6:.1f} MB, loaded on demand); "
+          f"SA1 sums match pieces: {abs(sum(sa1_ex['none'][YEARS[-1]]) - exposure(pop[YEARS[-1]], 'none').sum()) < 1}")
+
+
 def main():
     lgas = {norm_lga(n) for n in STUDIES["metro"]["lgas"]}
     # ---------------- mesh blocks, councils, pieces
@@ -305,9 +383,10 @@ def main():
     # ---------------- map layers for the page: SA2 x council pieces, overlays, each scenario's coastal extent
     pcs = gpd.read_file(f"{ST}/sa2_council_pieces_7855.geojson")
     coast = {k: polys([slr_layer(n) for n in names]) for k, _, _, names in SLR}
-    out["geo"] = {"sa2": to_geojson(list(pcs.geometry), [{"c": c} for c in pcs["sa2_code_2021"]], tol=30),
+    out["geo"] = {"sa2": to_geojson(list(pcs.geometry), [{"c": c, "l": str(l)} for c, l in zip(pcs["sa2_code_2021"], pcs["lga_code"])], tol=30),
                   "overlay": to_geojson(list(getattr(ov, "geoms", [ov])), tol=15, min_m2=2000),
                   "coast": {k: to_geojson(list(getattr(z, "geoms", [z])), tol=40, min_m2=5000, grid=1e-4) for k, z in coast.items()}}   # the dataset is 1:75,000 (~75 m)
+    finer(out, p, mb, pop, exposure, zones, sa2_rel)
     sz = {k: len(json.dumps(v, separators=(",", ":"))) // 1000 for k, v in out["geo"].items()}
     print(f"map layers (kB): {sz}")
     json.dump(out, open("data/processed/scenarios.json", "w"), separators=(",", ":"))

@@ -62,6 +62,9 @@ tr.chosen td{font-weight:600}
 #mhelp summary{cursor:pointer;font-weight:600;font-size:13px}
 #mhelp p{margin:6px 0}
 #mhelp .kb{color:#2a6fdb}#mhelp .kt{color:#0f9b8e}#mhelp .mute{color:var(--muted)}
+.mctl{display:flex;flex-wrap:wrap;gap:10px 18px;align-items:flex-end;margin:6px 0 4px}
+.mctl label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:600;color:var(--muted)}
+.mctl select,.mctl input{font:inherit;font-size:14px;color:var(--ink);background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:6px 8px;min-width:170px}
 .mplace{font:600 12.5px/1.2 inherit;color:var(--ink);background:color-mix(in srgb,var(--panel) 85%,transparent);border:1px solid var(--rule);border-radius:6px;padding:2px 6px;white-space:nowrap;pointer-events:none}
 .mleg{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:12px;color:var(--muted);margin-top:8px}
 .mleg i{display:inline-block;width:14px;height:10px;border-radius:2px;vertical-align:middle;margin-right:4px}
@@ -76,6 +79,7 @@ ul.plain li{margin:4px 0}
   #smap{height:66svh}
   /* phones: the help sits under the map instead of over it, the state label is smaller, names shorter */
   #mhelp{position:static;width:auto;max-height:none;margin-top:8px;font-size:13px}
+  .mctl{gap:8px}.mctl label{flex:1 1 45%}.mctl select,.mctl input{min-width:0;width:100%;font-size:16px}
   #mstate{font-size:13.5px;top:8px;left:8px;padding:4px 8px}
   .mplace{font-size:11px;padding:1px 5px}
   main{padding:16px max(12px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom))}
@@ -116,15 +120,22 @@ ul.plain li{margin:4px 0}
   <section id="mapsec" hidden>
     <h2>Map: where people live in flood-prone areas</h2>
     <p class="sub" id="bridge"></p>
-    <div class="controls" style="margin:6px 0 10px"><div><span class="lab">Colour by</span><span class="seg" id="metric"></span></div></div>
+    <div class="mctl">
+      <label>Area level<span class="seg" id="unitseg"></span></label>
+      <label>Show on map<select id="var"></select></label>
+      <label>Council<select id="lgasel"><option value="">All 31 councils</option></select></label>
+      <label>Suburb<select id="salsel"><option value="">All suburbs</option></select></label>
+      <label>Find a suburb<input id="find" list="sallist" placeholder="Type a suburb" autocomplete="off"><datalist id="sallist"></datalist></label>
+    </div>
+    <p class="sub" id="mnote" style="margin:4px 0 8px"></p>
     <div id="mapwrap">
       <div id="smap"></div>
       <div id="mstate"></div>
       <details id="mhelp" open><summary>What you're seeing</summary>
-        <p><b>Coloured areas</b> are neighbourhoods (ABS SA2s, about suburb size). The colour shows the measure chosen above, for the year and sea level chosen at the top of the page.</p>
+        <p><b>Coloured areas</b> are neighbourhoods (SA2s), suburbs or SA1s (about 400 people), as chosen in <i>Area level</i>. The colour shows the measure in <i>Show on map</i>, for the year and sea level chosen at the top of the page, in five classes of equal count within the councils or suburb selected.</p>
         <p><b class="kb">Blue</b>: planning-scheme flood overlays (LSIO, FO for rivers; SBO for overland flow): land councils have mapped as flood-prone.</p>
         <p><b class="kt">Teal</b>: land under the sea at the chosen sea level, calm or with a 1-in-100-year storm tide (Victorian Coastal Inundation Dataset, a "bathtub" model).</p>
-        <p><b>Names</b> mark the five places (three on a phone) with the highest values on the current view.</p>
+        <p><b>Names</b> mark the five places (three on a phone) with the highest values in the selection. <b>SA1 figures are the least certain</b>: in the back-test their error was about twice that of neighbourhoods, and their ranges are wider to match.</p>
         <p class="mute">Living in a flood-prone area is exposure, not damage: newer buildings must sit above the flood level, and most apartment residents live above it. Tap a neighbourhood for its numbers.</p>
       </details>
     </div>
@@ -261,45 +272,91 @@ function backtest(){
     B.rows.map(r=>`<tr class="${r.chosen?'chosen':''}"><td>${r.model}${r.chosen?' ✓':''}</td><td>${p(r.mb[0])}</td><td>${p(r.mb[1])}</td><td>${p(r.growth[0])}</td><td>${p(r.growth[1])}</td><td>${p(r.sa1[0])}</td><td>${p(r.sa1[1])}</td></tr>`).join('')+'</tbody>';
 }
 
-// ---------------- map (only when the data carries geometry; the sample has none)
-// Three measures, each with fixed classes so years and scenarios compare like for like.
-const G=D.geo,RAMP=['#fde9c8','#fbc98a','#f7a35c','#ef7740','#d9482b','#b02a1f','#7a1414'];
-const MET=[
-  {key:'n',label:'Residents in flood areas',brk:[1,100,500,1000,2500,5000,10000],val:(a,id)=>a.v[id][yi][0],f:v=>fmt(v)},
-  {key:'s',label:'Share of residents',brk:[.005,.02,.05,.1,.2,.35,.5],val:(a,id)=>a.v[id][yi][0]/Math.max(a.pop?a.pop[yi][0]:0,1),f:v=>(v*100).toFixed(v<.02?1:0)+'%'},
-  {key:'c',label:`Change since ${M.base}`,brk:[10,100,250,500,1000,2500,5000],val:(a,id)=>a.v[id][yi][0]-a.v[S[0].id][0][0],f:v=>'+'+fmt(v)}];
-let smap=null,popup=null,mi2=0,marks=[],segM=()=>{};
-const byCode={};D.areas.forEach(a=>byCode[a.code]=a);
-// a label point per neighbourhood: the mean vertex of its largest outer ring (good enough for a name tag)
-function rings(g){if(!g)return[];if(g.type==='Polygon')return[g.coordinates[0]];if(g.type==='MultiPolygon')return g.coordinates.map(p=>p[0]);
-  if(g.type==='GeometryCollection')return g.geometries.flatMap(rings);return[];}
-const ctr={};if(G)for(const f of G.sa2.features){const c=f.properties.c;for(const r of rings(f.geometry)){if(!r||!r.length)continue;
-  let x=0,y=0;r.forEach(p=>{x+=p[0];y+=p[1];});if(!ctr[c]||r.length>ctr[c][2])ctr[c]=[x/r.length,y/r.length,r.length];}}
-function cls(m,v){let k=-1;for(let i=0;i<m.brk.length;i++)if(v>=m.brk[i])k=i;return k;}
-function fillExpr(id){
-  const m=MET[mi2],e=['match',['get','c']];
-  for(const a of D.areas){const k=cls(m,m.val(a,id));e.push(a.code,k<0?'rgba(0,0,0,0)':RAMP[k]);}
-  e.push('rgba(0,0,0,0)');return e;
-}
-function legend(){
-  const m=MET[mi2];
-  document.getElementById('mleg').innerHTML=`<span><b>${m.label}:</b></span>`+m.brk.map((b,i)=>`<span><i style="background:${RAMP[i]}"></i>${m.f(b)}${i<m.brk.length-1?' – '+m.f(m.brk[i+1]):'+'}</span>`).join('')+
-    '<span><i style="background:#2a6fdb;opacity:.6"></i>flood overlays</span><span><i style="background:#14b8a6;opacity:.8"></i>coastal extent</span>';
-}
+// ---------------- map: area level, variable, council -> suburb filter, find a suburb (like the main map)
+const G=D.geo,RAMP5=['#fde0c5','#f9b384','#ef7b4b','#d4472c','#9e1f1a'];
+const BASEID=()=>S[0].id;
+let smap=null,popup=null,hover=null,marks=[],unit='sa2',vkey='n',lga='',sal='',sa1=null,boxes={};
+let segM=()=>{};                                        // kept for draw(); the unit switch below replaces the old measure buttons
+// --- rows of the current area level, all exposing the same accessors
+function r2(a){return{code:a.code,name:a.name,lga:a.lga||'',sal:'',m:(k,y)=>a.v[k][y][0],rng:(k,y)=>[a.v[k][y][1],a.v[k][y][2]],pop:y=>a.pop?a.pop[y][0]:0};}
+function rs(x){const R=D.rel.suburb;return{code:x.code,name:x.name,lga:x.lga,sal:x.code,m:(k,y)=>x.v[k][y],rng:(k,y)=>[x.v[k][y]*(1-R[y]),x.v[k][y]*(1+R[y])],pop:y=>x.pop[y]};}
+function r1(i){const A=window.SA1DATA,R=D.rel.sa1;return{code:A.codes[i],name:'SA1 '+A.codes[i],lga:A.lga[i],sal:A.sal[i],m:(k,y)=>A.v[k][i][y],rng:(k,y)=>[A.v[k][i][y]*(1-R[y]),A.v[k][i][y]*(1+R[y])],pop:y=>A.pop[i][y]};}
+const ROWS={sa2:()=>D.areas.map(r2),sal:()=>(D.suburbs||[]).map(rs),sa1:()=>window.SA1DATA?window.SA1DATA.codes.map((c,i)=>r1(i)):[]};
+const UNITS2=[['sa2','Neighbourhood (SA2)'],['sal','Suburb'],['sa1','SA1 (finest)']].filter(u=>u[0]!=='sal'||D.suburbs);
+const pct=v=>(v*100).toFixed(v<.1?1:0)+'%';
+const VARS=[
+  ['n','Residents in flood areas',(r,k)=>r.m(k,yi),fmt],
+  ['s','Share of residents in flood areas',(r,k)=>r.m(k,yi)/Math.max(r.pop(yi),1),pct],
+  ['c',`Change in residents in flood areas since ${M.base}`,(r,k)=>r.m(k,yi)-r.m(BASEID(),0),v=>sgn(v)],
+  ['a','Added by the chosen sea level or storm tide',(r,k)=>r.m(k,yi)-r.m(BASEID(),yi),v=>sgn(v)],
+  ['p','All residents',(r,k)=>r.pop(yi),fmt],
+  ['g',`Population growth since ${M.base}`,(r,k)=>r.pop(yi)-r.pop(0),v=>sgn(v)],
+  ['u','Uncertainty: width of the likely range',(r,k)=>{const q=r.rng(k,yi);return q[1]-q[0];},fmt]];
+const V=()=>VARS.find(v=>v[0]===vkey);
+function visible(r){return(!lga||r.lga===lga)&&(!sal||unit==='sa2'||r.sal===sal);}
+function breaks(vals){const v=vals.filter(x=>x>0).sort((a,b)=>a-b);if(!v.length)return[];const b=[];for(let i=1;i<5;i++)b.push(v[Math.floor(i*v.length/5)]);return[...new Set(b)];}
+function srcId(){return unit==='sa1'?'sa1':unit==='sal'?'sal':'sa2';}
+function bboxOf(fc){const b={};for(const f of fc.features){const c=f.properties.c??(window.SA1DATA&&window.SA1DATA.codes[f.properties.i]);
+  const walk=x=>{if(typeof x[0]==='number'){const o=b[c]||(b[c]=[1e9,1e9,-1e9,-1e9]);o[0]=Math.min(o[0],x[0]);o[1]=Math.min(o[1],x[1]);o[2]=Math.max(o[2],x[0]);o[3]=Math.max(o[3],x[1]);}else x.forEach(walk);};
+  walk(f.geometry.coordinates);}return b;}
+function rings(g){if(!g)return[];if(g.type==='Polygon')return[g.coordinates[0]];if(g.type==='MultiPolygon')return g.coordinates.map(p=>p[0]);if(g.type==='GeometryCollection')return g.geometries.flatMap(rings);return[];}
+function centres(fc){const c={};for(const f of fc.features){const k=f.properties.c??(window.SA1DATA&&window.SA1DATA.codes[f.properties.i]);for(const r of rings(f.geometry)){if(!r.length)continue;let x=0,y=0;r.forEach(p=>{x+=p[0];y+=p[1];});if(!c[k]||r.length>c[k][2])c[k]=[x/r.length,y/r.length,r.length];}}return c;}
+let ctr={};
 function updateMap(){
   if(!smap||!smap.getSource('sa2'))return;
-  const id=S[si].id,m=MET[mi2];
-  smap.setPaintProperty('sa2-fill','fill-color',fillExpr(id));
+  const id=S[si].id,v=V(),rows=ROWS[unit](),vis=rows.filter(visible),vals=vis.map(r=>v[2](r,id)),brk=breaks(vals);
+  const colour=x=>{if(!(x>0))return 'rgba(0,0,0,0)';let k=0;while(k<brk.length&&x>=brk[k])k++;return RAMP5[Math.min(k,4)];};
+  const e=['match',['get',unit==='sa1'?'i':'c']];
+  rows.forEach((r,i)=>{if(visible(r))e.push(unit==='sa1'?i:r.code,colour(v[2](r,id)));});
+  e.push('rgba(0,0,0,0)');
+  for(const u of['sa2','sal','sa1'])if(smap.getLayer(u+'-fill')){const on=u===srcId();smap.setLayoutProperty(u+'-fill','visibility',on?'visible':'none');smap.setLayoutProperty(u+'-line','visibility',on?'visible':'none');}
+  if(e.length>3)smap.setPaintProperty(srcId()+'-fill','fill-color',e);
   smap.getSource('coast').setData(G.coast[id]||{type:'FeatureCollection',features:[]});
-  document.getElementById('mstate').textContent=`${Y[yi]} · ${S[si].label}`;
+  const where=sal?(D.suburbs.find(x=>x.code===sal)||{}).name:lga?(D.councils.find(c=>c.code===lga)||{}).name:'';
+  document.getElementById('mstate').textContent=`${Y[yi]} · ${S[si].label}${where?' · '+where:''}`;
   marks.forEach(mk=>mk.remove());marks=[];
-  D.areas.map(a=>[a,m.val(a,id)]).filter(([a,v])=>ctr[a.code]&&(m.key!=='s'||(a.pop&&a.pop[yi][0]>1000))).sort((p,q)=>q[1]-p[1]).filter(([a],_,arr)=>true).reduce((keep,[a,v])=>{   // skip names within ~3 km of one already shown
-      if(keep.length<(innerWidth<700?3:5)&&!keep.some(([k])=>Math.hypot((ctr[k.code][0]-ctr[a.code][0])*88,(ctr[k.code][1]-ctr[a.code][1])*111)<3))keep.push([a,v]);return keep;},[]).forEach(([a,v])=>{
-    const el=document.createElement('div');el.className='mplace';el.textContent=`${a.name.split(' - ')[0]}: ${m.f(v)}`;
-    // anchor names on the right-hand third of the map to their right edge, so they don't run off the screen
-    const px=smap.project(ctr[a.code].slice(0,2)).x,anchor=px>smap.getContainer().clientWidth*0.66?'bottom-right':px<smap.getContainer().clientWidth*0.2?'bottom-left':'bottom';
-    marks.push(new maplibregl.Marker({element:el,anchor}).setLngLat(ctr[a.code].slice(0,2)).addTo(smap));});
-  legend();
+  if(unit!=='sa1'){const n=innerWidth<700?3:5;
+    rows.map((r,i)=>[r,v[2](r,id)]).filter(([r,x])=>visible(r)&&ctr[r.code]&&x>0&&(vkey!=='s'||r.pop(yi)>1000)).sort((p,q)=>q[1]-p[1])
+      .reduce((keep,[r,x])=>{if(keep.length<n&&!keep.some(([k])=>Math.hypot((ctr[k.code][0]-ctr[r.code][0])*88,(ctr[k.code][1]-ctr[r.code][1])*111)<(sal?0.5:lga?1.2:3)))keep.push([r,x]);return keep;},[])
+      .forEach(([r,x])=>{const el=document.createElement('div');el.className='mplace';el.textContent=`${r.name.split(' - ')[0]}: ${v[3](x)}`;
+        const px=smap.project(ctr[r.code].slice(0,2)).x,W=smap.getContainer().clientWidth;
+        marks.push(new maplibregl.Marker({element:el,anchor:px>W*.66?'bottom-right':px<W*.2?'bottom-left':'bottom'}).setLngLat(ctr[r.code].slice(0,2)).addTo(smap));});}
+  document.getElementById('mleg').innerHTML=`<span><b>${v[1]}</b>, ${Y[yi]}:</span>`+(brk.length?[0,...brk].map((b,i)=>`<span><i style="background:${RAMP5[i]}"></i>${i===0?'up to '+v[3](brk[0]):i<brk.length?v[3](b)+' – '+v[3](brk[i]):v[3](b)+'+'}</span>`).join(''):'<span>no values above zero here</span>')+
+    '<span><i style="background:#2a6fdb;opacity:.6"></i>flood overlays</span><span><i style="background:#14b8a6;opacity:.8"></i>coastal extent</span>';
+  document.getElementById('mnote').textContent=(unit==='sa1'?'SA1s are the least certain level: ranges about twice as wide as neighbourhoods. ':'')+(vkey==='a'&&!si&&!mi?'Pick a sea level or the storm tide above to see what it adds. ':'')+`${vis.length.toLocaleString('en-AU')} ${unit==='sa1'?'SA1s':unit==='sal'?'suburbs':'neighbourhoods'} shown.`;
+}
+function zoomTo(){
+  if(!smap)return;const fc=G[srcId()]||null;let b=null;
+  const pick=sal?(unit==='sal'?[sal]:ROWS[unit]().filter(visible).map(r=>r.code)):lga?ROWS[unit]().filter(visible).map(r=>r.code):null;
+  if(!pick){smap.fitBounds([[144.4,-38.5],[145.9,-37.4]],{padding:30,duration:600});return;}
+  const bx=boxes[srcId()]||{};for(const c of pick){const o=bx[c];if(!o)continue;b=b?[Math.min(b[0],o[0]),Math.min(b[1],o[1]),Math.max(b[2],o[2]),Math.max(b[3],o[3])]:o.slice();}
+  if(b)smap.fitBounds([[b[0],b[1]],[b[2],b[3]]],{padding:40,duration:600,maxZoom:14});
+}
+function popupHtml(r){const id=S[si].id,q=r.rng(id,yi),x=r.m(id,yi),pp=r.pop(yi),b=r.m(BASEID(),0);
+  return`<b>${r.name}</b><br><span style="color:var(--muted)">${Y[yi]} · ${S[si].label}</span><br><b>${fmt(x)}</b> residents in flood-prone areas${yi||si?` (likely ${fmt(q[0])} – ${fmt(q[1])})`:''}`+
+    (pp?`<br>${pct(x/pp)} of ${fmt(pp)} residents`:'')+`<br>${M.base}, today's flood areas: ${fmt(b)}${yi||si?` · change ${sgn(x-b)}`:''}`;}
+function rowAt(f){if(unit==='sa1')return r1(f.properties.i);const c=f.properties.c;return ROWS[unit]().find(r=>r.code===c);}
+function loadSA1(done){
+  if(window.SA1DATA){done();return;}
+  document.getElementById('mnote').textContent='Loading SA1s…';
+  const sc=document.createElement('script');sc.src='sa1.js';sc.onload=done;sc.onerror=()=>{document.getElementById('mnote').textContent='SA1 data could not be loaded.';};document.head.appendChild(sc);
+}
+function addSA1(){
+  if(smap.getSource('sa1'))return;const A=window.SA1DATA;
+  smap.addSource('sa1',{type:'geojson',data:A.geo});boxes.sa1=bboxOf(A.geo);
+  smap.addLayer({id:'sa1-fill',type:'fill',source:'sa1',paint:{'fill-color':'rgba(0,0,0,0)','fill-opacity':.75}},'ov-fill');
+  smap.addLayer({id:'sa1-line',type:'line',source:'sa1',minzoom:10,paint:{'line-color':DARK?'#55636a':'#9aa5a1','line-width':.3}},'ov-fill');
+  wire('sa1');
+}
+function wire(u){
+  smap.on('click',u+'-fill',e=>{const r=rowAt(e.features[0]);if(!r)return;if(popup)popup.remove();popup=new maplibregl.Popup({closeButton:true,maxWidth:'290px'}).setLngLat(e.lngLat).setHTML(popupHtml(r)).addTo(smap);});
+  smap.on('mousemove',u+'-fill',e=>{if(innerWidth<700)return;smap.getCanvas().style.cursor='pointer';const r=rowAt(e.features[0]);if(!r)return;
+    if(!hover)hover=new maplibregl.Popup({closeButton:false,closeOnClick:false,maxWidth:'290px',offset:12});hover.setLngLat(e.lngLat).setHTML(popupHtml(r)).addTo(smap);});
+  smap.on('mouseleave',u+'-fill',()=>{smap.getCanvas().style.cursor='';if(hover)hover.remove();});
+}
+function fillSuburbs(){
+  const s2=document.getElementById('salsel'),list=(D.suburbs||[]).filter(x=>!lga||x.lga===lga).sort((a,b)=>a.name.localeCompare(b.name));
+  s2.innerHTML='<option value="">All suburbs</option>'+list.map(x=>`<option value="${x.code}">${x.name}</option>`).join('');s2.value=sal;
 }
 if(G&&window.maplibregl){
   document.getElementById('mapsec').hidden=false;
@@ -307,38 +364,38 @@ if(G&&window.maplibregl){
   document.getElementById('bridge').innerHTML=`The <a href="../">main map</a> counted <b>185,536</b> residents in planning flood overlays at the 2021 Census. Counted the same way (address points), with ${M.base} population and present-day coastal flooding added, it is <b>${fmt(t[0][0])}</b> in ${M.base}, and <b>${fmt(t[t.length-1][0])}</b> by ${Y[Y.length-1]} (likely ${fmt(t[t.length-1][1])} – ${fmt(t[t.length-1][2])}). The main map shows <i>who</i> they are; this page shows <i>how many, where, and when</i>.`;
   const PHONE=innerWidth<700;
   if(PHONE)document.getElementById('mhelp').open=false;
+  // controls
+  const vs=document.getElementById('var');vs.innerHTML=VARS.map(v=>`<option value="${v[0]}">${v[1]}</option>`).join('');vs.onchange=()=>{vkey=vs.value;updateMap();};
+  const ls=document.getElementById('lgasel');ls.innerHTML+=D.councils.slice().sort((a,b)=>a.name.localeCompare(b.name)).map(c=>`<option value="${c.code}">${c.name}</option>`).join('');
+  ls.onchange=()=>{lga=ls.value;sal='';fillSuburbs();updateMap();zoomTo();};
+  document.getElementById('salsel').onchange=e=>{sal=e.target.value;if(sal&&unit==='sa2'){unit='sal';segU2();}updateMap();zoomTo();};
+  document.getElementById('sallist').innerHTML=(D.suburbs||[]).map(x=>`<option value="${x.name}">`).join('');
+  document.getElementById('find').onchange=e=>{const x=(D.suburbs||[]).find(s=>s.name.toLowerCase()===e.target.value.trim().toLowerCase());if(!x)return;
+    lga=x.lga;ls.value=lga;sal=x.code;fillSuburbs();if(unit==='sa2'){unit='sal';segU2();}updateMap();zoomTo();};
+  fillSuburbs();
+  var segU2=seg('unitseg',UNITS2.map(u=>u[1]),()=>UNITS2.findIndex(u=>u[0]===unit),i=>{unit=UNITS2[i][0];});
+  document.getElementById('unitseg').addEventListener('click',()=>{if(unit==='sa1'&&!window.SA1DATA)loadSA1(()=>{addSA1();updateMap();zoomTo();});else{ if(unit==='sa1')addSA1(); updateMap();}});
   const STYLE=DARK?'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json':'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
-  smap=new maplibregl.Map({container:'smap',style:STYLE,center:[145.0,-37.86],zoom:8.6,attributionControl:{compact:true,customAttribution:'ABS, DataVic, DEECA'},dragRotate:false,pitchWithRotate:false,
-    cooperativeGestures:PHONE});                        // phones: one finger scrolls the page, two fingers move the map
+  smap=new maplibregl.Map({container:'smap',style:STYLE,center:[145.0,-37.86],zoom:8.6,attributionControl:{compact:true,customAttribution:'ABS, DataVic, DEECA'},dragRotate:false,pitchWithRotate:false,cooperativeGestures:PHONE});
   if(!PHONE)smap.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-right');
   smap.on('load',()=>{
-    // data under the basemap's labels, as on the main map
     const L=smap.getStyle().layers,lastGeom=L.map(l=>l.type!=='symbol').lastIndexOf(true),sym=L.slice(lastGeom+1).find(l=>l.type==='symbol'),before=sym?sym.id:undefined;
-    smap.addSource('sa2',{type:'geojson',data:G.sa2});
+    smap.addSource('sa2',{type:'geojson',data:G.sa2});boxes.sa2=bboxOf(G.sa2);ctr=centres(G.sa2);
+    if(G.sal){smap.addSource('sal',{type:'geojson',data:G.sal});boxes.sal=bboxOf(G.sal);Object.assign(ctr,centres(G.sal));}
     smap.addSource('ov',{type:'geojson',data:G.overlay});
     smap.addSource('coast',{type:'geojson',data:{type:'FeatureCollection',features:[]}});
-    smap.addLayer({id:'sa2-fill',type:'fill',source:'sa2',paint:{'fill-color':'rgba(0,0,0,0)','fill-opacity':.72}},before);
+    for(const u of['sa2','sal'])if(smap.getSource(u)){
+      smap.addLayer({id:u+'-fill',type:'fill',source:u,paint:{'fill-color':'rgba(0,0,0,0)','fill-opacity':.72}},before);
+      smap.addLayer({id:u+'-line',type:'line',source:u,paint:{'line-color':DARK?'#55636a':'#9aa5a1','line-width':.5}},before);wire(u);}
     smap.addLayer({id:'ov-fill',type:'fill',source:'ov',paint:{'fill-color':'#2a6fdb','fill-opacity':.35}},before);
     smap.addLayer({id:'coast-fill',type:'fill',source:'coast',paint:{'fill-color':'#14b8a6','fill-opacity':.55}},before);
-    smap.addLayer({id:'sa2-line',type:'line',source:'sa2',paint:{'line-color':DARK?'#55636a':'#9aa5a1','line-width':.5}},before);
-    smap.on('click','sa2-fill',e=>{const a=byCode[e.features[0].properties.c];if(!a)return;
-      const id=S[si].id,v=a.v[id][yi],b=a.v[S[0].id][0],pp=a.pop?a.pop[yi][0]:0;
-      if(popup)popup.remove();
-      popup=new maplibregl.Popup({closeButton:true,maxWidth:'290px'}).setLngLat(e.lngLat).setHTML(
-        `<b>${a.name}</b><br><span style="color:var(--muted)">${Y[yi]} · ${S[si].label}</span>`+
-        `<br><b>${fmt(v[0])}</b> residents in flood-prone areas${yi||si?` (likely ${fmt(v[1])} – ${fmt(v[2])})`:''}`+
-        (pp?`<br>${(100*v[0]/pp).toFixed(1)}% of the neighbourhood's ${fmt(pp)} residents`:'')+
-        `<br>${M.base}, today's flood areas: ${fmt(b[0])}${yi||si?` · change ${sgn(v[0]-b[0])}`:''}`).addTo(smap);});
-    smap.on('mouseenter','sa2-fill',()=>smap.getCanvas().style.cursor='pointer');
-    smap.on('mouseleave','sa2-fill',()=>smap.getCanvas().style.cursor='');
-    if(innerWidth>=700)smap.setPadding({left:340});                       // keep the area clear of the help panel
+    if(!PHONE)smap.setPadding({left:340});
     document.getElementById('mhelp').addEventListener('toggle',e=>{if(innerWidth>=700)smap.easeTo({padding:{left:e.target.open?340:0},duration:300});});
     updateMap();
   });
-  segM=seg('metric',MET.map(m=>m.label),()=>mi2,i=>mi2=i);
 }
 
-function draw(){segY();segS();segU();segT();segM();updateMap();kpis();trend();areas();}
+function draw(){segY();segS();segU();segT();if(typeof segU2==='function')segU2();updateMap();kpis();trend();areas();}
 draw();backtest();
 let rt;addEventListener('resize',()=>{clearTimeout(rt);rt=setTimeout(trend,150);});
 window.__ready=true;

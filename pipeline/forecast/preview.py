@@ -7,6 +7,8 @@ src = "data/processed/scenarios.json" if os.path.exists("data/processed/scenario
 dst = "preview/scenarios/index.html"
 os.makedirs(os.path.dirname(dst), exist_ok=True)
 open(dst, "w").write(open("web/scenarios.html").read().replace("__DATA__", open(src).read()))
+if os.path.exists("data/processed/scenarios_sa1.js"):                   # SA1 level, loaded by the page on demand
+    shutil.copy("data/processed/scenarios_sa1.js", "preview/scenarios/sa1.js")
 shutil.copy("web/manifest.webmanifest", "preview/manifest.webmanifest")
 shutil.copytree("web/icons", "preview/icons", dirs_exist_ok=True)
 print(f"{dst}: written from {src}")

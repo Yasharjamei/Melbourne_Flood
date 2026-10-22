@@ -133,7 +133,7 @@ def addresses_new(dst):
 
 def main_inputs():
     """Only the main build's inputs the forecast reads (councils, mesh blocks, mesh-block counts, flood
-    overlays, address points), each skipped if present. A full 01_fetch.py takes ~70 min; these are a part."""
+    overlays, address points, SA1s and suburbs for the scenarios map), each skipped if present. A full 01_fetch.py takes ~70 min; these are a part."""
     sys.path.insert(0, os.path.join(HERE, ".."))
     from config import STUDIES, norm_lga
     st, raw = STUDIES["metro"], "data/raw/metro"
@@ -142,6 +142,8 @@ def main_inputs():
     print("Councils"); f01.arcgis("LGA", "state_code_2021='2'", None, 0.00001, f"{raw}/lga.geojson", page_max=10)
     bbox = f01.lga_bbox(f"{raw}/lga.geojson", wanted)
     print("Mesh blocks"); f01.arcgis("MB", "state_code_2021='2'", bbox, 0.00006, f"{raw}/mb.geojson")
+    print("SA1s"); f01.arcgis("SA1", "state_code_2021='2'", bbox, 0.00006, f"{raw}/sa1.geojson")
+    print("Suburbs"); f01.arcgis("SAL", "state_code_2021='2'", bbox, 0.00012, f"{raw}/sal.geojson")
     print("Flood overlays"); f01.wfs_overlays(bbox, st["lgas"], f"{raw}/flood.geojson")
     print("Address points"); f01.wfs_points(bbox, f"{raw}/addr.npy")
     dst = "data/raw/shared/mb_counts_2021.xlsx"

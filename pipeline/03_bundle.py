@@ -48,4 +48,6 @@ if os.path.exists("data/processed/scenarios.json") and os.environ.get("PUBLISH_S
     sdst = "dist/scenarios/index.html"
     os.makedirs(os.path.dirname(sdst), exist_ok=True)
     open(sdst, "w").write(open("web/scenarios.html").read().replace("__DATA__", open("data/processed/scenarios.json").read()))
+    if os.path.exists("data/processed/scenarios_sa1.js"):
+        shutil.copy("data/processed/scenarios_sa1.js", "dist/scenarios/sa1.js")   # SA1 level, loaded on demand
     print(f"{sdst}: written")
