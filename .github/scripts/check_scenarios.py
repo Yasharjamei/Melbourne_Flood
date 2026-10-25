@@ -58,6 +58,36 @@ def run(b, name, ctx, libs):
     pg.wait_for_timeout(2500); pg.evaluate(IDLE)
     print(f"{name} SA1 level, {COUNCIL}:", json.dumps(pg.evaluate(STATE), ensure_ascii=False), flush=True)
     shot(pg, "#mapsec", f"{name}-sa1", width)
+    # suburb highlight: choose the first suburb in the list
+    sub = pg.evaluate("[...document.querySelectorAll('#salsel option')].find(o => o.value)?.value || ''")
+    if sub:
+        pg.select_option("#salsel", sub); pg.wait_for_timeout(1500); pg.evaluate(IDLE)
+        print(f"{name} suburb highlight:", json.dumps(pg.evaluate("""c => { const m = __scen.map; return {code: c,
+          filter: JSON.stringify(m.getFilter('sal-sel')), outlineDrawn: m.queryRenderedFeatures({layers: ['sal-sel']}).length,
+          state: mstate.textContent}; }""", sub)), flush=True)
+    # placing A and B by clicking (layers card closed on phones)
+    pg.select_option("#salsel", ""); pg.select_option("#lgasel", ""); pg.click("#unitseg button:nth-child(1)"); pg.wait_for_timeout(800)
+    pg.evaluate("__scen.map.jumpTo({center: [144.94, -37.80], zoom: 11.5})"); pg.evaluate(IDLE)
+    if name == "phone": pg.click("#laybtn")
+    pg.click("#abclear")
+    if name == "phone": pg.click("#laybtn")
+    box = pg.query_selector("#smap").bounding_box()
+    for fx, fy in ((0.3, 0.75), (0.7, 0.8)):
+        pos = {"x": box["width"] * fx, "y": box["height"] * fy}
+        (pg.tap if name == "phone" else pg.click)("#smap", position=pos); pg.wait_for_timeout(700)
+    st = pg.evaluate(STATE)
+    print(f"{name} after clicking twice:", json.dumps({k: st[k] for k in ("pins", "A", "B", "tintedA", "tintedB")}, ensure_ascii=False), flush=True)
+    if name == "desktop":
+        print("radius label inside its card:", pg.evaluate("""() => { const r = radv.getBoundingClientRect(), c = mlayers.getBoundingClientRect();
+          return r.right <= c.right + 0.5 && r.left >= c.left; }"""), flush=True)
+    shot(pg, "#mapsec", f"{name}-clicked", width)
+    pg.evaluate("document.querySelectorAll('#unit button')[1]?.click()"); pg.wait_for_timeout(500)
+    sec = pg.query_selector("#areas").evaluate_handle("t => t.closest('section')").as_element()
+    if sec:
+        from PIL import Image
+        im = Image.open(io.BytesIO(sec.screenshot())).convert("RGB"); im = im.crop((0, 0, im.width, min(im.height, 900 if name == "desktop" else 1400)))
+        im = im.resize((width, int(im.height * width / im.width))); buf = io.BytesIO(); im.save(buf, "JPEG", quality=62)
+        print(f"BEGIN_SHOT {name}-councils"); print(base64.b64encode(gzip.compress(buf.getvalue())).decode()); print("END_SHOT", flush=True)
     print(f"{name}: page width {pg.evaluate('document.documentElement.scrollWidth')} px; errors: {errs or 'none'}", flush=True)
 
 

@@ -53,6 +53,10 @@ th,td{padding:7px 10px;border-top:1px solid var(--rule);text-align:right;white-s
 th:first-child,td:first-child{text-align:left}
 thead th{border-top:0;color:var(--muted);font-weight:600;font-size:12px}
 td.bar{width:38%;padding:4px 10px}
+th.bar{font-weight:400;color:var(--muted);text-align:left}
+.akey{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:12px;color:var(--muted);margin:0 0 8px}
+.akey i{display:inline-block;width:16px;height:10px;border-radius:2px;vertical-align:middle;margin-right:5px}
+.akey i.dec{background:none;border:1.5px solid}.akey i.rng{height:0;border-top:1.5px solid;border-radius:0;position:relative}
 td.bar svg{display:block;width:100%;height:18px}
 tr.chosen td{font-weight:600}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
@@ -69,7 +73,9 @@ tr.chosen td{font-weight:600}
 #mlayers hr{border:0;border-top:1px solid var(--rule);margin:4px 0;width:100%}
 #mlayers button{font:inherit;font-size:12px;border:1px solid var(--rule);background:transparent;color:var(--ink);border-radius:999px;padding:4px 10px;cursor:pointer;align-self:flex-start}
 #laybtn{display:none}
-#radv{white-space:nowrap}
+#radv{white-space:nowrap;min-width:46px;text-align:right}
+#radwrap #rad{width:0;flex:1 1 auto;min-width:60px}
+#mlayers{box-sizing:border-box}
 #mhint{top:52px;left:12px;padding:8px 12px;max-width:300px;pointer-events:none}
 #mini{bottom:30px;left:12px;padding:6px 10px;font-size:13px;display:flex;gap:12px;pointer-events:none}
 #mini .a b,.pin.a{color:var(--a)}#mini .b b{color:var(--b)}
@@ -84,7 +90,7 @@ tr.chosen td{font-weight:600}
 #abpanel{margin-top:14px;font-size:13px}
 @media (min-width:1000px){#abpanel{margin-top:0;max-height:640px;overflow:auto}}
 #abpanel h3{margin:0 0 8px;font-size:16px}
-#abpanel .who{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+#abpanel .who{display:grid;grid-template-columns:1fr;gap:8px;margin-bottom:8px}
 #abpanel .who>div{border:1px solid var(--rule);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:1px}
 #abpanel .who>div.a{border-top:4px solid var(--a)}#abpanel .who>div.b{border-top:4px solid var(--b)}
 #abpanel .who span{font-size:11.5px;color:var(--muted)}#abpanel .who strong{font-size:22px;line-height:1.2}
@@ -97,7 +103,7 @@ tr.chosen td{font-weight:600}
 #mhelp{margin-top:12px;font-size:13px;line-height:1.5}
 #mhelp summary{cursor:pointer;font-weight:600}
 #mhelp p{margin:6px 0;max-width:90ch}
-#mhelp .kb{color:#2a78d6}#mhelp .kt{color:#0f9b8e}#mhelp .mute{color:var(--muted)}
+#mhelp .kb{color:#2f6fd0}#mhelp .kc{color:#0ea5b7}#mhelp .kt{color:#3f9a52}#mhelp .mute{color:var(--muted)}
 ul.plain{margin:6px 0 0;padding-left:18px;max-width:90ch}
 ul.plain li{margin:4px 0}
 .tag{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;margin-left:6px;vertical-align:1px}
@@ -193,7 +199,7 @@ ul.plain li{margin:4px 0}
     </div>
     <details id="mhelp"><summary>What you're seeing</summary>
       <p><b>Coloured areas</b> are neighbourhoods (SA2s), suburbs or SA1s (about 400 people), as chosen in <i>Area level</i>, coloured by the measure in <i>Show on map</i> for the year, sea level and coast (calm or storm tide) chosen above, in five classes of equal count within the councils or suburb selected.</p>
-      <p><b class="kb">Blue</b>: planning-scheme flood overlays: river flooding (LSIO, FO; solid) and overland flow (SBO; lighter). <b class="kt">Teal</b>: land under the sea at the chosen sea level, calm or with a 1-in-100-year storm tide (Victorian Coastal Inundation Dataset, a "bathtub" model). Switch any of them off under <i>Layers</i>.</p>
+      <p><b class="kb">Blue</b>: river flood overlays (LSIO, FO). <b class="kc">Cyan, dashed edge</b>: overland-flow overlays (SBO). Both are planning-scheme overlays. <b class="kt">Green</b>: land under the sea at the chosen sea level, calm or with a 1-in-100-year storm tide (Victorian Coastal Inundation Dataset, a "bathtub" model). Switch any of them off under <i>Layers</i>.</p>
       <p><b>Hover</b> (or tap on a phone) for an area's numbers. <b>Areas A and B</b> work as on the main map: click to place or move the nearer pin, drag a pin, set the radius under <i>Layers</i>. A circle counts the mesh blocks whose centre falls inside it, each adding its share of its SA1's residents; the SA1s a circle touches are shaded in its colour, darker for a larger share counted.</p>
       <p class="mute">SA1 figures are the least certain: in the back-test their error was about twice that of neighbourhoods. Living in a flood-prone area is exposure, not damage: newer buildings must sit above the flood level, and most apartment residents live above it.</p>
     </details>
@@ -210,6 +216,7 @@ ul.plain li{margin:4px 0}
     <h2 id="ah"></h2>
     <div class="controls" style="margin-bottom:10px"><div><span class="lab">Show</span><span class="seg" id="unit"></span></div></div>
     <p class="sub" id="asub"></p>
+    <div class="akey" id="akey"></div>
     <div class="scroll"><table id="areas"></table></div>
   </section>
 
@@ -227,7 +234,7 @@ ul.plain li{margin:4px 0}
       <li><b>Council totals:</b> Victoria in Future 2023 growth from mid-2025, added to the actual 2025 population (VIF was within 0.6% of the 2025 total, but slightly short on growth).</li>
       <li><b>Where growth goes:</b> new homes in the Urban Development Program (major redevelopment projects and greenfield land, weighted by how likely each is to be built by then), capped at each council's projected new dwellings. The remaining small infill follows where addresses were created in the last five years. Tested on past years: 2.7–6% error over 4–5 years, 17% over 14 years, much higher in small and fast-growing areas.</li>
       <li><b>Today's flood areas:</b> the planning-scheme flood overlays (LSIO, FO, SBO) plus the present-day coastal inundation extent. Existing residents are counted by where address points fall; new residents by where homes built since 2016 fall in the same area.</li>
-      <li><b>Sea-level rise:</b> the Victorian Coastal Inundation Dataset's +0.20, +0.47 and +0.82 m extents (2040, 2070, 2100). It is a bathtub model, made for 1:75,000 scale, and not suitable for single properties. Shown here with 2036 population: the population is held at each year's forecast, and the sea level is a what-if.</li>
+      <li><b>Sea-level rise:</b> the Victorian Coastal Inundation Dataset's +0.20, +0.47 and +0.82 m extents (2040, 2070, 2100). It is a bathtub model, made for 1:75,000 scale, and not suitable for single properties. Shown here with 2036 population: the population is held at each year's forecast, and the sea level is a what-if. Each sea level also comes with a 1-in-100-year storm tide on top (<i>Coast</i> switch), from the same dataset.</li>
       <li><b>Ranges:</b> from measured past error at each horizon and for each SA2's size and growth class; council and total ranges from VIF's measured error, growing with the horizon.</li>
     </ul>
   </section>
@@ -235,8 +242,7 @@ ul.plain li{margin:4px 0}
   <section>
     <h2>Not yet included<span class="tag todo">pending</span></h2>
     <ul class="plain">
-      <li>Storm-tide versions of the sea-level layers (a 1-in-100-year storm on top of each sea level).</li>
-      <li>Flood depth: the overlays and coastal extents say where water may reach, not how deep.</li>
+      <li>Flood depth. The overlays and coastal extents say where water may reach, not how deep, so residents of a few centimetres and of two metres count the same. This project has no depth data covering Greater Melbourne.</li>
     </ul>
   </section>
 </main>
@@ -312,14 +318,19 @@ function areas(){
   document.getElementById('ah').textContent=`Residents in flood areas by ${council?'council':M.unit}: ${Y[yi]}, ${S[si].label.toLowerCase()}`;
   const all=src.map(a=>({n:a.name,c:a.coastal,v:a.v[id][yi],b:a.v[S[0].id][0]})).filter(r=>r.v[2]>0||r.b[0]>0).sort((p,q)=>q.v[0]-p.v[0]);
   const rows=council?all:all.slice(0,TOP);
-  document.getElementById('asub').textContent=`${council?'All '+all.length+' councils':'The '+Math.min(TOP,all.length)+' of '+all.length+' '+M.unit+'s with the most'}. Dot: central estimate. Bar: likely range. Tick: ${M.base} ${M.sample?'Census count':'estimate'}. ${council?'':'Small and fast-growing areas carry wider ranges (measured in the back-test).'}`;
-  const mx=Math.max(...rows.map(r=>r.v[2]))*1.04,X=v=>100*v/mx;
-  const ink=css('--ink'),acc=css(COL[Math.max(si,2)]);
-  document.getElementById('areas').innerHTML='<thead><tr><th>'+(council?'Council':M.unit)+'</th><th>'+M.base+'</th><th>'+Y[yi]+'</th><th>Likely range</th><th>Change</th><th></th></tr></thead><tbody>'+
-    rows.map(r=>`<tr><td>${r.n}${r.c?' <span style="color:var(--muted);font-size:11.5px">coastal</span>':''}</td><td>${fmt(r.b[0])}</td><td><b>${fmt(r.v[0])}</b></td><td>${yi||si?fmt(r.v[1])+' – '+fmt(r.v[2]):'—'}</td><td>${yi||si?sgn(r.v[0]-r.b[0]):'—'}</td>`+
-      `<td class="bar"><svg viewBox="0 0 100 18" preserveAspectRatio="none"><rect x="${X(r.v[1])}" y="6" width="${Math.max(X(r.v[2])-X(r.v[1]),.4)}" height="6" rx="2" fill="${acc}" opacity=".35"/>`+
-      `<line x1="${X(r.b[0])}" x2="${X(r.b[0])}" y1="2" y2="16" stroke="${ink}" stroke-width="1" vector-effect="non-scaling-stroke"/>`+
-      `<rect x="${X(r.v[0])-.6}" y="4" width="1.2" height="10" rx=".6" fill="${acc}"/></svg></td></tr>`).join('')+'</tbody>';
+  document.getElementById('asub').textContent=`${council?'All '+all.length+' councils':'The '+Math.min(TOP,all.length)+' of '+all.length+' '+M.unit+'s with the most'}, largest first. ${council?'':'Small and fast-growing areas carry wider ranges (measured in the back-test).'}`;
+  const mx=Math.max(...rows.map(r=>Math.max(r.v[2],r.b[0])))*1.02,X=v=>100*v/mx,acc=css(COL[Math.max(si,2)]),grey=css('--rule'),ink=css('--ink'),ch=yi||si;
+  document.getElementById('akey').innerHTML=`<span><i style="background:${grey}"></i>${M.base}, today's flood areas</span>`+
+    (ch?`<span><i style="background:${acc}"></i>added by ${Y[yi]}${si?' (growth and '+S[si].label.toLowerCase()+')':''}</span><span><i class="dec" style="border-color:${acc}"></i>fewer than ${M.base}</span><span><i class="rng" style="border-color:${ink}"></i>likely range</span>`:'');
+  const bar=r=>{const b=r.b[0],v=r.v[0],lo=Math.min(b,v);let h=`<rect x="0" y="4" width="${X(lo)}" height="10" fill="${grey}"/>`;
+    if(v>b)h+=`<rect x="${X(b)}" y="4" width="${X(v)-X(b)}" height="10" fill="${acc}"/>`;
+    else if(v<b)h+=`<rect x="${X(v)}" y="4.5" width="${X(b)-X(v)}" height="9" fill="none" stroke="${acc}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`;
+    if(ch)h+=`<line x1="${X(r.v[1])}" x2="${X(r.v[2])}" y1="9" y2="9" stroke="${ink}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`+
+      [r.v[1],r.v[2]].map(x=>`<line x1="${X(x)}" x2="${X(x)}" y1="5" y2="13" stroke="${ink}" stroke-width="1.2" vector-effect="non-scaling-stroke"/>`).join('');
+    return`<svg viewBox="0 0 100 18" preserveAspectRatio="none">${h}</svg>`;};
+  document.getElementById('areas').innerHTML='<thead><tr><th>'+(council?'Council':M.unit)+'</th><th>'+M.base+'</th><th>'+Y[yi]+'</th><th>Likely range</th><th>Change</th><th class="bar">0 – '+fmt(mx)+'</th></tr></thead><tbody>'+
+    rows.map(r=>`<tr><td>${r.n}${r.c?' <span style="color:var(--muted);font-size:11.5px">coastal</span>':''}</td><td>${fmt(r.b[0])}</td><td><b>${fmt(r.v[0])}</b></td><td>${ch?fmt(r.v[1])+' – '+fmt(r.v[2]):'—'}</td><td>${ch?sgn(r.v[0]-r.b[0]):'—'}</td>`+
+      `<td class="bar">${bar(r)}</td></tr>`).join('')+'</tbody>';
 }
 
 function backtest(){
@@ -372,11 +383,12 @@ function updateMap(){
     smap.setLayoutProperty(u+'-fill','visibility',on&&layerOn('ly-fill')?'visible':'none');smap.setLayoutProperty(u+'-line','visibility',on&&layerOn('ly-line')?'visible':'none');}
   if(e.length>3&&smap.getLayer(SRC()+'-fill'))smap.setPaintProperty(SRC()+'-fill','fill-color',e);
   smap.getSource('coast').setData(G.coast[id]||{type:'FeatureCollection',features:[]});
+  for(const l of['sal-halo','sal-sel'])if(smap.getLayer(l))smap.setFilter(l,['==',['get','c'],sal||'']);
   const where=sal?SUBNAME[sal]:lga?LGANAME[lga]:'';
   document.getElementById('mstate').textContent=`${Y[yi]} · ${S[si].label}${where?' · '+where:''}`;
   document.getElementById('tidesel').value=String(mi);
   document.getElementById('mleg').innerHTML=`<span><b>${v[1]}</b>, ${Y[yi]}:</span>`+(brk.length?[0,...brk].map((b,i)=>`<span><i style="background:${RAMP5[i]}"></i>${i===0?'up to '+v[3](brk[0]):i<brk.length?v[3](b)+' – '+v[3](brk[i]):v[3](b)+'+'}</span>`).join(''):'<span>no values above zero here</span>')+
-    '<span><i style="background:#2a78d6;opacity:.7"></i>river flood overlays</span><span><i style="background:#2a78d6;opacity:.3"></i>overland-flow overlays</span><span><i style="background:#14b8a6;opacity:.8"></i>coastal flood extent</span>';
+    '<span><i style="background:#2f6fd0;opacity:.75"></i>river flood overlays</span><span><i style="background:#0ea5b7;opacity:.45;outline:1px dashed #0ea5b7"></i>overland-flow overlays</span><span><i style="background:#3f9a52;opacity:.8"></i>coastal flood extent</span>';
   document.getElementById('mnote').textContent=(unit==='sa1'?'SA1s are the least certain level: ranges about twice as wide as neighbourhoods. ':'')+(vkey==='a'&&!si&&!mi?'Pick a sea level or the storm tide to see what it adds. ':'')+`${vis.length.toLocaleString('en-AU')} ${unit==='sa1'?'SA1s':unit==='sal'?'suburbs':'neighbourhoods'} shown. Hover${PHONE?' (tap)':''} an area for its numbers.`;
   if(tipRow)showTip(tipRow.r,tipRow.pt);
   compareAB();
@@ -520,21 +532,25 @@ if(G&&window.maplibregl){
       smap.addLayer({id:u+'-fill',type:'fill',source:u,paint:{'fill-color':'rgba(0,0,0,0)','fill-opacity':.72}},before);
       smap.addLayer({id:u+'-line',type:'line',source:u,paint:{'line-color':DARK?'#55636a':'#9aa5a1','line-width':.5}},before);wire(u);}
     const isR=['==',['get','t'],'r'],isS=['!=',['get','t'],'r'];
-    smap.addLayer({id:'sbo-fill',type:'fill',source:'ov',filter:isS,paint:{'fill-color':'#2a78d6','fill-opacity':.18}},before);
-    smap.addLayer({id:'sbo-line',type:'line',source:'ov',filter:isS,paint:{'line-color':'#2a78d6','line-width':1,'line-dasharray':[2,1.5]}},before);
-    smap.addLayer({id:'riv-fill',type:'fill',source:'ov',filter:isR,paint:{'fill-color':'#2a78d6','fill-opacity':.42}},before);
-    smap.addLayer({id:'riv-line',type:'line',source:'ov',filter:isR,paint:{'line-color':'#1c5cab','line-width':.8}},before);
-    smap.addLayer({id:'coast-fill',type:'fill',source:'coast',paint:{'fill-color':'#14b8a6','fill-opacity':.55}},before);
+    smap.addLayer({id:'sbo-fill',type:'fill',source:'ov',filter:isS,paint:{'fill-color':'#0ea5b7','fill-opacity':.22}},before);
+    smap.addLayer({id:'sbo-line',type:'line',source:'ov',filter:isS,paint:{'line-color':'#0ea5b7','line-width':1,'line-dasharray':[2,1.5]}},before);
+    smap.addLayer({id:'riv-fill',type:'fill',source:'ov',filter:isR,paint:{'fill-color':'#2f6fd0','fill-opacity':.42}},before);
+    smap.addLayer({id:'riv-line',type:'line',source:'ov',filter:isR,paint:{'line-color':'#1d4f9e','line-width':.8}},before);
+    smap.addLayer({id:'coast-fill',type:'fill',source:'coast',paint:{'fill-color':'#3f9a52','fill-opacity':.5}},before);
+    if(smap.getSource('sal')){const ink=getComputedStyle(document.body).getPropertyValue('--ink').trim()||'#1a2420';
+      smap.addLayer({id:'sal-halo',type:'line',source:'sal',filter:['==',['get','c'],''],paint:{'line-color':DARK?'#0F1716':'#ffffff','line-width':6,'line-opacity':.85}});
+      smap.addLayer({id:'sal-sel',type:'line',source:'sal',filter:['==',['get','c'],''],paint:{'line-color':ink,'line-width':2.6}});}
     smap.addLayer({id:'rings',type:'line',source:'rings',paint:{'line-color':['get','col'],'line-width':2.4}});
     smap.on('click',e=>{
       if(Date.now()-lastDrag<300)return;
-      if(window.SA1DATA)placeAt(e.lngLat);
+      placeAt(e.lngLat);
       if(PHONE){const f=smap.queryRenderedFeatures(e.point,{layers:[SRC()+'-fill']})[0];const r=f&&rowAt(f);if(r)showTip(r,e.point);else hideTip();}
     });
     smap.on('movestart',()=>{if(PHONE)hideTip();});
     updateMap();
     // A/B needs the SA1 file: load it now, then place the main map's two example areas
-    loadSA1(()=>{addSA1();updateMap();if(!areasAB.length){[{id:'a',lon:144.8635,lat:-37.7535},{id:'b',lon:144.8935,lat:-37.7960}].forEach(a=>{areasAB.push(a);addPin(a);});}drawRings();compareAB();});
+    [{id:'a',lon:144.8635,lat:-37.7535},{id:'b',lon:144.8935,lat:-37.7960}].forEach(a=>{areasAB.push(a);addPin(a);});drawRings();
+    loadSA1(()=>{addSA1();updateMap();compareAB();});
   });
 }
 
