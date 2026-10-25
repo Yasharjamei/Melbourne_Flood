@@ -117,7 +117,8 @@ ul.plain li{margin:4px 0}
   #abpanel th:first-child,#abpanel td:first-child{width:40%}.mctl select,.mctl input{min-width:0;width:100%;font-size:16px}
   #mstate{font-size:12.5px;top:8px;left:8px;padding:4px 8px;max-width:calc(100% - 120px)}
   #laybtn{display:block}#mlayers{top:8px;right:8px;max-width:200px}#mlayers.closed .lb{display:none}
-  #mhint{display:none}#mini{bottom:58px;left:8px}
+  #mhint{display:none}#mini{bottom:auto;top:46px;left:8px}#mstate{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #abpanel th,#abpanel td{white-space:normal;font-size:12px}#abpanel th:first-child,#abpanel td:first-child{width:36%}
   main{padding:16px max(12px,env(safe-area-inset-left)) calc(40px + env(safe-area-inset-bottom))}
   section{padding:14px 12px;border-radius:10px}
   h1{font-size:21px}
@@ -534,8 +535,8 @@ if(G&&window.maplibregl){
     const isR=['==',['get','t'],'r'],isS=['!=',['get','t'],'r'];
     smap.addLayer({id:'sbo-fill',type:'fill',source:'ov',filter:isS,paint:{'fill-color':'#0ea5b7','fill-opacity':.22}},before);
     smap.addLayer({id:'sbo-line',type:'line',source:'ov',filter:isS,paint:{'line-color':'#0ea5b7','line-width':1,'line-dasharray':[2,1.5]}},before);
-    smap.addLayer({id:'riv-fill',type:'fill',source:'ov',filter:isR,paint:{'fill-color':'#2f6fd0','fill-opacity':.42}},before);
-    smap.addLayer({id:'riv-line',type:'line',source:'ov',filter:isR,paint:{'line-color':'#1d4f9e','line-width':.8}},before);
+    smap.addLayer({id:'riv-fill',type:'fill',source:'ov',filter:isR,paint:{'fill-color':'#2f6fd0','fill-opacity':.28}},before);
+    smap.addLayer({id:'riv-line',type:'line',source:'ov',filter:isR,paint:{'line-color':'#1d4f9e','line-width':1.1}},before);
     smap.addLayer({id:'coast-fill',type:'fill',source:'coast',paint:{'fill-color':'#3f9a52','fill-opacity':.5}},before);
     if(smap.getSource('sal')){const ink=getComputedStyle(document.body).getPropertyValue('--ink').trim()||'#1a2420';
       smap.addLayer({id:'sal-halo',type:'line',source:'sal',filter:['==',['get','c'],''],paint:{'line-color':DARK?'#0F1716':'#ffffff','line-width':6,'line-opacity':.85}});
