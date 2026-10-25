@@ -5,6 +5,11 @@ name: Forecast back-test
 # report. Reuses the main build's raw-data cache (mesh blocks, 2021 counts) without changing it.
 on:
   workflow_dispatch:
+    inputs:
+      video:
+        description: "Record the 3D column video (about 23 minutes)"
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -69,12 +74,17 @@ jobs:
           set -o pipefail
           python pipeline/forecast/forecast.py | tee forecast.txt
           python pipeline/forecast/preview.py
+      - name: Browser
+        run: pip install playwright pillow imageio-ffmpeg && python -m playwright install --with-deps chromium
+      - name: Check the scenarios page in desktop and phone browsers (screenshots in the log)
+        continue-on-error: true      # reports only
+        timeout-minutes: 15
+        run: python -u .github/scripts/check_scenarios.py
       - name: 3D column animation for sharing (shots/columns.mp4, .gif)
+        if: ${{ inputs.video }}
         continue-on-error: true      # a recording problem never hides the forecast results
         timeout-minutes: 25
-        run: |
-          pip install playwright pillow imageio-ffmpeg && python -m playwright install --with-deps chromium
-          python -u .github/scripts/record_columns.py
+        run: python -u .github/scripts/record_columns.py
       - run: |
           echo '```' >> "$GITHUB_STEP_SUMMARY"; cat backtest.txt ensemble.txt forecast.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4

@@ -56,9 +56,11 @@ td.bar{width:38%;padding:4px 10px}
 td.bar svg{display:block;width:100%;height:18px}
 tr.chosen td{font-weight:600}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-#mapwrap{position:relative;--a:#4A3AA7;--b:#EB6834}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) #mapwrap{--a:#9085E9;--b:#D95926}}
-:root[data-theme="dark"] #mapwrap{--a:#9085E9;--b:#D95926}
+#mapgrid{--a:#4A3AA7;--b:#EB6834}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) #mapgrid{--a:#9085E9;--b:#D95926}}
+:root[data-theme="dark"] #mapgrid{--a:#9085E9;--b:#D95926}
+@media (min-width:1000px){#mapgrid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px;align-items:start}}
+#mapwrap{position:relative}
 #smap{height:600px;border-radius:10px;overflow:hidden;border:1px solid var(--rule)}
 .mcard{position:absolute;z-index:3;background:var(--panel);border:1px solid var(--rule);border-radius:10px;box-shadow:0 1px 2px rgba(20,30,30,.08),0 4px 14px rgba(20,30,30,.10);font-size:12.5px}
 #mstate{top:10px;left:12px;font-weight:700;font-size:15px;padding:5px 10px;pointer-events:none;max-width:calc(100% - 260px)}
@@ -67,6 +69,7 @@ tr.chosen td{font-weight:600}
 #mlayers hr{border:0;border-top:1px solid var(--rule);margin:4px 0;width:100%}
 #mlayers button{font:inherit;font-size:12px;border:1px solid var(--rule);background:transparent;color:var(--ink);border-radius:999px;padding:4px 10px;cursor:pointer;align-self:flex-start}
 #laybtn{display:none}
+#radv{white-space:nowrap}
 #mhint{top:52px;left:12px;padding:8px 12px;max-width:300px;pointer-events:none}
 #mini{bottom:30px;left:12px;padding:6px 10px;font-size:13px;display:flex;gap:12px;pointer-events:none}
 #mini .a b,.pin.a{color:var(--a)}#mini .b b{color:var(--b)}
@@ -78,8 +81,16 @@ tr.chosen td{font-weight:600}
 .mctl select,.mctl input{font:inherit;font-size:14px;color:var(--ink);background:var(--panel);border:1px solid var(--rule);border-radius:8px;padding:6px 8px;min-width:170px}
 .mleg{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;font-size:12px;color:var(--muted);margin-top:8px}
 .mleg i{display:inline-block;width:14px;height:10px;border-radius:2px;vertical-align:middle;margin-right:4px}
-#abpanel{margin-top:14px}
-#abpanel table{min-width:520px}
+#abpanel{margin-top:14px;font-size:13px}
+@media (min-width:1000px){#abpanel{margin-top:0;max-height:640px;overflow:auto}}
+#abpanel h3{margin:0 0 8px;font-size:16px}
+#abpanel .who{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+#abpanel .who>div{border:1px solid var(--rule);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:1px}
+#abpanel .who>div.a{border-top:4px solid var(--a)}#abpanel .who>div.b{border-top:4px solid var(--b)}
+#abpanel .who span{font-size:11.5px;color:var(--muted)}#abpanel .who strong{font-size:22px;line-height:1.2}
+#abpanel table{min-width:0;font-size:12.5px}#abpanel th,#abpanel td{padding:6px 5px}
+#abpanel th:first-child,#abpanel td:first-child{white-space:normal}
+#abpanel td small{color:var(--muted)}
 #abpanel th.a,#abpanel th.b{color:var(--ink)}
 #abpanel th.a::after,#abpanel th.b::after{content:"";display:block;height:3px;border-radius:2px;margin-top:3px}
 #abpanel th.a::after{background:var(--a)}#abpanel th.b::after{background:var(--b)}
@@ -97,7 +108,7 @@ ul.plain li{margin:4px 0}
   /* phones: layers fold behind a button, help and comparison sit under the map */
   .mctl{gap:8px}.mctl label{flex:1 1 45%}.mctl label.lvl{flex-basis:100%}
   .mctl .seg{display:flex;flex-wrap:nowrap;border-radius:10px}.mctl .seg button{flex:1;padding:7px 6px;font-size:13px;line-height:1.2}
-  #abpanel table{min-width:0;font-size:12.5px}#abpanel th,#abpanel td{padding:7px 6px}#abpanel th:first-child,#abpanel td:first-child{width:44%;white-space:normal}#abpanel .scroll::before{display:none}.mctl select,.mctl input{min-width:0;width:100%;font-size:16px}
+  #abpanel th:first-child,#abpanel td:first-child{width:40%}.mctl select,.mctl input{min-width:0;width:100%;font-size:16px}
   #mstate{font-size:12.5px;top:8px;left:8px;padding:4px 8px;max-width:calc(100% - 120px)}
   #laybtn{display:block}#mlayers{top:8px;right:8px;max-width:200px}#mlayers.closed .lb{display:none}
   #mhint{display:none}#mini{bottom:28px;left:8px}
@@ -148,11 +159,12 @@ ul.plain li{margin:4px 0}
       <label>Find a suburb<input id="find" list="sallist" placeholder="Type a suburb" autocomplete="off"><datalist id="sallist"></datalist></label>
     </div>
     <p class="sub" id="mnote" style="margin:4px 0 8px"></p>
+    <div id="mapgrid"><div class="mapcol">
     <div id="mapwrap">
       <div id="smap"></div>
       <div class="mcard" id="mstate"></div>
-      <div class="mcard" id="mhint" hidden>Click the map to place area A, then area B. Drag either pin to move it.</div>
-      <div class="mcard" id="mini" hidden><span class="a">A <b id="miniA">–</b></span><span class="b">B <b id="miniB">–</b></span></div>
+      <div class="mcard" id="mhint">Two example areas are placed. Drag the pins, or click to move the nearer one.</div>
+      <div class="mcard" id="mini"><span class="a">A <b id="miniA">–</b></span><span class="b">B <b id="miniB">–</b></span></div>
       <div class="mcard" id="mlayers">
         <button id="laybtn" type="button" aria-expanded="false">Layers ▾</button>
         <label class="lb"><input type="checkbox" id="ly-fill" checked> Area colours</label>
@@ -162,22 +174,27 @@ ul.plain li{margin:4px 0}
         <label class="lb"><input type="checkbox" id="ly-coast" checked> Coastal flood extent</label>
         <label class="lb"><input type="checkbox" id="ly-base" checked> Basemap</label>
         <hr class="lb">
-        <label class="lb"><input type="checkbox" id="abon"> Compare areas A and B</label>
-        <label class="lb" id="radwrap" hidden>Radius <input type="range" id="rad" min="300" max="2000" step="50" value="800"> <span id="radv">800 m</span></label>
-        <button class="lb" id="abclear" type="button" hidden>Clear areas</button>
+        <label class="lb" id="radwrap">Radius <input type="range" id="rad" min="300" max="2000" step="50" value="800"> <span id="radv">800 m</span></label>
+        <button class="lb" id="abclear" type="button">Clear areas</button>
       </div>
       <div class="mtip" id="mtip"></div>
     </div>
     <div class="mleg" id="mleg"></div>
-    <div id="abpanel" hidden>
-      <h2 style="margin-top:6px">Compare areas A and B</h2>
+    </div>
+    <aside id="abpanel">
+      <h3>Compare areas A and B</h3>
+      <div class="who">
+        <div class="a"><span>Area A</span><strong id="popA">–</strong><span id="subA">Click the map</span></div>
+        <div class="b"><span>Area B</span><strong id="popB">–</strong><span id="subB">then click again</span></div>
+      </div>
       <p class="sub" id="absub"></p>
-      <div class="scroll"><table id="abtab"></table></div>
+      <table id="abtab"></table>
+    </aside>
     </div>
     <details id="mhelp"><summary>What you're seeing</summary>
       <p><b>Coloured areas</b> are neighbourhoods (SA2s), suburbs or SA1s (about 400 people), as chosen in <i>Area level</i>, coloured by the measure in <i>Show on map</i> for the year, sea level and coast (calm or storm tide) chosen above, in five classes of equal count within the councils or suburb selected.</p>
       <p><b class="kb">Blue</b>: planning-scheme flood overlays: river flooding (LSIO, FO; solid) and overland flow (SBO; lighter). <b class="kt">Teal</b>: land under the sea at the chosen sea level, calm or with a 1-in-100-year storm tide (Victorian Coastal Inundation Dataset, a "bathtub" model). Switch any of them off under <i>Layers</i>.</p>
-      <p><b>Hover</b> (or tap on a phone) for an area's numbers. <b>Compare areas A and B</b> places two circles, as on the main map; each counts the SA1s whose centre falls inside it.</p>
+      <p><b>Hover</b> (or tap on a phone) for an area's numbers. <b>Areas A and B</b> work as on the main map: click to place or move the nearer pin, drag a pin, set the radius under <i>Layers</i>. A circle counts the mesh blocks whose centre falls inside it, each adding its share of its SA1's residents; the SA1s a circle touches are shaded in its colour, darker for a larger share counted.</p>
       <p class="mute">SA1 figures are the least certain: in the back-test their error was about twice that of neighbourhoods. Living in a flood-prone area is exposure, not damage: newer buildings must sit above the flood level, and most apartment residents live above it.</p>
     </details>
   </section>
@@ -316,7 +333,7 @@ function backtest(){
 const G=D.geo,RAMP5=['#fde0c5','#f9b384','#ef7b4b','#d4472c','#9e1f1a'];
 const BASEID=()=>S[0].id,PHONE=innerWidth<700;
 let smap=null,unit='sa2',vkey='n',lga='',sal='',boxes={},baseLayers=[],segU2=()=>{},tipRow=null;
-let R=800,abOn=false,lastDrag=0;const areasAB=[];
+let R=800,lastDrag=0,sa1Failed=false;const areasAB=[];
 // --- rows of the current area level, all with the same accessors
 function r2(a){return{code:a.code,name:a.name,lga:a.lga||'',sal:'',m:(k,y)=>a.v[k][y][0],rng:(k,y)=>[a.v[k][y][1],a.v[k][y][2]],pop:y=>a.pop?a.pop[y][0]:0};}
 function rs(x){const Q=D.rel.suburb;return{code:x.code,name:x.name,lga:x.lga,sal:x.code,m:(k,y)=>x.v[k][y],rng:(k,y)=>[x.v[k][y]*(1-Q[y]),x.v[k][y]*(1+Q[y])],pop:y=>x.pop[y]};}
@@ -383,60 +400,79 @@ function rowAt(f){if(unit==='sa1')return r1(f.properties.i);const c=f.properties
 function loadSA1(done){
   if(window.SA1DATA){done();return;}
   document.getElementById('mnote').textContent='Loading SA1s…';
-  const sc=document.createElement('script');sc.src='sa1.js';sc.onload=()=>{CACHE.sa1=null;done();};sc.onerror=()=>{document.getElementById('mnote').textContent='SA1 data could not be loaded.';};document.head.appendChild(sc);
+  if(loadSA1.q){loadSA1.q.push(done);return;}loadSA1.q=[done];
+  const sc=document.createElement('script');sc.src='sa1.js';
+  sc.onload=()=>{CACHE.sa1=null;const q=loadSA1.q;loadSA1.q=null;q.forEach(f=>f());};
+  sc.onerror=()=>{loadSA1.q=null;sa1Failed=true;const m='SA1 data (sa1.js, next to this page) could not be loaded, so the SA1 level and areas A and B are unavailable. If you opened the page from a zip file, extract the whole folder first.';
+    document.getElementById('mnote').textContent=m;document.getElementById('absub').textContent=m;if(unit==='sa1')document.getElementById('mstate').textContent='SA1 data not loaded';};
+  document.head.appendChild(sc);
 }
 let SA1XY=null;
 function addSA1(){
   if(smap.getSource('sa1'))return;const A=window.SA1DATA;
-  smap.addSource('sa1',{type:'geojson',data:A.geo});boxes.sa1=bboxOf(A.geo);
-  smap.addLayer({id:'sa1-fill',type:'fill',source:'sa1',paint:{'fill-color':'rgba(0,0,0,0)','fill-opacity':.75}},'sbo-fill');
-  smap.addLayer({id:'sa1-line',type:'line',source:'sa1',minzoom:10,paint:{'line-color':DARK?'#55636a':'#9aa5a1','line-width':.3}},'sbo-fill');
+  smap.addSource('sa1',{type:'geojson',data:A.geo,promoteId:'i'});boxes.sa1=bboxOf(A.geo);
+  smap.addLayer({id:'sa1-fill',type:'fill',source:'sa1',layout:{visibility:'none'},paint:{'fill-color':'rgba(0,0,0,0)','fill-opacity':.75}},'sbo-fill');
+  smap.addLayer({id:'sa1-line',type:'line',source:'sa1',minzoom:9,layout:{visibility:'none'},paint:{'line-color':DARK?'#55636a':'#9aa5a1','line-width':['interpolate',['linear'],['zoom'],9,.15,12,.5]}},'sbo-fill');
+  // SA1s a circle touches, shaded in its colour (darker = larger share of the SA1 counted), as on the main map
+  const cs=getComputedStyle(document.getElementById('mapgrid'));
+  for(const k of['a','b'])smap.addLayer({id:'tint-'+k,type:'fill',source:'sa1',paint:{'fill-color':cs.getPropertyValue('--'+k).trim(),'fill-opacity':['coalesce',['feature-state','t'+k],0]}},'sbo-fill');
   wire('sa1');
 }
-function sa1xy(){ // SA1 centres (mean vertex of the largest ring) for the A/B circles
-  if(SA1XY)return SA1XY;const A=window.SA1DATA;SA1XY=new Array(A.codes.length);
-  const rings=g=>g.type==='Polygon'?[g.coordinates[0]]:g.type==='MultiPolygon'?g.coordinates.map(p=>p[0]):[];
-  for(const f of A.geo.features){let best=null;for(const r of rings(f.geometry))if(!best||r.length>best.length)best=r;
-    if(best){let x=0,y=0;best.forEach(p=>{x+=p[0];y+=p[1];});SA1XY[f.properties.i]=[x/best.length,y/best.length];}}
-  return SA1XY;}
 function wire(u){
-  smap.on('mousemove',u+'-fill',e=>{if(PHONE)return;smap.getCanvas().style.cursor=abOn?'crosshair':'pointer';const r=rowAt(e.features[0]);if(r)showTip(r,e.point);});
+  smap.on('mousemove',u+'-fill',e=>{if(PHONE)return;smap.getCanvas().style.cursor='pointer';const r=rowAt(e.features[0]);if(r)showTip(r,e.point);});
   smap.on('mouseleave',u+'-fill',()=>{smap.getCanvas().style.cursor='';hideTip();});
 }
-// --- A/B circles: same interaction as the main map (click to place, drag to move, shared radius)
+// --- A/B circles: as on the main map. Click to place A, then B, then to move the nearer one; drag a pin;
+// shared radius. A circle counts the mesh blocks whose centre falls inside it, each adding its share of its
+// SA1's residents (per year) and of its SA1's residents in each flood area (final-year shares).
 function ring(a){const pts=[];for(let k=0;k<=64;k++){const t=k/64*2*Math.PI;pts.push([a.lon+R*Math.cos(t)/(111320*Math.cos(a.lat*Math.PI/180)),a.lat+R*Math.sin(t)/111320]);}return pts;}
-function drawRings(){if(!smap||!smap.getSource('rings'))return;const cs=getComputedStyle(document.getElementById('mapwrap'));
+function drawRings(){if(!smap||!smap.getSource('rings'))return;const cs=getComputedStyle(document.getElementById('mapgrid'));
   smap.getSource('rings').setData({type:'FeatureCollection',features:areasAB.map(a=>({type:'Feature',properties:{col:cs.getPropertyValue('--'+a.id).trim()},geometry:{type:'Polygon',coordinates:[ring(a)]}}))});}
-function addPin(a){const el=document.createElement('div');el.className='pin '+a.id;el.textContent=a.id.toUpperCase();el.addEventListener('click',e=>e.stopPropagation());
+function addPin(a){const el=document.createElement('div');el.className='pin '+a.id;el.textContent=a.id.toUpperCase();el.setAttribute('role','button');el.setAttribute('aria-label','Area '+a.id.toUpperCase()+', drag to move');
+  el.addEventListener('click',e=>e.stopPropagation());
   a.marker=new maplibregl.Marker({element:el,draggable:true}).setLngLat([a.lon,a.lat]).addTo(smap);
-  a.marker.on('drag',()=>{const p=a.marker.getLngLat();a.lon=p.lng;a.lat=p.lat;drawRings();compareAB();});a.marker.on('dragend',()=>{lastDrag=Date.now();});}
-function inCircle(a){const A=window.SA1DATA,xy=sa1xy(),k=Math.cos(a.lat*Math.PI/180),out=[];
-  for(let i=0;i<A.codes.length;i++){const p=xy[i];if(!p)continue;const dx=(p[0]-a.lon)*111320*k,dy=(p[1]-a.lat)*111320;if(dx*dx+dy*dy<=R*R)out.push(i);}return out;}
-function agg(idx){const A=window.SA1DATA,id=S[si].id,b0=S0[0].id,base=BASEID(),sum=f=>idx.reduce((t,i)=>t+f(i),0);
-  const n=sum(i=>A.v[id][i][yi]),pp=sum(i=>A.pop[i][yi]);
-  const subs={};idx.forEach(i=>{const s_=SUBNAME[A.sal[i]];if(s_)subs[s_]=(subs[s_]||0)+A.pop[i][yi];});
-  return{n,pp,share:n/Math.max(pp,1),chg:n-sum(i=>A.v[base][i][0]),add:n-sum(i=>A.v[b0][i][yi]),pop0:sum(i=>A.pop[i][0]),k:idx.length,
-    where:Object.entries(subs).sort((p,q)=>q[1]-p[1]).slice(0,2).map(e=>e[0]).join(', ')};}
+  a.marker.on('drag',()=>{const p=a.marker.getLngLat();a.lon=p.lng;a.lat=p.lat;drawRings();schedule();});a.marker.on('dragend',()=>{lastDrag=Date.now();});}
+let raf=0;function schedule(){if(!raf)raf=requestAnimationFrame(()=>{raf=0;compareAB();});}
+const inSel=i=>{const A=window.SA1DATA;return(!lga||A.lga[i]===lga)&&(!sal||A.sal[i]===sal);};
+// weights per SA1: wp = share of residents counted (year yi and base year), wf = share of flood residents (per scenario)
+function weights(a){const A=window.SA1DATA,MB=A.mb,n=A.codes.length,COS=Math.cos(a.lat*Math.PI/180),r2=R*R,ks=[S[si].id,BASEID(),S0[0].id];
+  const wp=new Float64Array(n),wp0=new Float64Array(n),wf=ks.map(()=>new Float64Array(n)),F=ks.map(k=>MB.f[k]),W=MB.w[yi],W0=MB.w[0];
+  for(let j=0;j<MB.s.length;j++){const dx=(MB.x[j]/1e4-a.lon)*111320*COS,dy=(MB.y[j]/1e4-a.lat)*111320;if(dx*dx+dy*dy>r2)continue;
+    const i=MB.s[j];if((lga||sal)&&!inSel(i))continue;wp[i]+=W[j]/1000;wp0[i]+=W0[j]/1000;for(let q=0;q<3;q++)wf[q][i]+=F[q][j]/1000;}
+  return{wp,wp0,wf};}
+function tally(wp,wp0,wf){const A=window.SA1DATA,ks=[S[si].id,BASEID(),S0[0].id];let n=0,b=0,c=0,pp=0,p0=0,k=0;const subs={};
+  for(let i=0;i<wp.length;i++){if(!(wp[i]>0||wf[0][i]>0||wp0[i]>0))continue;k++;
+    const p=A.pop[i][yi]*wp[i],q0=A.pop[i][0]*wp0[i];pp+=p;p0+=q0;   // flood counts capped at the residents counted (flood shares are final-year)
+    n+=Math.min(A.v[ks[0]][i][yi]*wf[0][i],p);b+=Math.min(A.v[ks[1]][i][0]*wf[1][i],q0);c+=Math.min(A.v[ks[2]][i][yi]*wf[2][i],p);
+    const s_=SUBNAME[A.sal[i]];if(s_)subs[s_]=(subs[s_]||0)+p;}
+  return{n,pp,pop0:p0,k,share:n/Math.max(pp,1),chg:n-b,add:n-c,where:Object.entries(subs).sort((p,q)=>q[1]-p[1]).slice(0,2).map(e=>e[0]).join(', ')};}
+function allSel(){const A=window.SA1DATA,n=A.codes.length,one=new Float64Array(n);for(let i=0;i<n;i++)if(inSel(i))one[i]=1;return tally(one,one,[one,one,one]);}
+let tint={a:null,b:null};
+function paintTint(k,w){const prev=tint[k];
+  if(prev)for(let i=0;i<prev.length;i++)if(prev[i]>0&&!(w&&w[i]>0))smap.setFeatureState({source:'sa1',id:i},{['t'+k]:0});
+  if(w)for(let i=0;i<w.length;i++)if(w[i]>0)smap.setFeatureState({source:'sa1',id:i},{['t'+k]:0.08+0.45*Math.min(1,w[i])});
+  tint[k]=w;}
 function compareAB(){
-  const panel=document.getElementById('abpanel'),mini=document.getElementById('mini');
-  if(!abOn||!window.SA1DATA||!areasAB.length){panel.hidden=true;mini.hidden=true;return;}
-  const res=areasAB.map(a=>[a.id,agg(inCircle(a))]),Q=D.rel.suburb[yi];
-  const get=id=>{const r=res.find(x=>x[0]===id);return r?r[1]:null;},A_=get('a'),B_=get('b');
-  mini.hidden=false;document.getElementById('miniA').textContent=A_?fmt(A_.n):'–';document.getElementById('miniB').textContent=B_?fmt(B_.n):'–';
-  panel.hidden=false;
-  document.getElementById('absub').textContent=`${Y[yi]} · ${S[si].label}. Radius ${R} m. Each circle counts the SA1s whose centre falls inside it, so it is coarser than the main map's circles (which split SA1s by mesh block). Ranges as for suburbs: ±${Math.round(Q*100)}%.`;
-  const rowsAB=[['Mostly in',x=>x.where||'–'],['SA1s counted',x=>x.k],['Residents in flood areas',x=>`<b>${fmt(x.n)}</b>`+(yi||si?`<br><small>${fmt(x.n*(1-Q))} – ${fmt(x.n*(1+Q))}</small>`:'')],
+  if(!window.SA1DATA||!window.SA1DATA.mb||!smap||!smap.getSource('sa1'))return;
+  const res={};for(const a of areasAB){const w=weights(a);res[a.id]={...tally(w.wp,w.wp0,w.wf),w:w.wp};}
+  for(const k of['a','b'])paintTint(k,res[k]?res[k].w:null);
+  const A_=res.a,B_=res.b,ALL=allSel(),Q=D.rel.suburb[yi],where=sal?SUBNAME[sal]:lga?LGANAME[lga]:'all 31 councils';
+  const out=x=>x&&x.pp<0.5?'outside '+(lga||sal?where:'the study area'):null;
+  for(const [k,x,hint] of[['A',A_,'Click the map'],['B',B_,A_?'Click to place':'then click again']]){
+    document.getElementById('pop'+k).textContent=x?fmt(x.n):'–';document.getElementById('mini'+k).textContent=x?fmt(x.n):'–';
+    document.getElementById('sub'+k).textContent=out(x)||(x?'residents in flood areas'+(x.where?', '+x.where:''):hint);}
+  document.getElementById('absub').textContent=`${Y[yi]} · ${S[si].label}. Radius ${R} m.${lga||sal?' Counting residents of '+where+' only.':''} Ranges as for suburbs: ±${Math.round(Q*100)}%.`;
+  const rowsAB=[['Residents in flood areas',x=>`<b>${fmt(x.n)}</b>`+(yi||si?`<br><small>${fmt(x.n*(1-Q))} – ${fmt(x.n*(1+Q))}</small>`:'')],
     ['Share of residents in flood areas',x=>pct(x.share)],[`Change in residents in flood areas since ${M.base}`,x=>sgn(x.chg)],['Added by the chosen sea level or storm tide',x=>sgn(x.add)],
-    ['All residents',x=>fmt(x.pp)],[`Population growth since ${M.base}`,x=>sgn(x.pp-x.pop0)]];
-  document.getElementById('abtab').innerHTML='<thead><tr><th></th><th class="a">Area A</th><th class="b">Area B</th></tr></thead><tbody>'+
-    rowsAB.map(([l,f])=>`<tr><td>${l}</td><td>${A_?f(A_):'click the map'}</td><td>${B_?f(B_):'click the map'}</td></tr>`).join('')+'</tbody>';
+    ['All residents',x=>fmt(x.pp)],[`Population growth since ${M.base}`,x=>sgn(x.pp-x.pop0)],['SA1s counted (in part or whole)',x=>fmt(x.k)]];
+  document.getElementById('abtab').innerHTML=`<thead><tr><th></th><th class="a">A</th><th class="b">B</th><th>${where.replace(/^all /,'All ')}</th></tr></thead><tbody>`+
+    rowsAB.map(([l,f])=>`<tr><td>${l}</td><td>${A_?f(A_):'–'}</td><td>${B_?f(B_):'–'}</td><td>${f(ALL)}</td></tr>`).join('')+'</tbody>';
 }
-function setAB(on){
-  abOn=on;document.getElementById('radwrap').hidden=!on;document.getElementById('abclear').hidden=!on;
-  document.getElementById('mhint').hidden=!on||areasAB.length===2;
-  if(!on){areasAB.forEach(a=>a.marker.remove());areasAB.length=0;drawRings();compareAB();return;}
-  loadSA1(()=>{addSA1();updateMap();compareAB();});
-}
+function placeAt(ll){let a;
+  if(areasAB.length<2){a={id:areasAB.some(x=>x.id==='a')?'b':'a',lon:ll.lng,lat:ll.lat};areasAB.push(a);addPin(a);}
+  else{a=areasAB.map(x=>({x,d:Math.hypot(x.lon-ll.lng,x.lat-ll.lat)})).sort((p,q)=>p.d-q.d)[0].x;a.lon=ll.lng;a.lat=ll.lat;a.marker.setLngLat([a.lon,a.lat]);}
+  const h=document.getElementById('mhint');h.hidden=areasAB.length===2;if(areasAB.length===1)h.textContent='Now click to place area B.';
+  drawRings();compareAB();}
 function fillSuburbs(){
   const s2=document.getElementById('salsel'),list=(D.suburbs||[]).filter(x=>!lga||x.lga===lga).sort((a,b)=>a.name.localeCompare(b.name));
   s2.innerHTML='<option value="">All suburbs</option>'+list.map(x=>`<option value="${x.code}">${x.name}</option>`).join('');s2.value=sal;
@@ -466,8 +502,7 @@ if(G&&window.maplibregl){
   document.getElementById('ly-sbo').onchange=e=>vis(['sbo-fill','sbo-line'],e.target.checked);
   document.getElementById('ly-coast').onchange=e=>vis(['coast-fill'],e.target.checked);
   document.getElementById('ly-base').onchange=e=>vis(baseLayers,e.target.checked);
-  document.getElementById('abon').onchange=e=>setAB(e.target.checked);
-  document.getElementById('rad').oninput=e=>{R=+e.target.value;document.getElementById('radv').textContent=R+' m';drawRings();compareAB();};
+  document.getElementById('rad').oninput=e=>{R=+e.target.value;document.getElementById('radv').textContent=R+' m';drawRings();schedule();};
   document.getElementById('abclear').onclick=()=>{areasAB.forEach(a=>a.marker.remove());areasAB.length=0;const h=document.getElementById('mhint');h.hidden=false;h.textContent='Click the map to place area A, then area B. Drag either pin to move it.';drawRings();compareAB();};
   const STYLE=DARK?'https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json':'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
   smap=new maplibregl.Map({container:'smap',style:STYLE,center:[145.0,-37.86],zoom:8.6,attributionControl:{compact:true,customAttribution:'ABS, DataVic, DEECA'},dragRotate:false,pitchWithRotate:false,cooperativeGestures:PHONE});
@@ -492,15 +527,14 @@ if(G&&window.maplibregl){
     smap.addLayer({id:'coast-fill',type:'fill',source:'coast',paint:{'fill-color':'#14b8a6','fill-opacity':.55}},before);
     smap.addLayer({id:'rings',type:'line',source:'rings',paint:{'line-color':['get','col'],'line-width':2.4}});
     smap.on('click',e=>{
-      if(abOn){if(Date.now()-lastDrag<300)return;const ll=e.lngLat;let a;
-        if(areasAB.length<2){a={id:areasAB.some(x=>x.id==='a')?'b':'a',lon:ll.lng,lat:ll.lat};areasAB.push(a);addPin(a);}
-        else{a=areasAB.map(x=>({x,d:Math.hypot(x.lon-ll.lng,x.lat-ll.lat)})).sort((p,q)=>p.d-q.d)[0].x;a.lon=ll.lng;a.lat=ll.lat;a.marker.setLngLat([a.lon,a.lat]);}
-        const h=document.getElementById('mhint');h.hidden=areasAB.length===2;if(areasAB.length===1)h.textContent='Now click to place area B.';
-        drawRings();compareAB();return;}
+      if(Date.now()-lastDrag<300)return;
+      if(window.SA1DATA)placeAt(e.lngLat);
       if(PHONE){const f=smap.queryRenderedFeatures(e.point,{layers:[SRC()+'-fill']})[0];const r=f&&rowAt(f);if(r)showTip(r,e.point);else hideTip();}
     });
     smap.on('movestart',()=>{if(PHONE)hideTip();});
     updateMap();
+    // A/B needs the SA1 file: load it now, then place the main map's two example areas
+    loadSA1(()=>{addSA1();updateMap();if(!areasAB.length){[{id:'a',lon:144.8635,lat:-37.7535},{id:'b',lon:144.8935,lat:-37.7960}].forEach(a=>{areasAB.push(a);addPin(a);});}drawRings();compareAB();});
   });
 }
 

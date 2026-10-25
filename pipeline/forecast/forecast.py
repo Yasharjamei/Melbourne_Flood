@@ -127,6 +127,24 @@ def inside(pts, zone):
 SA1_ERR = 1.9     # SA1 placement error / SA2 split error in the 2016->2021 back-tests (11.6% vs 6.0%, §25 and §29)
 
 
+def mb_points(m2, sa1_of, rows, mb_pop, mb_ex):
+    """Mesh-block points for the A/B circles, as on the main map: a circle counts the mesh blocks whose
+    centre falls inside it, each adding its share of its SA1's residents (w, per year) and of its SA1's
+    residents in each flood area (f, per scenario, final-year shares used for every year). Shares are
+    in thousandths; mesh blocks with no residents in any year are left out."""
+    ri = pd.Series(np.arange(len(rows)), index=rows)
+    s = pd.Series(sa1_of).map(ri).values
+    live = ~np.isnan(s) & (np.max(np.vstack(list(mb_pop.values())), axis=0) > 0)
+    pt = gpd.GeoSeries(m2.geometry.values, crs=CRS)[live].representative_point().to_crs(4326)
+    si = s[live].astype(int)
+    def share(v):
+        v = v[live]
+        t = np.bincount(si, weights=v, minlength=len(rows))
+        return np.round(1000 * v / np.where(t[si] > 0, t[si], 1)).astype(int).tolist()
+    return {"x": np.round(pt.x.values * 1e4).astype(int).tolist(), "y": np.round(pt.y.values * 1e4).astype(int).tolist(),
+            "s": si.tolist(), "w": [share(mb_pop[y]) for y in YEARS], "f": {k: share(e) for k, e in mb_ex.items()}}
+
+
 def finer(out, p, mb, pop, exposure, zones, sa2_rel):
     """Suburbs and SA1s for the map's area-level switch. Each piece's forecast is spread over its mesh blocks
     (existing residents by 2021 Census share, growth where addresses were created in the last 5 years), the
@@ -152,10 +170,11 @@ def finer(out, p, mb, pop, exposure, zones, sa2_rel):
     w_old = np.where(p21p > 0, m2["p21"].values / np.where(p21p > 0, p21p, 1), 1 / n_mb[mi])
     w_new = np.where(rcp > 0, m2["recent"].values / np.where(rcp > 0, rcp, 1), w_old)
     sa1_of, P0 = m2["sa1"].values, p["P"].values
-    sa1_pop, sa1_ex = {}, {k: {} for k in ids}
+    sa1_pop, sa1_ex, mb_pop, mb_ex = {}, {k: {} for k in ids}, {}, {}
     for y in YEARS:
         d = (pop[y] - P0)[mi]
         grow = np.where(d > 0, d * w_new, d * w_old)
+        mb_pop[y] = np.maximum(P0[mi] * w_old + grow, 0)
         sa1_pop[y] = pd.Series(P0[mi] * w_old + grow).groupby(sa1_of).sum()
         for k in ids:
             s_old = m2[f"s_{k}"].values
@@ -171,6 +190,7 @@ def finer(out, p, mb, pop, exposure, zones, sa2_rel):
             e = np.where((tot > 0)[mi], e * np.where(tot > 0, E / np.where(tot > 0, tot, 1), 0)[mi],
                          np.where((ptot > 0)[mi], E[mi] * mbpop / np.where(ptot > 0, ptot, 1)[mi], E[mi] / n_mb[mi]))
             sa1_ex[k][y] = pd.Series(e).groupby(sa1_of).sum()
+            mb_ex[k] = e                                        # last year's, for the A/B circle weights
     s1 = pd.Index(sorted(sa1_pop[YEARS[0]].index))
     lga_of = m2.groupby("sa1")["lga"].agg(lambda x: x.value_counts().index[0]).reindex(s1)
     out["rel"] = {"suburb": [round(sa2_rel(y - BASE), 4) for y in YEARS],
@@ -201,7 +221,8 @@ def finer(out, p, mb, pop, exposure, zones, sa2_rel):
           "sal": list(sa1_sal.reindex(rows).fillna("")),
           "pop": [[round(sa1_pop[y].get(c, 0)) for y in YEARS] for c in rows],
           "v": {k: [[round(sa1_ex[k][y].get(c, 0)) for y in YEARS] for c in rows] for k in ids},
-          "geo": to_geojson(list(g1.geometry[has]), [{"i": i} for i in range(len(rows))], tol=12)}
+          "geo": to_geojson(list(g1.geometry[has]), [{"i": i} for i in range(len(rows))], tol=12),
+          "mb": mb_points(m2, sa1_of, rows, mb_pop, mb_ex)}
     txt = json.dumps(d1, separators=(",", ":"))
     open("data/processed/scenarios_sa1.js", "w").write("window.SA1DATA=" + txt + ";")
     print(f"finer levels: {len(subs)} suburbs; {len(rows):,} SA1s ({len(txt) / 1e6:.1f} MB, loaded on demand); "
