@@ -22,7 +22,7 @@ STATE = """() => { const m = __scen.map, A = window.SA1DATA;
     table: rows.slice(0, 8), state: mstate.textContent, note: mnote.textContent,
     sa1Visible: m.getLayer('sa1-fill') ? m.getLayoutProperty('sa1-fill', 'visibility') : 'no layer',
     sa1Drawn: m.getLayer('sa1-fill') ? m.queryRenderedFeatures({layers: ['sa1-fill']}).length : 0,
-    sa1Coloured: Array.isArray(fc) ? fc.filter((v, k) => k > 2 && k % 2 === 0 && typeof v === 'string' && !v.startsWith('rgba(0,0,0,0')).length : 0}; }"""
+    sa1Coloured: Array.isArray(fc) ? fc.filter((v, k) => k > 2 && k % 2 === 1 && k < fc.length - 1 && typeof v === 'string' && !v.startsWith('rgba(0,0,0,0')).length : 0}; }"""
 IDLE = "() => new Promise(r => { __scen.map.once('idle', r); __scen.map.triggerRepaint(); setTimeout(r, 15000); })"
 
 
