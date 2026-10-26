@@ -78,6 +78,9 @@ jobs:
       - name: Checks on the flood count (2016 -> 2021 back-test; ground-level residents)
         continue-on-error: true      # reports only
         run: python -u pipeline/forecast/floodtest.py | tee floodtest.txt
+      - name: Compare with the City of Melbourne's own small-area forecasts
+        continue-on-error: true      # reports only
+        run: python -u pipeline/forecast/com_compare.py | tee com_compare.txt
       - name: Browser
         run: pip install playwright pillow imageio-ffmpeg && python -m playwright install --with-deps chromium
       - name: Check the scenarios page in desktop and phone browsers (screenshots in the log)
@@ -90,7 +93,7 @@ jobs:
         timeout-minutes: 25
         run: python -u .github/scripts/record_columns.py
       - run: |
-          echo '```' >> "$GITHUB_STEP_SUMMARY"; cat backtest.txt ensemble.txt forecast.txt floodtest.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"; cat backtest.txt ensemble.txt forecast.txt floodtest.txt com_compare.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: forecast-backtest
@@ -102,6 +105,8 @@ jobs:
             forecast.txt
             floodtest.txt
             data/processed/forecast_floodtest.json
+            com_compare.txt
+            data/processed/forecast_com.json
             data/processed/scenarios.json
             preview/
             data/processed/scenarios_sa1.js
