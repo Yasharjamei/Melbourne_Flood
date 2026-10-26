@@ -94,6 +94,7 @@ def backtest_flood():
     n_all, i_all = cnt(a)
     n_p16, i_p16 = cnt(n[n["day"] >= C16]); n_p21, i_p21 = cnt(n[n["day"] >= C21])
     n_mid, i_mid = cnt(n[(n["day"] >= C16) & (n["day"] < C21)])
+    n_lag, i_lag = cnt(n[(n["day"] >= C16) & (n["day"] < C21 - np.timedelta64(365, "D"))])   # occupied by Census night, likely
 
     # area share of every mesh block inside the flood areas (used where a mesh block has no addresses, and
     # for the counting-method comparison)
@@ -110,13 +111,19 @@ def backtest_flood():
 
     # prediction per SA2, the forecast's way, SA2 totals known
     g = pd.DataFrame({"sa2": mb["sa2"], "lga": mb["lga"], "p16": mb["p16"], "p21": mb["p21"], "e16": mb["p16"] * s16,
-                      "nm": n_mid, "im": i_mid, "obs": obs, "obs_area": obs_area}).groupby("sa2")
+                      "nm": n_mid, "im": i_mid, "nl": n_lag, "il": i_lag, "obs": obs, "obs_area": obs_area,
+                      "dp": np.clip(mb["p21"].values - mb["p16"].values, 0, None),
+                      "dpz": np.clip(mb["p21"].values - mb["p16"].values, 0, None) * s21}).groupby("sa2")
     S = g.agg(lga=("lga", lambda v: v.value_counts().index[0]), p16=("p16", "sum"), p21=("p21", "sum"), e16=("e16", "sum"),
-              nm=("nm", "sum"), im=("im", "sum"), obs=("obs", "sum"), obs_area=("obs_area", "sum"))
+              nm=("nm", "sum"), im=("im", "sum"), nl=("nl", "sum"), il=("il", "sum"), obs=("obs", "sum"), obs_area=("obs_area", "sum"),
+              dp=("dp", "sum"), dpz=("dpz", "sum"))
     se = np.where(S["p16"] > 0, S["e16"] / S["p16"].where(S["p16"] > 0, 1), 0)
     sn = np.where(S["nm"] >= 20, S["im"] / S["nm"].where(S["nm"] > 0, 1), se)
     d = S["p21"] - S["p16"]
     S["pred"] = S["p16"] * se + np.where(d > 0, d * sn, d * se)
+    snl = np.where(S["nl"] >= 20, S["il"] / S["nl"].where(S["nl"] > 0, 1), se)
+    S["pred_lag"] = S["p16"] * se + np.where(d > 0, d * snl, d * se)
+    S["sn"], S["snl"], S["se"] = sn, snl, se
     S["naive"] = S["p21"] * se                           # growth at the existing share (no new-address information)
     S["held"] = S["e16"]                                  # 2016 count carried forward unchanged
     C = S.groupby("lga")[["obs", "pred", "naive", "held", "obs_area"]].sum()
@@ -157,6 +164,23 @@ def backtest_flood():
         print(f"    {'inner 4 councils (' + ', '.join(INNER) + ')' if nm == 'inner' else 'other councils':60} observed {o_:+9,.0f}  predicted {p_:+9,.0f}")
     gc = (C["pred"] - C["held"]) - (C["obs"] - C["held"])
     print("    largest overstatements of growth: " + ", ".join(f"{l} {v:+,.0f}" for l, v in gc.sort_values(ascending=False).head(5).items()))
+    # Why: is the flood share of new addresses the flood share of new residents?
+    inn = S["lga"].str.replace(r" \(.*\)$", "", regex=True).isin(INNER).values
+    print("  flood share of growth, 2016 -> 2021 (in today's flood areas):")
+    for nm_, m_ in (("all", np.ones(len(S), bool)), ("inner 4", inn), ("other", ~inn)):
+        T_ = S[m_]
+        print(f"    {nm_:8} new addresses {T_['im'].sum() / max(T_['nm'].sum(), 1):6.1%}   addresses 12+ months before Census {T_['il'].sum() / max(T_['nl'].sum(), 1):6.1%}   "
+              f"mesh blocks' resident growth {T_['dpz'].sum() / max(T_['dp'].sum(), 1):6.1%}   (existing residents {T_['e16'].sum() / max(T_['p16'].sum(), 1):5.1%})")
+    out["lagged_addresses"] = {"total": round(float(S["pred_lag"].sum())), "sa2": summary(S["pred_lag"].values, S["obs"].values, "SA2s"),
+                               "growth": round(float(S["pred_lag"].sum() - S["held"].sum()))}
+    print(f"  with addresses created 12+ months before Census night only: total {S['pred_lag'].sum():,.0f}, growth {S['pred_lag'].sum() - S['held'].sum():+,.0f}, "
+          f"SA2 WAPE {out['lagged_addresses']['sa2']['wape']:.1%}")
+    S["over"] = (S["pred"] - S["held"]) - (S["obs"] - S["held"])
+    print(f"  SA2s with the largest overstatement of growth in flood areas:")
+    print(f"    {'SA2':10} {'council':16} {'2016':>7} {'2021':>7} {'new addr':>8} {'in flood':>8} {'sn':>6} {'sn 12m':>6} {'se':>6} {'obs gr':>7} {'pred gr':>7}")
+    for c_, r in S.sort_values("over", ascending=False).head(12).iterrows():
+        print(f"    {c_:10} {str(r['lga'])[:16]:16} {r['p16']:>7,.0f} {r['p21']:>7,.0f} {r['nm']:>8,.0f} {r['im']:>8,.0f} {r['sn']:>6.1%} {r['snl']:>6.1%} {r['se']:>6.1%} "
+              f"{r['obs'] - r['held']:>+7,.0f} {r['pred'] - r['held']:>+7,.0f}")
     print(f"  {'method':34} {'level':10} {'units':>6} {'WAPE':>7} {'median':>7} {'p80':>7} {'<=10%':>7}")
     names = {"pred": "forecast method", "naive": "growth at existing share", "held": "2016 count unchanged"}
     for lvl in ("sa2", "council"):
