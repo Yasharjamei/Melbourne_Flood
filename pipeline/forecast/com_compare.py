@@ -40,7 +40,7 @@ def main():
     clue = gpd.read_file(io.BytesIO(get(CLUE))).to_crs(CRS)
     norm = lambda s: re.sub(r"[^a-z]", "", str(s).lower())
     want = {norm(g) for g in theirs.index}
-    objs = [c for c in clue.columns if c != "geometry" and clue[c].dtype == object]
+    objs = [c for c in clue.columns if c != "geometry" and clue[c].map(lambda v: isinstance(v, str)).all()]   # text columns (pandas 3 has a string dtype)
     print(f"  CLUE boundary columns: {list(clue.columns)}")
     name = max(objs, key=lambda c: len(want & {norm(v) for v in clue[c]}))     # the column whose values match their area names
     print(f"  CLUE areas: {len(clue)}; name column {name}; names {sorted(clue[name].astype(str))}")
