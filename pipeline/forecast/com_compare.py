@@ -31,11 +31,18 @@ def main():
     sel = f[f["gender"].isin(tot_g)] if tot_g else f
     sel = sel[sel["age"].astype(str).isin(tot_a)] if tot_a else sel
     theirs = sel.groupby(["geography", "year"])["value"].sum().unstack()
-    print(f"  totals from {'total rows' if (tot_g or tot_a) else 'summing gender x age'}; municipality "
-          + ", ".join(f"{y} {theirs[y].sum():,.0f}" for y in theirs.columns if y in (2025, 2026, 2031, 2036, 2041)))
+    muni = theirs.loc[[g for g in theirs.index if re.fullmatch(r"city of melbourne", str(g), re.I)]]
+    theirs = theirs.drop(index=muni.index)                     # the municipality total is a row of its own
+    print(f"  totals from {'total rows' if (tot_g or tot_a) else 'summing gender x age'}; small areas sum "
+          + ", ".join(f"{y} {theirs[y].sum():,.0f}" for y in theirs.columns if y in (2025, 2026, 2031, 2036, 2041))
+          + ("; municipality row " + ", ".join(f"{y} {muni[y].sum():,.0f}" for y in muni.columns if y in (2025, 2036)) if len(muni) else ""))
 
     clue = gpd.read_file(io.BytesIO(get(CLUE))).to_crs(CRS)
-    name = next((c for c in clue.columns if re.search(r"featurenam|name|small_area|area", c, re.I) and clue[c].dtype == object), None)
+    norm = lambda s: re.sub(r"[^a-z]", "", str(s).lower())
+    want = {norm(g) for g in theirs.index}
+    objs = [c for c in clue.columns if c != "geometry" and clue[c].dtype == object]
+    print(f"  CLUE boundary columns: {list(clue.columns)}")
+    name = max(objs, key=lambda c: len(want & {norm(v) for v in clue[c]}))     # the column whose values match their area names
     print(f"  CLUE areas: {len(clue)}; name column {name}; names {sorted(clue[name].astype(str))}")
 
     txt = open("data/processed/scenarios_sa1.js").read()
@@ -54,7 +61,6 @@ def main():
     ours = pd.DataFrame({y: pd.Series({c: pop[idx[c], k] for c in area_of.index}).groupby(area_of).sum() for k, y in enumerate(years)})
     flood = pd.Series({c: ex[idx[c], -1] for c in area_of.index}).groupby(area_of).sum()
 
-    norm = lambda s: re.sub(r"[^a-z]", "", str(s).lower())
     tmap = {norm(g): g for g in theirs.index}
     rows, out = [], {"source": "City of Melbourne Population Forecasts by Small Area 2023-2043 (SGS), data.melbourne.vic.gov.au, credit City of Melbourne",
                      "areas": {}}
