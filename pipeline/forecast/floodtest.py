@@ -19,28 +19,17 @@
 
     python pipeline/forecast/floodtest.py   (after forecast.py)  ->  data/processed/forecast_floodtest.json
 """
-import io, json, os, re, sys, urllib.request, zipfile
+import json, os, re, sys
 import numpy as np, pandas as pd, geopandas as gpd
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..")); sys.path.insert(0, HERE)
 from config import STUDIES, norm_lga
 from backtest import table, codes
-from forecast import polys, slr_layer, inside, SLR, CRS, RAW, FC
+from forecast import polys, slr_layer, inside, SLR, CRS, RAW, FC, GROUND, g36_table
 
 C16, C21 = np.datetime64("2016-08-09"), np.datetime64("2021-08-10")
-GCP_URL = "https://www.abs.gov.au/census/find-census-data/datapacks/download/2021_GCP_SA1_for_VIC_short-header.zip"
-G36 = "data/raw/gcp/2021Census_G36_VIC_SA1.csv"
-
-# Share of each dwelling type's residents assumed to live at ground level: central (low, high). Roughly one
-# floor in n for a block of n storeys, less where the ground floor is lobby, shops or parking.
-GROUND = {"house": (1, 1, 1), "semi": (1, 1, 1), "attached": (1, 1, 1), "other": (1, 1, 1),
-          "flat12": (.5, .4, .6), "flat3": (.33, .25, .4), "flat48": (.15, .05, .2), "flat9": (.03, 0, .08)}
-TYPES = {"house": r"OPDs_Separate_house", "semi": r"OPDs_SD_r_t_h_th_Tot", "attached": r"OPDs_Flt_apt_Att_house",
-         "other": r"OPDs_Other_dwelling_Tot", "flat12": r"OPDs_F_ap_I_1or2_sty_blk", "flat3": r"OPDs_F_ap_I_3_sty_blk",
-         "flat48": r"OPDs_F_ap_I_4to8_sty_blk", "flat9": r"OPDs_F_ap_I_9_m_sty_blk"}
-DWG = re.compile(r"(Dwellings|Dwgs|Dwlgs|_Ds)$", re.I)
-PER = re.compile(r"(Persons|Psns|Prsns|_Ps|_P)$", re.I)
+INNER = ("Melbourne", "Port Phillip", "Yarra", "Stonnington")   # where Census night 2021 (lockdown, students away) emptied apartments
 
 
 def wape(p, a):
@@ -159,6 +148,15 @@ def backtest_flood():
     print(f"  predicted from 2016 the forecast's way: {t['predicted']:,} ({t['predicted'] / t['observed_2021'] - 1:+.1%}); "
           f"growth at the existing share: {t['growth_at_existing_share']:,}; 2016 count unchanged: {t['count_2016']:,}")
     print(f"  growth in flood areas 2016 -> 2021: observed {out['growth']['observed']:+,}, predicted {out['growth']['predicted']:+,}")
+    inner = C.index.to_series().str.replace(r" \(.*\)$", "", regex=True).isin(INNER).values
+    gr = {"inner": inner, "rest": ~inner}
+    out["growth_by_group"] = {}
+    for nm, m_ in gr.items():
+        o_, p_ = float(C["obs"][m_].sum() - C["held"][m_].sum()), float(C["pred"][m_].sum() - C["held"][m_].sum())
+        out["growth_by_group"][nm] = {"observed": round(o_), "predicted": round(p_)}
+        print(f"    {'inner 4 councils (' + ', '.join(INNER) + ')' if nm == 'inner' else 'other councils':60} observed {o_:+9,.0f}  predicted {p_:+9,.0f}")
+    gc = (C["pred"] - C["held"]) - (C["obs"] - C["held"])
+    print("    largest overstatements of growth: " + ", ".join(f"{l} {v:+,.0f}" for l, v in gc.sort_values(ascending=False).head(5).items()))
     print(f"  {'method':34} {'level':10} {'units':>6} {'WAPE':>7} {'median':>7} {'p80':>7} {'<=10%':>7}")
     names = {"pred": "forecast method", "naive": "growth at existing share", "held": "2016 count unchanged"}
     for lvl in ("sa2", "council"):
@@ -173,25 +171,6 @@ def backtest_flood():
     for l, (o, ar) in list(c["by_council"].items())[:8]:
         print(f"    {l:28} {o:>8,} {ar:>8,} ({ar / max(o, 1) - 1:+.0%})")
     return out
-
-
-def g36_table():
-    if not os.path.exists(G36):
-        print("  Census table G36 not cached; downloading the DataPack (~100 MB)")
-        req = urllib.request.Request(GCP_URL, headers={"User-Agent": "Mozilla/5.0 (melbourne-flood pipeline)"})
-        z = zipfile.ZipFile(io.BytesIO(urllib.request.urlopen(req, timeout=600).read()))
-        m = [n for n in z.namelist() if n.endswith("2021Census_G36_VIC_SA1.csv")]
-        os.makedirs(os.path.dirname(G36), exist_ok=True); open(G36, "wb").write(z.read(m[0]))
-    t = pd.read_csv(G36, dtype={"SA1_CODE_2021": str}).set_index("SA1_CODE_2021")
-    cols, used = {}, []
-    for k, pre in TYPES.items():
-        cand = [c for c in t.columns if c.startswith(pre)]
-        per = [c for c in cand if PER.search(c) and not DWG.search(c)]
-        dwg = [c for c in cand if DWG.search(c)]
-        cols[k] = per[0] if per else (dwg[0] if dwg else None)
-        used.append(f"{k}={cols[k]}")
-    print("  G36 columns used: " + ", ".join(used))
-    return pd.DataFrame({k: (pd.to_numeric(t[c], errors="coerce").fillna(0) if c else 0) for k, c in cols.items()}, index=t.index)
 
 
 def ground_level():

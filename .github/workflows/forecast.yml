@@ -45,8 +45,9 @@ jobs:
             data/raw/metro/sa1.geojson
             data/raw/metro/sal.geojson
             data/raw/shared/mb_counts_2021.xlsx
-          key: forecast-main-v2-${{ steps.month.outputs.m }}
-          restore-keys: forecast-main-v1-${{ steps.month.outputs.m }}   # reuse last cache; only the new files are fetched
+            data/raw/gcp/2021Census_G36_VIC_SA1.csv
+          key: forecast-main-v3-${{ steps.month.outputs.m }}
+          restore-keys: forecast-main-v2-${{ steps.month.outputs.m }}   # reuse last cache; only the new files are fetched
       - name: Forecast inputs cache
         uses: actions/cache@v4
         with:

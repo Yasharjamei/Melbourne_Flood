@@ -202,6 +202,7 @@ ul.plain li{margin:4px 0}
       <p><b>Coloured areas</b> are neighbourhoods (SA2s), suburbs or SA1s (about 400 people), as chosen in <i>Area level</i>, coloured by the measure in <i>Show on map</i> for the year, sea level and coast (calm or storm tide) chosen above, in five classes of equal count within the councils or suburb selected.</p>
       <p><b class="kb">Blue</b>: river flood overlays (LSIO, FO). <b class="kc">Cyan, dashed edge</b>: overland-flow overlays (SBO). Both are planning-scheme overlays. <b class="kt">Green</b>: land under the sea at the chosen sea level, calm or with a 1-in-100-year storm tide (Victorian Coastal Inundation Dataset, a "bathtub" model). Switch any of them off under <i>Layers</i>.</p>
       <p><b>Hover</b> (or tap on a phone) for an area's numbers. <b>Areas A and B</b> work as on the main map: click to place or move the nearer pin, drag a pin, set the radius under <i>Layers</i>. A circle counts the mesh blocks whose centre falls inside it, each adding its share of its SA1's residents; the SA1s a circle touches are shaded in its colour, darker for a larger share counted.</p>
+      <p><b>At ground level</b> (estimate): residents in flood areas who live at ground level, from the 2021 Census dwelling types of each SA1 (everyone in houses and townhouses, half in flats of 1–2 storeys, a third at 3 storeys, about 15% at 4–8 storeys and 3% at 9+ storeys). Towers count in full in the main measure, which is why the City of Melbourne leads it; at ground level it drops to about a tenth.</p>
       <p class="mute">SA1 figures are the least certain: in the back-test their error was about twice that of neighbourhoods. Living in a flood-prone area is exposure, not damage: newer buildings must sit above the flood level, and most apartment residents live above it.</p>
     </details>
   </section>
@@ -347,17 +348,19 @@ const BASEID=()=>S[0].id,PHONE=innerWidth<700;
 let smap=null,unit='sa2',vkey='n',lga='',sal='',boxes={},baseLayers=[],segU2=()=>{},tipRow=null;
 let R=800,lastDrag=0,sa1Failed=false;const areasAB=[];
 // --- rows of the current area level, all with the same accessors
-function r2(a){return{code:a.code,name:a.name,lga:a.lga||'',sal:'',m:(k,y)=>a.v[k][y][0],rng:(k,y)=>[a.v[k][y][1],a.v[k][y][2]],pop:y=>a.pop?a.pop[y][0]:0};}
-function rs(x){const Q=D.rel.suburb;return{code:x.code,name:x.name,lga:x.lga,sal:x.code,m:(k,y)=>x.v[k][y],rng:(k,y)=>[x.v[k][y]*(1-Q[y]),x.v[k][y]*(1+Q[y])],pop:y=>x.pop[y]};}
-function r1(i){const A=window.SA1DATA,Q=D.rel.sa1;const sub=SUBNAME[A.sal[i]];return{code:A.codes[i],name:(sub?sub+' · ':'')+'SA1 '+A.codes[i],lga:A.lga[i],sal:A.sal[i],m:(k,y)=>A.v[k][i][y],rng:(k,y)=>[A.v[k][i][y]*(1-Q[y]),A.v[k][i][y]*(1+Q[y])],pop:y=>A.pop[i][y]};}
+function r2(a){return{code:a.code,name:a.name,lga:a.lga||'',sal:'',g:a.g??1,m:(k,y)=>a.v[k][y][0],rng:(k,y)=>[a.v[k][y][1],a.v[k][y][2]],pop:y=>a.pop?a.pop[y][0]:0};}
+function rs(x){const Q=D.rel.suburb;return{code:x.code,name:x.name,lga:x.lga,sal:x.code,g:x.g??1,m:(k,y)=>x.v[k][y],rng:(k,y)=>[x.v[k][y]*(1-Q[y]),x.v[k][y]*(1+Q[y])],pop:y=>x.pop[y]};}
+function r1(i){const A=window.SA1DATA,Q=D.rel.sa1;const sub=SUBNAME[A.sal[i]];return{code:A.codes[i],name:(sub?sub+' · ':'')+'SA1 '+A.codes[i],lga:A.lga[i],sal:A.sal[i],g:A.g?A.g[i]:1,m:(k,y)=>A.v[k][i][y],rng:(k,y)=>[A.v[k][i][y]*(1-Q[y]),A.v[k][i][y]*(1+Q[y])],pop:y=>A.pop[i][y]};}
 const SUBNAME={};(D.suburbs||[]).forEach(x=>SUBNAME[x.code]=x.name);
 const LGANAME={};(D.councils||[]).forEach(c=>LGANAME[c.code]=c.name);
 let CACHE={};
 function ROWS(u){if(CACHE[u])return CACHE[u];const r=u==='sa2'?D.areas.map(r2):u==='sal'?(D.suburbs||[]).map(rs):window.SA1DATA?window.SA1DATA.codes.map((c,i)=>r1(i)):[];if(r.length)CACHE[u]=r;return r;}
 const UNITS2=[['sa2','Neighbourhood (SA2)'],['sal','Suburb'],['sa1','SA1 (finest)']].filter(u=>u[0]!=='sal'||D.suburbs);
 const pct=v=>isFinite(v)?(v*100).toFixed(v<.1?1:0)+'%':'–';
+const HASG=D.areas.length&&D.areas[0].g!=null;   // ground-level shares (Census dwelling types) present
 const VARS=[
   ['n','Residents in flood areas',(r,k)=>r.m(k,yi),fmt],
+  ...(HASG?[['gl','Residents in flood areas at ground level (estimate)',(r,k)=>r.m(k,yi)*r.g,fmt]]:[]),
   ['s','Share of residents in flood areas',(r,k)=>r.m(k,yi)/Math.max(r.pop(yi),1),pct],
   ['c',`Change in residents in flood areas since ${M.base}`,(r,k)=>r.m(k,yi)-r.m(BASEID(),0),v=>sgn(v)],
   ['a','Added by the chosen sea level or storm tide',(r,k)=>r.m(k,yi)-r.m(S0[0].id,yi),v=>sgn(v)],
@@ -405,7 +408,7 @@ function zoomTo(){
 function tipHtml(r){const id=S[si].id,q=r.rng(id,yi),x=r.m(id,yi),pp=r.pop(yi),b=r.m(BASEID(),0),v=V();
   return`<strong>${r.name}</strong>${r.lga&&LGANAME[r.lga]?' · '+LGANAME[r.lga]:''}<br><span style="color:var(--muted)">${Y[yi]} · ${S[si].label}</span>`+
     `<br>${v[1]}: <b>${v[3](v[2](r,id))}</b>`+(vkey!=='n'?`<br>Residents in flood areas: ${fmt(x)}`:'')+(yi||si?` (likely ${fmt(q[0])} – ${fmt(q[1])})`:'')+
-    (pp?`<br>${pct(x/pp)} of ${fmt(pp)} residents`:'')+`<br>${M.base}, today's flood areas: ${fmt(b)}`;}
+    (HASG&&vkey!=='gl'?`<br>About ${fmt(x*r.g)} of them at ground level (${pct(r.g)})`:'')+(pp?`<br>${pct(x/pp)} of ${fmt(pp)} residents`:'')+`<br>${M.base}, today's flood areas: ${fmt(b)}`;}
 function showTip(r,pt){const t=document.getElementById('mtip'),W=smap.getContainer().clientWidth;t.innerHTML=tipHtml(r);t.style.display='block';
   t.style.left=Math.min(pt.x+14,W-280)+'px';t.style.top=(pt.y+14)+'px';tipRow={r,pt};}
 function hideTip(){document.getElementById('mtip').style.display='none';tipRow=null;}
@@ -453,12 +456,12 @@ function weights(a){const A=window.SA1DATA,MB=A.mb,n=A.codes.length,COS=Math.cos
   for(let j=0;j<MB.s.length;j++){const dx=(MB.x[j]/1e4-a.lon)*111320*COS,dy=(MB.y[j]/1e4-a.lat)*111320;if(dx*dx+dy*dy>r2)continue;
     const i=MB.s[j];if((lga||sal)&&!inSel(i))continue;wp[i]+=W[j]/1000;wp0[i]+=W0[j]/1000;for(let q=0;q<3;q++)wf[q][i]+=F[q][j]/1000;}
   return{wp,wp0,wf};}
-function tally(wp,wp0,wf){const A=window.SA1DATA,ks=[S[si].id,BASEID(),S0[0].id];let n=0,b=0,c=0,pp=0,p0=0,k=0;const subs={};
+function tally(wp,wp0,wf){const A=window.SA1DATA,ks=[S[si].id,BASEID(),S0[0].id];let n=0,ng=0,b=0,c=0,pp=0,p0=0,k=0;const subs={};
   for(let i=0;i<wp.length;i++){if(!(wp[i]>0||wf[0][i]>0||wp0[i]>0))continue;k++;
     const p=A.pop[i][yi]*wp[i],q0=A.pop[i][0]*wp0[i];pp+=p;p0+=q0;   // flood counts capped at the residents counted (flood shares are final-year)
-    n+=Math.min(A.v[ks[0]][i][yi]*wf[0][i],p);b+=Math.min(A.v[ks[1]][i][0]*wf[1][i],q0);c+=Math.min(A.v[ks[2]][i][yi]*wf[2][i],p);
+    const ni=Math.min(A.v[ks[0]][i][yi]*wf[0][i],p);n+=ni;ng+=ni*(A.g?A.g[i]:1);b+=Math.min(A.v[ks[1]][i][0]*wf[1][i],q0);c+=Math.min(A.v[ks[2]][i][yi]*wf[2][i],p);
     const s_=SUBNAME[A.sal[i]];if(s_)subs[s_]=(subs[s_]||0)+p;}
-  return{n,pp,pop0:p0,k,share:n/Math.max(pp,1),chg:n-b,add:n-c,where:Object.entries(subs).sort((p,q)=>q[1]-p[1]).slice(0,2).map(e=>e[0]).join(', ')};}
+  return{n,ng,pp,pop0:p0,k,share:n/Math.max(pp,1),chg:n-b,add:n-c,where:Object.entries(subs).sort((p,q)=>q[1]-p[1]).slice(0,2).map(e=>e[0]).join(', ')};}
 function allSel(){const A=window.SA1DATA,n=A.codes.length,one=new Float64Array(n);for(let i=0;i<n;i++)if(inSel(i))one[i]=1;return tally(one,one,[one,one,one]);}
 let tint={a:null,b:null};
 function paintTint(k,w){const prev=tint[k];
@@ -476,6 +479,7 @@ function compareAB(){
     document.getElementById('sub'+k).textContent=out(x)||(x?'residents in flood areas'+(x.where?', '+x.where:''):hint);}
   document.getElementById('absub').textContent=`${Y[yi]} · ${S[si].label}. Radius ${R} m.${lga||sal?' Counting residents of '+where+' only.':''} Ranges as for suburbs: ±${Math.round(Q*100)}%.`;
   const rowsAB=[['Residents in flood areas',x=>`<b>${fmt(x.n)}</b>`+(yi||si?`<br><small>${fmt(x.n*(1-Q))} – ${fmt(x.n*(1+Q))}</small>`:'')],
+    ...(HASG?[['… of them at ground level (estimate)',x=>fmt(x.ng)]]:[]),
     ['Share of residents in flood areas',x=>pct(x.share)],[`Change in residents in flood areas since ${M.base}`,x=>sgn(x.chg)],['Added by the chosen sea level or storm tide',x=>sgn(x.add)],
     ['All residents',x=>fmt(x.pp)],[`Population growth since ${M.base}`,x=>sgn(x.pp-x.pop0)],['SA1s counted (in part or whole)',x=>fmt(x.k)]];
   document.getElementById('abtab').innerHTML=`<thead><tr><th></th><th class="a">A</th><th class="b">B</th><th>${where.replace(/^all /,'All ')}</th></tr></thead><tbody>`+

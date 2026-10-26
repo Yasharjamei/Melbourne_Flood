@@ -124,6 +124,50 @@ def inside(pts, zone):
     return pts.index.isin(gpd.sjoin(pts, parts, predicate="within", how="inner").index.unique())
 
 
+# Ground level. Everyone whose address is inside a flood area is counted, including people on the 30th floor.
+# From the 2021 Census dwelling structure of each SA1 (table G36, persons), with an assumed share of each
+# type's residents living at ground level: central (low, high). Roughly one floor in n for a block of n
+# storeys, less where the ground floor is lobby, shops or parking.
+G36 = "data/raw/gcp/2021Census_G36_VIC_SA1.csv"
+GCP_URL = "https://www.abs.gov.au/census/find-census-data/datapacks/download/2021_GCP_SA1_for_VIC_short-header.zip"
+GROUND = {"house": (1, 1, 1), "semi": (1, 1, 1), "attached": (1, 1, 1), "other": (1, 1, 1),
+          "flat12": (.5, .4, .6), "flat3": (.33, .25, .4), "flat48": (.15, .05, .2), "flat9": (.03, 0, .08)}
+G36_TYPES = {"house": r"OPDs_Separate_house", "semi": r"OPDs_SD_r_t_h_th_Tot", "attached": r"OPDs_Flt_apt_Att_house",
+             "other": r"OPDs_Other_dwelling_Tot", "flat12": r"OPDs_F_ap_I_1or2_sty_blk", "flat3": r"OPDs_F_ap_I_3_sty_blk",
+             "flat48": r"OPDs_F_ap_I_4to8_sty_blk", "flat9": r"OPDs_F_ap_I_9_m_sty_blk"}
+
+
+def g36_table():
+    """Census 2021 G36 residents by dwelling type for every Victorian SA1 (downloads the DataPack if not cached)."""
+    import io, urllib.request
+    if not os.path.exists(G36):
+        print("  Census table G36 not cached; downloading the DataPack (~100 MB)")
+        req = urllib.request.Request(GCP_URL, headers={"User-Agent": "Mozilla/5.0 (melbourne-flood pipeline)"})
+        z = zipfile.ZipFile(io.BytesIO(urllib.request.urlopen(req, timeout=600).read()))
+        m = [n for n in z.namelist() if n.endswith("2021Census_G36_VIC_SA1.csv")]
+        os.makedirs(os.path.dirname(G36), exist_ok=True); open(G36, "wb").write(z.read(m[0]))
+    t = pd.read_csv(G36, dtype={"SA1_CODE_2021": str}).set_index("SA1_CODE_2021")
+    dwg, per = re.compile(r"(Dwellings|Dwgs|Dwlgs|_Ds)$", re.I), re.compile(r"(Persons|Psns|Prsns|_Ps|_P)$", re.I)
+    cols = {}
+    for k, pre in G36_TYPES.items():
+        cand = [c for c in t.columns if c.startswith(pre)]
+        pc = [c for c in cand if per.search(c) and not dwg.search(c)] or [c for c in cand if dwg.search(c)]
+        cols[k] = pc[0] if pc else None
+    return pd.DataFrame({k: (pd.to_numeric(t[c], errors="coerce").fillna(0) if c else 0) for k, c in cols.items()}, index=t.index)
+
+
+def ground_share(sa1_codes, which=0):
+    """Share of each SA1's residents living at ground level (index = SA1 code); SA1s with under 30
+    residents take their SA2's mix. which: 0 central, 1 low, 2 high."""
+    idx = pd.Index(sa1_codes)
+    T = g36_table().reindex(idx).fillna(0)
+    f = pd.Series({k: v[which] for k, v in GROUND.items()})
+    tot, grd = T.sum(axis=1), (T * f).sum(axis=1)
+    sa2 = pd.Series(idx.str[:9], index=idx)
+    g2 = grd.groupby(sa2).transform("sum") / tot.groupby(sa2).transform("sum").replace(0, np.nan)
+    return (grd / tot.replace(0, np.nan)).where(tot >= 30, g2).fillna(g2).fillna(1.0)
+
+
 SA1_ERR = 1.9     # SA1 placement error / SA2 split error in the 2016->2021 back-tests (11.6% vs 6.0%, §25 and §29)
 
 
@@ -206,6 +250,21 @@ def finer(out, p, mb, pop, exposure, zones, sa2_rel):
                      "pop": [round(sa1_pop[y].reindex(idx).sum()) for y in YEARS],
                      "v": {k: [round(sa1_ex[k][y].reindex(idx).sum()) for y in YEARS] for k in ids}})
     out["suburbs"] = subs
+    try:
+        gsh = ground_share(list(s1))
+        w36 = sa1_ex["none"][YEARS[-1]].reindex(s1).fillna(0)
+        def gmean(idx):
+            w = w36.reindex(idx).fillna(0); g = gsh.reindex(idx).fillna(1.0)
+            return round(float((w * g).sum() / w.sum()) if w.sum() > 0 else float(g.mean()), 3)
+        for x in subs:
+            x["g"] = gmean(s1[sl.values == x["code"]])
+        for a in out["areas"]:
+            a["g"] = gmean(s1[s1.str[:9] == a["code"]])
+        for c in out["councils"]:
+            c["g"] = gmean(lga_of.index[lga_of.values == c["code"]])
+        print(f"ground level: {float((w36 * gsh).sum()):,.0f} of {float(w36.sum()):,.0f} residents in today's flood areas in {YEARS[-1]} (central)")
+    except Exception as e:                                                     # optional: the page hides the measure
+        print(f"ground level: skipped ({e})"); gsh = None
     keep_sal = sal[sal["c"].isin([x["code"] for x in subs])]
     out["geo"]["sal"] = to_geojson(list(keep_sal.geometry), [{"c": c} for c in keep_sal["c"]], tol=25)
     # SA2 -> council (majority of 2021 residents), for the council filter
@@ -219,6 +278,7 @@ def finer(out, p, mb, pop, exposure, zones, sa2_rel):
     rows = s1[has]
     d1 = {"years": YEARS, "codes": list(rows), "sa2": [c[:9] for c in rows], "lga": list(lga_of.reindex(rows).fillna("")),
           "sal": list(sa1_sal.reindex(rows).fillna("")),
+          **({"g": [round(float(x), 2) for x in gsh.reindex(rows).fillna(1.0)]} if gsh is not None else {}),
           "pop": [[round(sa1_pop[y].get(c, 0)) for y in YEARS] for c in rows],
           "v": {k: [[round(sa1_ex[k][y].get(c, 0)) for y in YEARS] for c in rows] for k in ids},
           "geo": to_geojson(list(g1.geometry[has]), [{"i": i} for i in range(len(rows))], tol=12),
