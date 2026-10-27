@@ -70,6 +70,9 @@ jobs:
         run: |
           set -o pipefail
           python pipeline/forecast/ensemble.py | tee ensemble.txt
+      - name: UDP back-test (2017 and 2018 editions, CC BY)
+        continue-on-error: true      # reports only
+        run: python -u pipeline/forecast/udp_backtest.py | tee udp_backtest.txt
       - name: Forecast to 2036 and residents in flood areas
         run: |
           set -o pipefail
@@ -93,7 +96,7 @@ jobs:
         timeout-minutes: 25
         run: python -u .github/scripts/record_columns.py
       - run: |
-          echo '```' >> "$GITHUB_STEP_SUMMARY"; cat backtest.txt ensemble.txt forecast.txt floodtest.txt com_compare.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"; cat backtest.txt ensemble.txt udp_backtest.txt forecast.txt floodtest.txt com_compare.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: forecast-backtest
@@ -106,6 +109,8 @@ jobs:
             floodtest.txt
             data/processed/forecast_floodtest.json
             com_compare.txt
+            udp_backtest.txt
+            data/processed/forecast_udp_backtest.json
             data/processed/forecast_com.json
             data/processed/scenarios.json
             preview/
