@@ -9,10 +9,11 @@ import glob, io, json, os, tempfile, urllib.parse, urllib.request, zipfile
 
 CKAN = "https://discover.data.vic.gov.au/api/3/action/"
 UA = {"User-Agent": "Mozilla/5.0 (melbourne-flood pipeline)"}
-IDS = ["major-residential-redevelopments-sites-2017", "major-residential-redevelopments-sites-2018",
+IDS = ["victorian-flood-history-october-2022-event-public", "victoria-1-in-100-year-flood-extent",
+       "major-residential-redevelopments-sites-2017", "major-residential-redevelopments-sites-2018",
        "broadhectare-residential-land-2017", "broadhectare-residential-land-2018",
        "city-of-melbourne-population-forecasts-by-small-area-2021-2041"]
-SEARCH = ["CLUE small areas boundaries", "city of melbourne population forecasts small area"]
+SEARCH = ["flood history October 2022", "Victorian Flood Database", "flood extent 1% AEP", "flood depth"]
 
 
 def get(url, timeout=300):
