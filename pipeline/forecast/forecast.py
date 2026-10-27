@@ -45,12 +45,23 @@ SLR = [("none", "Today's flood areas", "Today", ["SLR00CM_2009"]),
        ("st0.2", "+0.20 m sea level (2040) with a storm tide", "+0.20 m", ["SLR00CM_2009", "SLR20CM_2040", "SLR00CM_ST_2009", "SLR20CM_ST_2040"]),
        ("st0.47", "+0.47 m sea level (2070) with a storm tide", "+0.47 m", ["SLR00CM_2009", "SLR47CM_2070", "SLR00CM_ST_2009", "SLR20CM_ST_2040", "SLR47CM_ST_2070"]),
        ("st0.82", "+0.82 m sea level (2100) with a storm tide", "+0.82 m", ["SLR00CM_2009", "SLR82CM_2100", "SLR00CM_ST_2009", "SLR20CM_ST_2040", "SLR47CM_ST_2070", "SLR82CM_ST_2100"])]
-# ASSUMED share of each UDP category built by the end of the ramp, and the ramp length in years from
-# mid-2025. Not measured: UDP 2025 has no history (completions 2023-24 only). Council caps limit how
-# much these matter; they mainly decide WHERE inside a council the growth goes.
-STATUS = {"mrs_under_construction": (0.95, 2), "mrs_firm": (0.80, 5), "mrs_likely": (0.50, 8),
-          "mrs_possible": (0.25, 11), "gf_titled": (0.95, 2), "gf_proposed": (0.85, 5),
+# Share of each UDP category built by the end of the ramp, and the ramp length in years from mid-2025.
+# Redevelopment weights calibrated on what the 2017 edition delivered by 2025 (udp_backtest.py, PROJECT_LOG
+# §36; address counts corrected for apartment blocks sharing addresses): firm about 70%, likely about 42%,
+# possible about 29% after 8 years. Large brownfield apartment schemes are slower still (Lichfields 2024).
+# Greenfield weights unchanged (the 2018/2025 categories were not testable). Council caps limit how much
+# these matter; they mainly decide WHERE inside a council the growth goes.
+STATUS = {"mrs_under_construction": (0.95, 2), "mrs_firm": (0.75, 8), "mrs_likely": (0.50, 10),
+          "mrs_possible": (0.35, 11), "gf_titled": (0.95, 2), "gf_proposed": (0.85, 5),
           "gf_zoned": (0.60, 11), "gf_unzoned": (0.15, 11)}
+STATUS_BEFORE = {**STATUS, "mrs_firm": (0.80, 5), "mrs_likely": (0.50, 8), "mrs_possible": (0.25, 11)}   # before calibration
+# Flood share of new residents relative to the flood share of new addresses, 2016 -> 2021 Census
+# (floodtest.py, PROJECT_LOG §35): inner four councils 20.8% / 22.2%, others 2.6% / 3.8%.
+INNER_COUNCILS = ("Melbourne", "Port Phillip", "Yarra", "Stonnington")
+FLOOD_CAL = {"inner": round(20.8 / 22.2, 3), "other": round(2.6 / 3.8, 3)}
+# Ground level of new residents: new addresses in apartment buildings (5+ new addresses at one point, or
+# 100+ new addresses per hectare of mesh block) get the 4+ storey ground share, other new homes 1.
+APT_GROUND = 0.08
 
 
 def ramp(y, p, T, start=0):
@@ -251,8 +262,17 @@ def finer(out, p, mb, pop, exposure, zones, sa2_rel):
                      "v": {k: [round(sa1_ex[k][y].reindex(idx).sum()) for y in YEARS] for k in ids}})
     out["suburbs"] = subs
     try:
-        gsh = ground_share(list(s1))
+        g21 = ground_share(list(s1))                                           # 2021 dwelling mix
+        new_, apt_ = (m2.groupby("sa1")[c].sum().reindex(s1).fillna(0) for c in ("new", "new_apt"))
+        gnew = (1 - np.where(new_ > 0, apt_ / new_.where(new_ > 0, 1), 0) * (1 - APT_GROUND))
+        gnew = pd.Series(np.where(new_ > 0, gnew, g21.values), index=s1)        # growth: the mix of homes built since 2016
+        p21s = m2.groupby("sa1")["p21"].sum().reindex(s1).fillna(0)
+        p36 = sa1_pop[YEARS[-1]].reindex(s1).fillna(0)
+        old_part = np.minimum(p36, p21s); new_part = np.clip(p36 - p21s, 0, None)
+        gsh = pd.Series(np.where(p36 > 0, (old_part * g21 + new_part * gnew) / p36.where(p36 > 0, 1), g21), index=s1)
         w36 = sa1_ex["none"][YEARS[-1]].reindex(s1).fillna(0)
+        print(f"ground level, {YEARS[-1]}: with 2021 dwelling mix only {float((w36 * g21).sum()):,.0f}; "
+              f"with new homes' mix for growth {float((w36 * gsh).sum()):,.0f}")
         def gmean(idx):
             w = w36.reindex(idx).fillna(0); g = gsh.reindex(idx).fillna(1.0)
             return round(float((w * g).sum() / w.sum()) if w.sum() > 0 else float(g.mean()), 3)
@@ -332,6 +352,12 @@ def main():
     npts = npts[~npts.index.duplicated()].rename(columns={"index_right": "m"})[["m", "geometry"]]
     recent = (day[sel] >= np.datetime64(f"{BASE - 5}-07-01"))[npts.index.values]
     mb["new"] = npts.groupby("m").size().reindex(mb.index).fillna(0).values
+    _, inv, cnt = np.unique(np.round(an[sel, :2], 6), axis=0, return_inverse=True, return_counts=True)
+    shared = (cnt[inv.ravel()] >= 5)[npts.index.values]                     # 5+ new addresses at one point
+    dense = (mb["new"] / (mb.area / 1e4).clip(lower=0.01) >= 100).values[npts["m"].values]
+    mb["new_apt"] = pd.Series(shared | dense, index=npts.index).groupby(npts["m"]).sum().reindex(mb.index).fillna(0).values
+    print(f"new addresses in apartment buildings: {int(mb['new_apt'].sum()):,} of {int(mb['new'].sum()):,} "
+          f"(shared point {int(shared.sum()):,}, dense mesh block {int(dense.sum()):,})")
     mb["recent"] = npts[recent].groupby("m").size().reindex(mb.index).fillna(0).values
     for k, z in zones.items():
         pin = inside(pts, z)
@@ -355,6 +381,12 @@ def main():
         p[f"se_{k}"] = p["key"].map(se).values
         sn = g[f"n_{k}"].sum() / g["new"].sum().where(g["new"].sum() >= 20, np.nan)
         p[f"sn_{k}"] = p["key"].map(sn).fillna(p[f"se_{k}"]).values
+        p[f"snraw_{k}"] = p[f"sn_{k}"].values
+    lname = lga.set_index(lga["lga_code_2021"].astype(str))["lga_name_2021"].str.replace(r" \(.*\)$", "", regex=True)
+    inner = p["lga"].map(lname).isin(INNER_COUNCILS).values
+    fac = np.where(inner, FLOOD_CAL["inner"], FLOOD_CAL["other"])
+    for k in zones:
+        p[f"sn_{k}"] = p[f"snraw_{k}"].values * fac
     erp = read_erp(f"{FC}/erp_sa2.csv")
     e = erp[next(k for k in erp if re.fullmatch(r"SA2.*", k, re.I))]
     e = e[e["year"] == BASE].drop_duplicates("code").set_index("code")["erp"]
@@ -387,13 +419,13 @@ def main():
         cols = []
         print("UDP 2025: not present, open-data method only")
 
-    def allocate(y, udp=True):
+    def allocate(y, udp=True, status=STATUS):
         """Population of each piece in year y."""
         lg = p["lga"].values
         E = np.zeros(len(p))
         if udp and cols:
             for c in cols:
-                pr, T = STATUS[c]
+                pr, T = status[c]
                 E += p[c].values * ramp(y, pr, T)
         E_l = pd.Series(E).groupby(lg).transform("sum").values
         N_l = pd.Series(lg).map(need[y]).fillna(0).values
@@ -415,9 +447,20 @@ def main():
     for y in YEARS[1:]:
         pop[y] = allocate(y, True); pop_open[y] = allocate(y, False)
 
-    def exposure(P, k):
+    def exposure(P, k, sn="sn"):
         P0 = p["P"].values; d = P - P0
-        return P0 * p[f"se_{k}"].values + np.where(d > 0, d * p[f"sn_{k}"].values, d * p[f"se_{k}"].values)
+        return P0 * p[f"se_{k}"].values + np.where(d > 0, d * p[f"{sn}_{k}"].values, d * p[f"se_{k}"].values)
+
+    # before / after the 2026-10 calibration (build-out weights, flood share of new residents)
+    y36 = YEARS[-1]
+    pop_b = allocate(y36, True, STATUS_BEFORE)
+    cmp_ = pd.DataFrame({"lga": p["lga"].map(lname).values, "pop_b": pop_b, "pop_a": pop[y36],
+                         "fl_b": exposure(pop_b, "none", "snraw"), "fl_a": exposure(pop[y36], "none")}).groupby("lga").sum()
+    print(f"\nCalibration effect, {y36} (before: assumed build-out weights, new residents at the new-address flood share):")
+    print(f"  {'council':24} {'population before':>18} {'after':>10} {'flood areas before':>19} {'after':>9} {'change':>8}")
+    for l, r in cmp_.sort_values("fl_b", ascending=False).head(15).iterrows():
+        print(f"  {l[:24]:24} {r.pop_b:>18,.0f} {r.pop_a:>10,.0f} {r.fl_b:>19,.0f} {r.fl_a:>9,.0f} {r.fl_a - r.fl_b:>+8,.0f}")
+    print(f"  {'all 31 councils':24} {cmp_.pop_b.sum():>18,.0f} {cmp_.pop_a.sum():>10,.0f} {cmp_.fl_b.sum():>19,.0f} {cmp_.fl_a.sum():>9,.0f} {cmp_.fl_a.sum() - cmp_.fl_b.sum():>+8,.0f}")
 
     # ---------------- ranges
     ens = json.load(open("data/processed/forecast_ensemble.json")) if os.path.exists("data/processed/forecast_ensemble.json") else {}

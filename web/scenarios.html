@@ -104,6 +104,7 @@ tr.chosen td{font-weight:600}
 #mhelp summary{cursor:pointer;font-weight:600}
 #mhelp p{margin:6px 0;max-width:90ch}
 #mhelp .kb{color:#2f6fd0}#mhelp .kc{color:#0ea5b7}#mhelp .kt{color:#3f9a52}#mhelp .mute{color:var(--muted)}
+table.evid td{white-space:normal;vertical-align:top;text-align:left}table.evid td:first-child{width:24%;font-weight:600}table.evid td:last-child{width:12%;white-space:nowrap}table.evid{min-width:640px}
 ul.plain{margin:6px 0 0;padding-left:18px;max-width:90ch}
 ul.plain li{margin:4px 0}
 .tag{display:inline-block;font-size:11px;font-weight:600;border-radius:999px;padding:1px 8px;margin-left:6px;vertical-align:1px}
@@ -202,7 +203,7 @@ ul.plain li{margin:4px 0}
       <p><b>Coloured areas</b> are neighbourhoods (SA2s), suburbs or SA1s (about 400 people), as chosen in <i>Area level</i>, coloured by the measure in <i>Show on map</i> for the year, sea level and coast (calm or storm tide) chosen above, in five classes of equal count within the councils or suburb selected.</p>
       <p><b class="kb">Blue</b>: river flood overlays (LSIO, FO). <b class="kc">Cyan, dashed edge</b>: overland-flow overlays (SBO). Both are planning-scheme overlays. <b class="kt">Green</b>: land under the sea at the chosen sea level, calm or with a 1-in-100-year storm tide (Victorian Coastal Inundation Dataset, a "bathtub" model). Switch any of them off under <i>Layers</i>.</p>
       <p><b>Hover</b> (or tap on a phone) for an area's numbers. <b>Areas A and B</b> work as on the main map: click to place or move the nearer pin, drag a pin, set the radius under <i>Layers</i>. A circle counts the mesh blocks whose centre falls inside it, each adding its share of its SA1's residents; the SA1s a circle touches are shaded in its colour, darker for a larger share counted.</p>
-      <p><b>At ground level</b> (estimate): residents in flood areas who live at ground level, from the 2021 Census dwelling types of each SA1 (everyone in houses and townhouses, half in flats of 1–2 storeys, a third at 3 storeys, about 15% at 4–8 storeys and 3% at 9+ storeys). Towers count in full in the main measure, which is why the City of Melbourne leads it; at ground level it drops to about a tenth.</p>
+      <p><b>At ground level</b> (estimate): residents in flood areas who live at ground level, from the 2021 Census dwelling types of each SA1 (everyone in houses and townhouses, half in flats of 1–2 storeys, a third at 3 storeys, about 15% at 4–8 storeys and 3% at 9+ storeys; homes built since 2016 in apartment buildings count as apartments). Towers count in full in the main measure, which is why the City of Melbourne leads it; at ground level it drops to about a tenth.</p>
       <p class="mute">SA1 figures are the least certain: in the back-test their error was about twice that of neighbourhoods. Living in a flood-prone area is exposure, not damage: newer buildings must sit above the flood level, and most apartment residents live above it.</p>
     </details>
   </section>
@@ -239,6 +240,26 @@ ul.plain li{margin:4px 0}
       <li><b>Sea-level rise:</b> the Victorian Coastal Inundation Dataset's +0.20, +0.47 and +0.82 m extents (2040, 2070, 2100). It is a bathtub model, made for 1:75,000 scale, and not suitable for single properties. Shown here with 2036 population: the population is held at each year's forecast, and the sea level is a what-if. Each sea level also comes with a 1-in-100-year storm tide on top (<i>Coast</i> switch), from the same dataset.</li>
       <li><b>Ranges:</b> from measured past error at each horizon and for each SA2's size and growth class; council and total ranges from VIF's measured error, growing with the horizon.</li>
     </ul>
+  </section>
+
+  <section>
+    <h2>Method and evidence</h2>
+    <p class="sub">What each step rests on: published research, our own back-tests on Melbourne data, or assumption. Research supports the methods; the numbers that matter most for Melbourne come from our back-tests.</p>
+    <div class="scroll"><table class="evid">
+      <thead><tr><th>Step</th><th>Evidence</th><th>Confidence</th></tr></thead>
+      <tbody>
+        <tr><td>Growth placed where homes are being built (housing-unit method)</td><td>The most widely used small-area method: Smith &amp; Cody (2013), <i>Population Research and Policy Review</i>. Back-tested here: 2.7–6% error at 4–5 years, 11.7% at 10 years.</td><td>High</td></tr>
+        <tr><td>Urban Development Program supply used to place growth</td><td>Back-test with the 2017 and 2018 UDP editions: error 4.8% vs 6.9% for recent addresses alone (2017→2025); for fast-growing areas the 80th-percentile error falls from 35% to 20%.</td><td>High</td></tr>
+        <tr><td>How much of each UDP category is built (status weights)</td><td>What the 2017 edition delivered by 2025 (firm about 70%, likely about 42%, possible about 29% after 8 years). Large brownfield apartment schemes take over 3 times longer from approval to first completion than conventional sites, and brownfield sites build 34% slower than greenfield: Lichfields, <i>Start to Finish</i> (3rd ed., 2024; England and Wales).</td><td>Moderate</td></tr>
+        <tr><td>Who counts as living in a flood area: address points</td><td>Address points place population better than spreading it by area (Zandbergen 2011); coarse population data overstates flood exposure (Smith et al. 2019, <i>Nature Communications</i>). Here, counting by area instead of address would add 30%.</td><td>Moderate to high</td></tr>
+        <tr><td>Share of new residents in flood areas</td><td>Back-test 2016→2021: new addresses in flood areas filled more slowly than others outside the inner city (2.6% of new residents vs 3.8% of new addresses), so the new-address share is scaled by 0.68 there and 0.94 in the four inner councils. Estimates built on new housing records tend to run high (Smith &amp; Cody 2013). Nationally, housing growth shows no significant link to flood risk (Le, Melser &amp; Ruthbah 2025, <i>Australian Journal of Agricultural and Resource Economics</i>).</td><td>Moderate (one 5-year period)</td></tr>
+        <tr><td>Errors grow for small areas and long horizons; ranges from past errors</td><td>Wilson et al. (2022), <i>Population Research and Policy Review</i>; Rayer, Smith &amp; Tayman (2009), same journal. Reliable horizon 5–10 years (AHURI Final Report 420, 2024): 2036 is 11 years out.</td><td>High</td></tr>
+        <tr><td>Population growth, not sea level, drives exposure to 2036</td><td>Globally, 77% of the rise in flood exposure to 2100 comes from population growth (<i>Nature Communications</i>, 2025). Here, sea level adds few residents before 2036.</td><td>High</td></tr>
+        <tr><td>Residents at ground level</td><td>Census 2021 dwelling types per SA1; new homes since 2016 in apartment buildings counted as such. The share of each building type living at ground level is our assumption (no study measures it). Upper-floor residents can still lose power and water when basements flood (Typhoon Hagibis, Tokyo, 2019).</td><td>Low: an estimate</td></tr>
+        <tr><td>Comparison with the council's own forecast</td><td>City of Melbourne small-area forecasts (SGS, 2024; open data): totals within 1–3%; growth placed differently (more in Docklands and Fishermans Bend here, more in Arden and established areas there). A comparison, not a test.</td><td>—</td></tr>
+      </tbody>
+    </table></div>
+    <p class="sub" style="margin-top:8px">References: Smith, S.K. &amp; Cody, S. (2013) Making the housing unit method work, <i>Popul. Res. Policy Rev.</i> 32: 221–242. Wilson, T., Grossman, I., Alexander, M., Rees, P. &amp; Temple, J. (2022) Methods for small area population forecasts, <i>Popul. Res. Policy Rev.</i> 41: 865–898. Rayer, S., Smith, S.K. &amp; Tayman, J. (2009) Empirical prediction intervals for county population forecasts, <i>Popul. Res. Policy Rev.</i> Le, T., Melser, D. &amp; Ruthbah, U. (2025) The exposure of Australia's housing stock to climate risks, <i>Aust. J. Agric. Resour. Econ.</i> 69: 510–525. Smith, A. et al. (2019) New estimates of flood exposure in developing countries using high-resolution population data, <i>Nat. Commun.</i> Zandbergen, P. (2011) Dasymetric mapping using high resolution address point datasets (Esri User Conference). Baker, E. et al. (2024) Improving small area population projections, AHURI Final Report 420. Lichfields (2024) Start to Finish, 3rd edition. Urban Development Program 2017, 2018 (CC BY 4.0) and 2025, Department of Transport and Planning.</p>
   </section>
 
   <section>
