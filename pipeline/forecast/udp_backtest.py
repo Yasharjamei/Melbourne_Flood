@@ -97,6 +97,9 @@ def built_out():
         if "RECENTDEV" in g.columns:
             g.loc[(g[col] == "Developed") & (g["RECENTDEV"].astype(str) == "Under Construction"), col] = "1-2years"
         g = g[g[n].astype(float) > 0].reset_index(drop=True)
+        if "APARTMENTS" in g.columns:                  # houses and townhouses only: one address per dwelling, no shared addresses
+            g = pd.concat([g.assign(**{col: g[col]}),
+                           g[g["APARTMENTS"].fillna(0).astype(float) == 0].assign(**{col: g[col] + " (no apartments)"})], ignore_index=True)
         j = gpd.sjoin(pts, g[[col, n, "geometry"]], predicate="within", how="inner")
         res[ed] = {}
         for y in (2021, 2025):
@@ -143,7 +146,8 @@ def main():
                       "HU": rescale(P[b] + np.where((dL > 0) & (A5 > 0), dL * a5 / np.where(A5 > 0, A5, 1), dL * P[b] / Pl), lga, pd.Series(P[t]).groupby(lga).sum())}
             models["UDP"], used = udp_model(P, p, addr, b, t, s, wts)
             grow = (pd.Series(P[t]).groupby(sa2).sum() / pd.Series(P[b]).groupby(sa2).sum().clip(lower=1)) >= 1.3
-            out["tests"][name] = {"udp_residents_placed": round(used), "council_growth": round(float(np.clip(dL, 0, None).sum())) }
+            cg = float((pd.Series(P[t]).groupby(lga).sum() - pd.Series(P[b]).groupby(lga).sum()).clip(lower=0).sum())   # once per council
+            out["tests"][name] = {"udp_residents_placed": round(used), "council_growth": round(cg)}
             for m_, v in models.items():
                 sc, ape = score(v, P[t], sa2)
                 fast = ape[ape.index.isin(grow[grow].index)]
@@ -152,7 +156,7 @@ def main():
                 out["tests"][name][m_] = sc
                 print(f"  {name:22} {m_:5} {sc['sa2s']:>5} {sc['wape']:>7.1%} {sc['median_ape']:>7.1%} {sc['p80_ape']:>7.1%} {sc['within_10pct']:>6.0%}   "
                       f"n={sc['fast_growing']['sa2s']:>3} median {sc['fast_growing']['median_ape'] or 0:>6.1%} p80 {sc['fast_growing']['p80_ape'] or 0:>6.1%}")
-            print(f"    UDP-placed residents {used:,.0f} of {float(np.clip(dL, 0, None).sum()):,.0f} council growth")
+            print(f"    UDP-placed residents {used:,.0f} of {cg:,.0f} council growth")
     out["built"] = built_out()
     os.makedirs("data/processed", exist_ok=True)
     json.dump(out, open("data/processed/forecast_udp_backtest.json", "w"), indent=1)
