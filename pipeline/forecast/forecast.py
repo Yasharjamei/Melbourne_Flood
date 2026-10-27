@@ -336,11 +336,12 @@ def main():
     fl = gpd.read_file(f"{RAW}/flood.geojson").to_crs(CRS)
     ov = polys(polys(fl[fl.scheme_code.isin(["LSIO", "FO", "SBO"])].geometry).intersection(study))
     zones = {k: polys([ov] + [slr_layer(n) for n in names]) for k, _, _, names in SLR}
-    AEP = "data/raw/shared/aep1.geojson"                 # modelled 1-in-100-year flood (Victorian Flood Database)
+    AEP = next((f for f in ("data/raw/forecast/aep100.geojson", "data/raw/shared/aep1.geojson") if os.path.exists(f)),
+               "data/raw/shared/aep1.geojson")               # modelled 1-in-100-year flood: detailed layer if fetched
     if os.path.exists(AEP):
         aep = polys(polys(gpd.read_file(AEP).to_crs(CRS).geometry).intersection(study))
         zones["aep"] = aep
-        print(f"1% AEP extent: {aep.area / 1e6:,.1f} km2 in the study area; overlap with planning overlays "
+        print(f"1% AEP extent ({AEP}): {aep.area / 1e6:,.1f} km2 in the study area; overlap with planning overlays "
               f"{aep.intersection(ov).area / 1e6:,.1f} km2 of {ov.area / 1e6:,.1f} km2")
     print(f"flood areas (km2): " + ", ".join(f"{k} {z.area / 1e6:,.1f}" for k, z in zones.items()))
 

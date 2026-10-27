@@ -131,6 +131,32 @@ def addresses_new(dst):
     print(f"  addresses_new.npy: {len(a):,} addresses created since {ADDR_FROM}; by year {yrs}")
 
 
+def aep_detailed(bbox, out):
+    """The detailed 1% AEP flood layer of the Victorian Flood Database (from flood studies), not the
+    statewide 1:250,000 compilation the main map uses. Layer found by name, as ids can change."""
+    import re
+    if os.path.exists(out):
+        print("  cached"); return
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    info = f01.get_json(f01.VFD, {"f": "json"})
+    lay = [l for l in info.get("layers", []) if re.fullmatch(r"flood\s*-\s*1 in 100 years?", l["name"].strip(), re.I) and not l.get("subLayerIds")]
+    if not lay:
+        raise RuntimeError("no 'Flood - 1 in 100 years' layer: " + str([l["name"] for l in info.get("layers", [])][:30]))
+    url = f"{f01.VFD}/{lay[0]['id']}"
+    feats, off = [], 0
+    while True:
+        js = f01.get_json(url + "/query", {"where": "1=1", "outFields": "", "returnGeometry": "true", "f": "geojson", "outSR": 4326,
+                                           "geometry": f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}", "geometryType": "esriGeometryEnvelope",
+                                           "inSR": 4326, "spatialRel": "esriSpatialRelIntersects", "resultOffset": off, "resultRecordCount": 1000})
+        got = js.get("features", [])
+        feats += got; off += len(got)
+        if len(got) < 1000:
+            break
+    json.dump({"type": "FeatureCollection", "features": [{"type": "Feature", "properties": {}, "geometry": f["geometry"]}
+                                                          for f in feats if f.get("geometry")]}, open(out, "w"))
+    print(f"  layer {lay[0]['id']} '{lay[0]['name']}': {len(feats):,} polygons -> {out}")
+
+
 def main_inputs():
     """Only the main build's inputs the forecast reads (councils, mesh blocks, mesh-block counts, flood
     overlays, address points, SA1s and suburbs for the scenarios map), each skipped if present. A full 01_fetch.py takes ~70 min; these are a part."""
@@ -152,6 +178,11 @@ def main_inputs():
         f01.aep1(bbox)
     except Exception as e:
         print(f"  WARNING 1% AEP extent unavailable: {str(e)[:200]}")
+    print("1% AEP flood extent, detailed (Victorian Flood Database layer 'Flood - 1 in 100 years'; forecast only)")
+    try:
+        aep_detailed(bbox, "data/raw/forecast/aep100.geojson")
+    except Exception as e:
+        print(f"  WARNING detailed 1% AEP extent unavailable: {str(e)[:200]}")
     print("October 2022 flood extent (observed; Victorian Flood History, CC BY 4.0)")
     if os.path.exists(f"{raw}/flood_oct2022.geojson"):
         print("  cached")

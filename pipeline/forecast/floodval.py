@@ -22,7 +22,7 @@ from backtest import table, codes
 from forecast import polys, inside, CRS, RAW
 
 OCT = f"{RAW}/flood_oct2022.geojson"
-AEP = "data/raw/shared/aep1.geojson"
+AEP = next((f for f in ("data/raw/forecast/aep100.geojson", "data/raw/shared/aep1.geojson") if os.path.exists(f)), "data/raw/shared/aep1.geojson")
 
 
 def main():

@@ -48,8 +48,9 @@ jobs:
             data/raw/gcp/2021Census_G36_VIC_SA1.csv
             data/raw/shared/aep1.geojson
             data/raw/metro/flood_oct2022.geojson
-          key: forecast-main-v4-${{ steps.month.outputs.m }}
-          restore-keys: forecast-main-v3-${{ steps.month.outputs.m }}   # reuse last cache; only the new files are fetched
+            data/raw/forecast/aep100.geojson
+          key: forecast-main-v5-${{ steps.month.outputs.m }}
+          restore-keys: forecast-main-v4-${{ steps.month.outputs.m }}   # reuse last cache; only the new files are fetched
       - name: Forecast inputs cache
         uses: actions/cache@v4
         with:
