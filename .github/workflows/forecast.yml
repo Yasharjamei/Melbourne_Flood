@@ -46,8 +46,10 @@ jobs:
             data/raw/metro/sal.geojson
             data/raw/shared/mb_counts_2021.xlsx
             data/raw/gcp/2021Census_G36_VIC_SA1.csv
-          key: forecast-main-v3-${{ steps.month.outputs.m }}
-          restore-keys: forecast-main-v2-${{ steps.month.outputs.m }}   # reuse last cache; only the new files are fetched
+            data/raw/shared/aep1.geojson
+            data/raw/metro/flood_oct2022.geojson
+          key: forecast-main-v4-${{ steps.month.outputs.m }}
+          restore-keys: forecast-main-v3-${{ steps.month.outputs.m }}   # reuse last cache; only the new files are fetched
       - name: Forecast inputs cache
         uses: actions/cache@v4
         with:
@@ -81,6 +83,9 @@ jobs:
       - name: Checks on the flood count (2016 -> 2021 back-test; ground-level residents)
         continue-on-error: true      # reports only
         run: python -u pipeline/forecast/floodtest.py | tee floodtest.txt
+      - name: Flood areas against the October 2022 flood (observed)
+        continue-on-error: true      # reports only
+        run: python -u pipeline/forecast/floodval.py | tee floodval.txt
       - name: Compare with the City of Melbourne's own small-area forecasts
         continue-on-error: true      # reports only
         run: python -u pipeline/forecast/com_compare.py | tee com_compare.txt
@@ -96,7 +101,7 @@ jobs:
         timeout-minutes: 25
         run: python -u .github/scripts/record_columns.py
       - run: |
-          echo '```' >> "$GITHUB_STEP_SUMMARY"; cat backtest.txt ensemble.txt udp_backtest.txt forecast.txt floodtest.txt com_compare.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"; cat backtest.txt ensemble.txt udp_backtest.txt forecast.txt floodtest.txt floodval.txt com_compare.txt >> "$GITHUB_STEP_SUMMARY"; echo '```' >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
           name: forecast-backtest
@@ -109,6 +114,8 @@ jobs:
             floodtest.txt
             data/processed/forecast_floodtest.json
             com_compare.txt
+            floodval.txt
+            data/processed/forecast_floodval.json
             udp_backtest.txt
             data/processed/forecast_udp_backtest.json
             data/processed/forecast_com.json

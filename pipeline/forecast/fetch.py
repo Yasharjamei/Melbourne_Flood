@@ -146,6 +146,20 @@ def main_inputs():
     print("Suburbs"); f01.arcgis("SAL", "state_code_2021='2'", bbox, 0.00012, f"{raw}/sal.geojson")
     print("Flood overlays"); f01.wfs_overlays(bbox, st["lgas"], f"{raw}/flood.geojson")
     print("Address points"); f01.wfs_points(bbox, f"{raw}/addr.npy")
+    # better flood data: the modelled 1% AEP extent (Victorian Flood Database) and the observed October 2022 extent
+    print("1% AEP flood extent (modelled)")
+    try:
+        f01.aep1(bbox)
+    except Exception as e:
+        print(f"  WARNING 1% AEP extent unavailable: {str(e)[:200]}")
+    print("October 2022 flood extent (observed; Victorian Flood History, CC BY 4.0)")
+    if os.path.exists(f"{raw}/flood_oct2022.geojson"):
+        print("  cached")
+    else:
+        try:
+            f01.wfs_polygons("open-data-platform:vic_flood_history_public", bbox, f"{raw}/flood_oct2022.geojson", "October 2022 flood extent")
+        except Exception as e:
+            print(f"  WARNING October 2022 extent unavailable: {str(e)[:200]}")
     dst = "data/raw/shared/mb_counts_2021.xlsx"
     print("Mesh-block counts")
     if os.path.exists(dst):

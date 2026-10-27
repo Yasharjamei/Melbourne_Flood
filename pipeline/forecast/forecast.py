@@ -336,6 +336,12 @@ def main():
     fl = gpd.read_file(f"{RAW}/flood.geojson").to_crs(CRS)
     ov = polys(polys(fl[fl.scheme_code.isin(["LSIO", "FO", "SBO"])].geometry).intersection(study))
     zones = {k: polys([ov] + [slr_layer(n) for n in names]) for k, _, _, names in SLR}
+    AEP = "data/raw/shared/aep1.geojson"                 # modelled 1-in-100-year flood (Victorian Flood Database)
+    if os.path.exists(AEP):
+        aep = polys(polys(gpd.read_file(AEP).to_crs(CRS).geometry).intersection(study))
+        zones["aep"] = aep
+        print(f"1% AEP extent: {aep.area / 1e6:,.1f} km2 in the study area; overlap with planning overlays "
+              f"{aep.intersection(ov).area / 1e6:,.1f} km2 of {ov.area / 1e6:,.1f} km2")
     print(f"flood areas (km2): " + ", ".join(f"{k} {z.area / 1e6:,.1f}" for k, z in zones.items()))
 
     # ---------------- address shares per mesh block: all addresses, and those created 2016-2025
@@ -451,6 +457,19 @@ def main():
         P0 = p["P"].values; d = P - P0
         return P0 * p[f"se_{k}"].values + np.where(d > 0, d * p[f"{sn}_{k}"].values, d * p[f"se_{k}"].values)
 
+    # residents in the modelled 1% AEP extent (a second definition of "flood area", no sea level)
+    if "aep" in zones:
+        ea = {y: pd.Series(exposure(pop[y], "aep")).groupby(p["lga"].values).sum() for y in YEARS}
+        en = {y: pd.Series(exposure(pop[y], "none")).groupby(p["lga"].values).sum() for y in YEARS}
+        out_aep = {"total": [round(float(ea[y].sum())) for y in YEARS], "councils": {c: [round(float(ea[y][c])) for y in YEARS] for c in ea[YEARS[0]].index}}
+        print(f"\nResidents in the modelled 1% AEP flood extent: " + ", ".join(f"{y} {ea[y].sum():,.0f}" for y in YEARS)
+              + f" (planning overlays + present coast: {en[YEARS[-1]].sum():,.0f} in {YEARS[-1]})")
+        print(f"  {'council':24} {'1% AEP ' + str(YEARS[0]):>13} {str(YEARS[-1]):>8} {'overlays ' + str(YEARS[-1]):>14}")
+        for c in ea[YEARS[-1]].sort_values(ascending=False).head(15).index:
+            print(f"  {str(lname.get(c, c))[:24]:24} {ea[YEARS[0]][c]:>13,.0f} {ea[YEARS[-1]][c]:>8,.0f} {en[YEARS[-1]][c]:>14,.0f}")
+    else:
+        out_aep = None
+
     # before / after the 2026-10 calibration (build-out weights, flood share of new residents)
     y36 = YEARS[-1]
     pop_b = allocate(y36, True, STATUS_BEFORE)
@@ -518,6 +537,8 @@ def main():
             row["v"][k] = [lo_hi(ex_lga[y][c], council_rel(y - BASE)) for y in YEARS]
     for a_ in out["areas"]:
         a_["coastal"] = bool(a_["v"]["0.82"][-1][0] > a_["v"]["none"][-1][0] + 5)
+    if out_aep:
+        out["aep"] = out_aep
     out["population"] = {"total": [lo_hi(pop[y].sum(), council_rel(y - BASE)) for y in YEARS],
                          "open_method_total": [round(pop_open[y].sum()) for y in YEARS]}
     out["backtest"] = json.load(open("web/scenarios_sample.json"))["backtest"]     # the real §25 table
