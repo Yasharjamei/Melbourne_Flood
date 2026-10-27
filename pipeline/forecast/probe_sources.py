@@ -13,7 +13,9 @@ IDS = ["victorian-flood-history-october-2022-event-public", "victoria-1-in-100-y
        "major-residential-redevelopments-sites-2017", "major-residential-redevelopments-sites-2018",
        "broadhectare-residential-land-2017", "broadhectare-residential-land-2018",
        "city-of-melbourne-population-forecasts-by-small-area-2021-2041"]
-SEARCH = ["flood history October 2022", "Victorian Flood Database", "flood extent 1% AEP", "flood depth"]
+SEARCH = ["flood history October 2022", "Victorian Flood Database", "flood extent 1% AEP", "flood depth",
+          "Melbourne Water flood", "flood study extent", "Victorian Flood Database 1 in 100"]
+VFD = "https://emap2.ffm.vic.gov.au/arcgis/rest/services/Victorian_Flood_Database/MapServer"
 
 
 def get(url, timeout=300):
@@ -61,6 +63,20 @@ def peek(url, fmt):
 
 
 def main():
+    print("== Victorian Flood Database layers (id, name, type, geometry, parent, count in the metro box)")
+    try:
+        for l in json.loads(get(VFD + "/layers?f=json"))["layers"]:
+            n = ""
+            if l.get("type") == "Feature Layer":
+                try:
+                    q = urllib.parse.urlencode({"where": "1=1", "returnCountOnly": "true", "f": "json", "geometry": "144.3,-38.6,145.9,-37.4",
+                                                "geometryType": "esriGeometryEnvelope", "inSR": 4326, "spatialRel": "esriSpatialRelIntersects"})
+                    n = json.loads(get(f"{VFD}/{l['id']}/query?{q}", 120)).get("count", "")
+                except Exception as e:
+                    n = f"count failed: {e}"
+            print(f"   {l['id']}: {l['name']!r} | {l.get('type')} | {l.get('geometryType', '')} | parent {(l.get('parentLayer') or {}).get('id')} | {n}")
+    except Exception as e:
+        print(f"   failed: {e}")
     for i in IDS:
         print(f"\n== {i}")
         try:

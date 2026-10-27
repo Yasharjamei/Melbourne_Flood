@@ -138,10 +138,18 @@ def aep_detailed(bbox, out):
     if os.path.exists(out):
         print("  cached"); return
     os.makedirs(os.path.dirname(out), exist_ok=True)
-    info = f01.get_json(f01.VFD, {"f": "json"})
-    lay = [l for l in info.get("layers", []) if re.fullmatch(r"flood\s*-\s*1 in 100 years?", l["name"].strip(), re.I) and not l.get("subLayerIds")]
+    # /layers gives geometry type and parent; "Flood - 1 in 100 years" can be a group layer
+    info = f01.get_json(f01.VFD + "/layers", {"f": "json"})
+    allL = info.get("layers", [])
+    for l in allL:
+        print(f"    VFD {l.get('id')}: {l.get('name')!r} {l.get('type')} {l.get('geometryType', '')} parent={(l.get('parentLayer') or {}).get('id')}")
+    poly = [l for l in allL if l.get("geometryType") == "esriGeometryPolygon"]
+    grp = [l for l in allL if re.fullmatch(r"flood\s*-\s*1 in 100 years?", l["name"].strip(), re.I)]
+    kids = {k["id"] for g in grp for k in (g.get("subLayers") or [])}
+    lay = [l for l in poly if (l["id"] in kids or l in grp or re.search(r"1 in 100|1%|100 ?y", l["name"], re.I))
+           and not re.search(r"250 ?k", l["name"], re.I)]
     if not lay:
-        raise RuntimeError("no 'Flood - 1 in 100 years' layer: " + str([l["name"] for l in info.get("layers", [])][:30]))
+        raise RuntimeError("no detailed 1-in-100-year polygon layer besides the 1:250,000 one (layer list above)")
     url = f"{f01.VFD}/{lay[0]['id']}"
     feats, off = [], 0
     while True:
