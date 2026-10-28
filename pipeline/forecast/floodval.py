@@ -87,7 +87,7 @@ def main():
           + (f"; in the 1% AEP extent {tot['aep']:,.0f}" if "aep" in zones else ""))
     print("  A resident outside our flood areas but inside the October 2022 water is a miss. The reverse is not an error"
           " (one flood is not every flood).")
-    out["past_floods"] = past_floods(pts, mb, study, "aep" in zones)
+    out["past_floods"] = past_floods(pts, mb, study, "aep" in zones, zones["overlays"], dict(zip(lga["lga_name_2021"], lga.geometry)))
     os.makedirs("data/processed", exist_ok=True)
     json.dump(out, open("data/processed/forecast_floodval.json", "w"), indent=1)
 
@@ -101,20 +101,26 @@ def label_cols(h):
     return name, date
 
 
-def past_floods(pts, mb, study, has_aep):
+def past_floods(pts, mb, study, has_aep, zones_ov=None, lga_geom=None):
     """The same test against every past flood recorded in the Victorian Flood Database history layer."""
     if not os.path.exists(HIST):
         print("\nPast flood extents: not present"); return {}
     h = gpd.read_file(HIST).to_crs(CRS)
     name, date = label_cols(h)
     print(f"\nPast flood extents: {len(h)} polygons; fields {[c for c in h.columns if c != 'geometry']}; event from {name!r}, date from {date!r}")
-    lab = pd.Series("all recorded floods", index=h.index)
-    if name or date:
-        nm = h[name].fillna("").astype(str).str.strip() if name else ""
-        dt = pd.to_datetime(h[date], errors="coerce", unit="ms" if pd.api.types.is_numeric_dtype(h[date]) and h[date].max() > 1e10 else None) if date else None
-        yr = dt.dt.year.astype("Int64").astype(str).replace("<NA>", "") if date is not None else ""
-        lab = (yr + " " + nm).str.strip() if date and name else (nm if name else yr)
-        lab = lab.where(lab.str.len() > 0, "unnamed")
+    # START_DATE is YYYYMMDD in this layer, 0 when unknown; the layer has no event names, so undated
+    # extents are told apart by gauge and survey plan
+    if date:
+        v = pd.to_numeric(h[date], errors="coerce")
+        dt = pd.to_datetime(v.where(v > 18000101).astype("Int64").astype(str), format="%Y%m%d", errors="coerce")
+        if dt.isna().all() and not pd.api.types.is_numeric_dtype(h[date]):
+            dt = pd.to_datetime(h[date], errors="coerce")
+        dlab = dt.dt.strftime("%Y-%m-%d").fillna("undated")
+    else:
+        dlab = pd.Series("undated", index=h.index)
+    extra = [c for c in ("GAUGEID", "PLAN_NO") if c in h.columns]
+    tail = h[extra].astype(str).agg(" ".join, axis=1).str.strip() if extra else ""
+    lab = (dlab + (", gauge/plan " + tail if extra else "")) if not name else (dlab + " " + h[name].fillna("").astype(str)).str.strip()
     h["event"] = lab.values
     h = h[h.geometry.intersects(study)]
     # residents per address: 2021 mesh-block persons spread over its addresses
@@ -146,8 +152,19 @@ def past_floods(pts, mb, study, has_aep):
             res[str(e)].update({"share_in_aep": round(float(pct(p_, a_)), 3), "share_in_either": round(float(pct(x_, a_)), 3)})
     miss = pts.loc[anyev & ~pts["overlays"].values]
     if len(miss):
+        zones_ov = zones_ov if zones_ov is not None else polys([])
+        lga_geom = lga_geom or {}
         mc = (w[miss.index]).groupby(mb.loc[miss["m"], "lga"].values).sum().sort_values(ascending=False).head(10)
         print("  Residents inside a recorded flood but outside the overlays, by council: " + ", ".join(f"{k} {v:,.0f}" for k, v in mc.items()))
+        for c in mc.index[:3]:
+            lg = lga_geom.get(c)
+            if lg is not None:
+                print(f"    {c}: overlays {zones_ov.intersection(lg).area / 1e6:,.1f} km2, recorded past floods {polys(h.geometry).intersection(lg).area / 1e6:,.1f} km2, "
+                      f"of which inside overlays {polys(h.geometry).intersection(lg).intersection(zones_ov).area / 1e6:,.1f} km2")
+    info = [c for c in ("GAUGEID", "PLAN_NO", "SOURCE", "RELIABILITY", "METHOD", "SCALE", "MODIFIED") if c in h.columns]
+    if info:
+        print("  Extents with the most residents: " + "; ".join(
+            f"{e}: " + ", ".join(f"{c} {h.loc[h['event'] == e, c].iloc[0]}" for c in info) for e in g.index[:5]))
     print("  Old floods predate drainage works, levees and retarding basins; a miss may be a place since protected, not an error.")
     return res
 
