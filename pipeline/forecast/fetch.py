@@ -165,6 +165,35 @@ def aep_detailed(bbox, out):
     print(f"  layer {lay[0]['id']} '{lay[0]['name']}': {len(feats):,} polygons -> {out}")
 
 
+def flood_history(bbox, out):
+    """Recorded flood extents of past events (Victorian Flood Database layer 'Flood extents - history'),
+    with their attributes (event name, date), for the test of our flood areas against past floods."""
+    import re
+    if os.path.exists(out):
+        print("  cached"); return
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    lay = [l for l in f01.get_json(f01.VFD + "/layers", {"f": "json"}).get("layers", [])
+           if l.get("geometryType") == "esriGeometryPolygon" and re.search(r"flood extents?\s*-\s*history", l["name"], re.I)]
+    if not lay:
+        raise RuntimeError("no 'Flood extents - history' polygon layer")
+    url = f"{f01.VFD}/{lay[0]['id']}"
+    feats, off = [], 0
+    while True:
+        js = f01.get_json(url + "/query", {"where": "1=1", "outFields": "*", "returnGeometry": "true", "f": "geojson", "outSR": 4326,
+                                           "geometry": f"{bbox[0]},{bbox[1]},{bbox[2]},{bbox[3]}", "geometryType": "esriGeometryEnvelope",
+                                           "inSR": 4326, "spatialRel": "esriSpatialRelIntersects", "resultOffset": off, "resultRecordCount": 1000})
+        got = js.get("features", [])
+        feats += got; off += len(got)
+        if len(got) < 1000:
+            break
+    feats = [f for f in feats if f.get("geometry")]
+    json.dump({"type": "FeatureCollection", "features": feats}, open(out, "w"))
+    print(f"  layer {lay[0]['id']} '{lay[0]['name']}': {len(feats):,} polygons -> {out}")
+    if feats:
+        print(f"  fields: {list((feats[0].get('properties') or {}).keys())}")
+        print(f"  first: {feats[0].get('properties')}")
+
+
 def main_inputs():
     """Only the main build's inputs the forecast reads (councils, mesh blocks, mesh-block counts, flood
     overlays, address points, SA1s and suburbs for the scenarios map), each skipped if present. A full 01_fetch.py takes ~70 min; these are a part."""
@@ -199,6 +228,11 @@ def main_inputs():
             f01.wfs_polygons("open-data-platform:vic_flood_history_public", bbox, f"{raw}/flood_oct2022.geojson", "October 2022 flood extent")
         except Exception as e:
             print(f"  WARNING October 2022 extent unavailable: {str(e)[:200]}")
+    print("Past flood extents (Victorian Flood Database 'Flood extents - history'; forecast only)")
+    try:
+        flood_history(bbox, "data/raw/forecast/flood_history.geojson")
+    except Exception as e:
+        print(f"  WARNING past flood extents unavailable: {str(e)[:200]}")
     dst = "data/raw/shared/mb_counts_2021.xlsx"
     print("Mesh-block counts")
     if os.path.exists(dst):

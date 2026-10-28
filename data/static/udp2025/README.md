@@ -15,6 +15,12 @@ requested from DEECA (gis.helpdesk@deeca.vic.gov.au).
 |---|---|
 | `sa2_code_2021`, `lga_code` | The SA2 x council piece (`data/static/sa2_council_pieces_7855.geojson`) |
 | `mrs_completed`, `mrs_under_construction`, `mrs_firm`, `mrs_likely`, `mrs_possible` | Dwellings in major redevelopment projects (10+ dwellings) by UDP status, each project at its representative point |
+| `mrs_<status>_100`, `mrs_<status>_500` | The same, for projects of 100-499 and of 500+ dwellings only (added 2026-10-28; slower build-out of large apartment schemes) |
 | `gf_titled`, `gf_proposed`, `gf_zoned`, `gf_unzoned` | Greenfield lots by development status, split by area where a parcel crosses a piece boundary |
 
-Only per-piece totals are kept; no site, project or parcel detail.
+`udp_transition_2017_2025.csv`, if present: the 2017 pipeline (MRS2017, CC BY) followed into UDP 2025, by 2017
+status and project size: shares of dwellings completed, still unfinished, or no longer listed in 2025. Rows
+covering fewer than 3 projects are left out.
+
+Only per-piece and per-band totals are kept; no site, project or parcel detail. Where a piece holds a single
+large project, its size band total equals that project's dwellings, as the status totals already can.

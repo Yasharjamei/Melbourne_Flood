@@ -22,6 +22,7 @@ from backtest import table, codes
 from forecast import polys, inside, CRS, RAW
 
 OCT = f"{RAW}/flood_oct2022.geojson"
+HIST = "data/raw/forecast/flood_history.geojson"
 AEP = next((f for f in ("data/raw/forecast/aep100.geojson", "data/raw/shared/aep1.geojson") if os.path.exists(f)), "data/raw/shared/aep1.geojson")
 
 
@@ -86,8 +87,69 @@ def main():
           + (f"; in the 1% AEP extent {tot['aep']:,.0f}" if "aep" in zones else ""))
     print("  A resident outside our flood areas but inside the October 2022 water is a miss. The reverse is not an error"
           " (one flood is not every flood).")
+    out["past_floods"] = past_floods(pts, mb, study, "aep" in zones)
     os.makedirs("data/processed", exist_ok=True)
     json.dump(out, open("data/processed/forecast_floodval.json", "w"), indent=1)
+
+
+def label_cols(h):
+    """Columns naming the event and its date in the Victorian Flood Database history layer (names vary)."""
+    cols = [c for c in h.columns if c != "geometry"]
+    txt = lambda c: h[c].dtype == object or str(h[c].dtype).startswith("str")
+    name = next((c for c in cols if re.search(r"event|flood_?name|^name$|descr|title", c, re.I) and txt(c)), None)
+    date = next((c for c in cols if re.search(r"date|year|yr", c, re.I)), None)
+    return name, date
+
+
+def past_floods(pts, mb, study, has_aep):
+    """The same test against every past flood recorded in the Victorian Flood Database history layer."""
+    if not os.path.exists(HIST):
+        print("\nPast flood extents: not present"); return {}
+    h = gpd.read_file(HIST).to_crs(CRS)
+    name, date = label_cols(h)
+    print(f"\nPast flood extents: {len(h)} polygons; fields {[c for c in h.columns if c != 'geometry']}; event from {name!r}, date from {date!r}")
+    lab = pd.Series("all recorded floods", index=h.index)
+    if name or date:
+        nm = h[name].fillna("").astype(str).str.strip() if name else ""
+        dt = pd.to_datetime(h[date], errors="coerce", unit="ms" if pd.api.types.is_numeric_dtype(h[date]) and h[date].max() > 1e10 else None) if date else None
+        yr = dt.dt.year.astype("Int64").astype(str).replace("<NA>", "") if date is not None else ""
+        lab = (yr + " " + nm).str.strip() if date and name else (nm if name else yr)
+        lab = lab.where(lab.str.len() > 0, "unnamed")
+    h["event"] = lab.values
+    h = h[h.geometry.intersects(study)]
+    # residents per address: 2021 mesh-block persons spread over its addresses
+    n = pts.groupby("m").size()
+    w = (pts["m"].map(mb["p21"]) / pts["m"].map(n)).fillna(0)
+    j = gpd.sjoin(pts[["geometry"]], h[["event", "geometry"]], predicate="within", how="inner")
+    j = j.assign(_i=j.index).drop_duplicates(["_i", "event"])                    # once per address and event
+    ix = j.index
+    d = pd.DataFrame({"event": j["event"].values, "w": w.reindex(ix).values, "ov": pts.loc[ix, "overlays"].values})
+    if has_aep:
+        d["aep"] = pts.loc[ix, "aep"].values
+        d["either"] = d["ov"] | d["aep"]
+    anyev = pts.index.isin(ix)
+    tot = {"w": w[anyev].sum(), "ov": (w * pts["overlays"])[anyev].sum()}
+    if has_aep:
+        tot.update({"aep": (w * pts["aep"])[anyev].sum(), "either": (w * (pts["overlays"] | pts["aep"]))[anyev].sum()})
+    g = d.assign(wov=d.w * d.ov, **({"waep": d.w * d.aep, "weit": d.w * d.either} if has_aep else {})).groupby("event").sum(numeric_only=True)
+    g = g[g["w"] >= 20].sort_values("w", ascending=False)
+    pct = lambda a_, b_: a_ / b_ if b_ > 0 else float("nan")
+    print("Residents (Census 2021, placed by address) inside each recorded past flood, and the share of them inside our flood areas")
+    print(f"  {'event':40} {'residents':>10} {'in overlays':>12}" + (f" {'in 1% AEP':>10} {'in either':>10}" if has_aep else ""))
+    res = {}
+    rows = [(e, r["w"], r["wov"], r.get("waep", 0), r.get("weit", 0)) for e, r in g.iterrows()]
+    rows.append(("any recorded flood (each person once)", tot["w"], tot["ov"], tot.get("aep", 0), tot.get("either", 0)))
+    for e, a_, o_, p_, x_ in rows:
+        print(f"  {str(e)[:40]:40} {a_:>10,.0f} {pct(o_, a_):>12.0%}" + (f" {pct(p_, a_):>10.0%} {pct(x_, a_):>10.0%}" if has_aep else ""))
+        res[str(e)] = {"residents": round(float(a_)), "share_in_overlays": round(float(pct(o_, a_)), 3)}
+        if has_aep:
+            res[str(e)].update({"share_in_aep": round(float(pct(p_, a_)), 3), "share_in_either": round(float(pct(x_, a_)), 3)})
+    miss = pts.loc[anyev & ~pts["overlays"].values]
+    if len(miss):
+        mc = (w[miss.index]).groupby(mb.loc[miss["m"], "lga"].values).sum().sort_values(ascending=False).head(10)
+        print("  Residents inside a recorded flood but outside the overlays, by council: " + ", ".join(f"{k} {v:,.0f}" for k, v in mc.items()))
+    print("  Old floods predate drainage works, levees and retarding basins; a miss may be a place since protected, not an error.")
+    return res
 
 
 if __name__ == "__main__":
