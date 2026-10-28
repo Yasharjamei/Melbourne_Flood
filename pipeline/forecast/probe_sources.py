@@ -62,7 +62,40 @@ def peek(url, fmt):
             print(f"      could not read {os.path.basename(c)}: {e}")
 
 
+def planning_controls():
+    """Which flood controls Wyndham, Melton and (for scale) Casey use: overlay codes and the Urban Floodway Zone."""
+    wfs = "https://opendata.maps.vic.gov.au/geoserver/wfs"
+    def feats(layer, cql):
+        out, start = [], 0
+        while True:
+            q = urllib.parse.urlencode({"service": "WFS", "version": "2.0.0", "request": "GetFeature", "typeNames": layer,
+                                        "outputFormat": "application/json", "srsName": "EPSG:7855", "CQL_FILTER": cql, "count": 5000, "startIndex": start})
+            got = json.loads(get(f"{wfs}?{q}"))["features"]
+            out += got; start += len(got)
+            if len(got) < 5000:
+                return out
+    import geopandas as gpd
+    for lga in ("WYNDHAM", "MELTON", "CASEY"):
+        print(f"\n== {lga}: planning controls")
+        for layer, cql in (("open-data-platform:plan_overlay", f"lga='{lga}' AND (scheme_code LIKE '%LSIO%' OR scheme_code LIKE '%FO%' OR scheme_code LIKE '%SBO%')"),
+                           ("open-data-platform:plan_zone", f"lga='{lga}' AND scheme_code LIKE 'UFZ%'")):
+            try:
+                f = feats(layer, cql)
+                if not f:
+                    print(f"   {layer.split(':')[1]}: none"); continue
+                g = gpd.GeoDataFrame.from_features(f, crs=7855)
+                col = "scheme_code" if "scheme_code" in g.columns else g.columns[0]
+                t = g.assign(km2=g.area / 1e6).groupby(col)["km2"].agg(["size", "sum"])
+                print(f"   {layer.split(':')[1]}: " + ", ".join(f"{k} {int(r['size'])} features {r['sum']:.1f} km2" for k, r in t.iterrows()))
+            except Exception as e:
+                print(f"   {layer}: failed {e}")
+
+
 def main():
+    try:
+        planning_controls()
+    except Exception as e:
+        print(f"planning controls failed: {e}")
     print("== Victorian Flood Database layers (id, name, type, geometry, parent, count in the metro box)")
     try:
         for l in json.loads(get(VFD + "/layers?f=json"))["layers"]:
